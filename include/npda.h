@@ -7,8 +7,6 @@
 
 #pragma once
 
-#include <fmt/color.h>
-#include <fmt/format.h>
 #include <algorithm>
 #include <concepts>
 #include <deque>
@@ -233,6 +231,9 @@ class NPDA {
       }
     };
 
+    std::size_t best_trace_idx = 0;  // Track the most advanced node for trace display
+    std::size_t max_pos = 0;         // Track the furthest input position reached
+
     while (!work.empty()) {
       std::size_t idx = opt.bfs ? work.front() : work.back();
       if (opt.bfs)
@@ -245,7 +246,17 @@ class NPDA {
         return build_result(cur, nodes, idx, expansions, opt, input);
       }
 
+      // Track the most advanced node for potential trace display
+      if (cur.pos > max_pos) {
+        max_pos = cur.pos;
+        best_trace_idx = idx;
+      }
+
       if (expansions >= opt.max_expansions) {
+        // If tracing is enabled and we have explored some paths, show the best trace we found
+        if (opt.trace && nodes.size() > 1) {
+          show_rejection_trace(nodes, best_trace_idx, input, opt, expansions);
+        }
         return std::unexpected(Error{"max_expansions reached"});
       }
 
@@ -292,6 +303,10 @@ class NPDA {
       }
     }
 
+    // If tracing is enabled and we explored some paths, show the best trace we found
+    if (opt.trace && nodes.size() > 1) {
+      show_rejection_trace(nodes, best_trace_idx, input, opt, expansions);
+    }
     return RunResult{false, expansions, std::nullopt};
   }
   // Trace visualization methods
@@ -569,6 +584,92 @@ class NPDA {
       sink(fmt::format(fmt::fg(config::colors::success), "\n✅ Input accepted!\n"));
     } else {
       sink("\nInput accepted!\n");
+    }
+  }
+
+  template <typename NodeT>
+  void show_rejection_trace(
+    const std::vector<NodeT>& nodes,
+    std::size_t best_idx,
+    const std::vector<Input>& input,
+    const RunOptions& opt,
+    std::size_t expansions
+  ) const {
+    if (!opt.trace || !opt.track_witness)
+      return;
+
+    auto sink = opt.trace_sink ? opt.trace_sink : [](std::string_view s) {
+      fmt::print("{}", s);
+    };
+
+    if (opt.trace_colors) {
+      sink(fmt::format(
+        fmt::fg(config::colors::banner_text),
+        "\n❌ Input rejected! Showing furthest path explored ({} expansions)...\n",
+        expansions
+      ));
+    } else {
+      sink(fmt::format(
+        "\nInput rejected! Showing furthest path explored ({} expansions)...\n", expansions
+      ));
+    }
+
+    // Reconstruct the path to the best node we found
+    std::vector<std::size_t> node_path_rev;
+    std::vector<std::size_t> rule_path_rev;
+
+    std::size_t cur = best_idx;
+    while (true) {
+      node_path_rev.push_back(cur);
+      if (nodes[cur].parent == npos)
+        break;
+      if (nodes[cur].rule_idx.has_value())
+        rule_path_rev.push_back(*nodes[cur].rule_idx);
+      cur = nodes[cur].parent;
+    }
+
+    std::vector<std::size_t> node_path(node_path_rev.rbegin(), node_path_rev.rend());
+    std::vector<std::size_t> rule_path(rule_path_rev.rbegin(), rule_path_rev.rend());
+
+    // Show how far we got in the input
+    const auto& best_node = nodes[best_idx];
+    std::size_t remaining_input = input.size() - best_node.pos;
+
+    if (opt.trace_colors) {
+      sink(fmt::format(
+        fmt::fg(config::colors::info),
+        "Furthest position: {} / {} ({} characters remaining)\n",
+        best_node.pos,
+        input.size(),
+        remaining_input
+      ));
+    } else {
+      sink(fmt::format(
+        "Furthest position: {} / {} ({} characters remaining)\n",
+        best_node.pos,
+        input.size(),
+        remaining_input
+      ));
+    }
+
+    // Emit each step showing the state after applying the rule
+    std::size_t step_num = 0;
+    for (std::size_t i = 1; i < node_path.size(); ++i) {
+      ++step_num;
+      const std::size_t node_idx = node_path[i];
+      const std::size_t rule_idx = rule_path[i - 1];
+      emit_trace_step(nodes[node_idx], input, step_num, rules_[rule_idx], opt);
+    }
+
+    // Show the final state where we got stuck
+    if (!node_path.empty()) {
+      emit_trace_step(nodes[best_idx], input, step_num + 1, std::nullopt, opt);
+    }
+
+    if (opt.trace_colors) {
+      sink(fmt::format(fmt::fg(config::colors::error), "\n❌ Input rejected at this point!\n"));
+    } else {
+      sink("\nInput rejected at this point!\n");
     }
   }
 

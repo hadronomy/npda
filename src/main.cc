@@ -132,5 +132,12 @@ int main() {
   std::cout << "\n=== Trace Mode Demonstration ===\n";
   std::cout << "Showing beautiful step-by-step trace for 'abba':\n";
   run("abba", true);  // with trace enabled
+
+  std::cout << "\n=== Trace for Rejected Input ===\n";
+  std::cout << "Showing trace for rejected input 'abab':\n";
   run("abab", true);
+
+  std::cout << "\n=== Trace for Another Rejected Input ===\n";
+  std::cout << "Showing trace for rejected input 'abca':\n";
+  run("abca", true);
 }
