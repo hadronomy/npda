@@ -227,11 +227,7 @@ class NPDA {
         n.parent = parent_idx;
         n.rule_idx = rule_idx;
         nodes.push_back(std::move(n));
-        if (opt.bfs) {
-          work.push_back(nodes.size() - 1);
-        } else {
-          work.push_back(nodes.size() - 1);  // LIFO achieved by popping from back
-        }
+        work.push_back(nodes.size() - 1);
       }
     };
 
