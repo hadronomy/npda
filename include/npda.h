@@ -24,7 +24,7 @@
 
 namespace npda {
 
-enum class AcceptBy { FinalState, EmptyStack, Both };
+enum class AcceptBy { FinalState, EmptyStack, Both, Any };
 
 struct Error {
   std::string message;
@@ -217,6 +217,8 @@ class NPDA {
           return at_end && by_stack;
         case AcceptBy::Both:
           return at_end && by_state && by_stack;
+        case AcceptBy::Any:
+          return at_end && (by_state || by_stack);
       }
       return false;
     };
