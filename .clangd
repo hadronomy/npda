@@ -1,0 +1,6 @@
+CompileFlags:
+  Add:
+    - -std=c++23
+    - -nostdinc++
+    - "-I[/usr/include]"
+    - "-I[./include]"
