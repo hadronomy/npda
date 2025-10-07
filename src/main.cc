@@ -132,4 +132,5 @@ int main() {
   std::cout << "\n=== Trace Mode Demonstration ===\n";
   std::cout << "Showing beautiful step-by-step trace for 'abba':\n";
   run("abba", true);  // with trace enabled
+  run("abab", true);
 }

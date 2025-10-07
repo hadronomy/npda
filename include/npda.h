@@ -379,11 +379,19 @@ class NPDA {
       if (!opt.trace_compact) {
         output += "       ";
         for (std::size_t i = 0; i < node.stack.size(); ++i) {
-          if (i == 0) {
-            output += "┌───┐ ";
-          } else {
-            output += "├───┤ ";
+          if (node.stack.size() == 1) {
+            output += "┌───┐";
+            break;
           }
+          if (i == 0) {
+            output += "┌───┬";
+            continue;
+          }
+          if (i != node.stack.size() - 1) {
+            output += "───┬";
+            continue;
+          }
+          output += "───┐";
         }
         output += "\n       ";
         for (std::size_t i = 0; i < node.stack.size(); ++i) {
@@ -391,24 +399,30 @@ class NPDA {
           if (i == 0) {
             if (opt.trace_colors) {
               output += fmt::format(
-                fmt::fg(config::colors::warning),
-                "│ {} │ ",
-                fmt::format("{}", node.stack[stack_idx])
+                fmt::fg(config::colors::warning), "│ {} │", fmt::format("{}", node.stack[stack_idx])
               );
             } else {
-              output += fmt::format("│ {} │ ", fmt::format("{}", node.stack[stack_idx]));
+              output += fmt::format("│ {} │", fmt::format("{}", node.stack[stack_idx]));
             }
           } else {
-            output += fmt::format("│ {} │ ", fmt::format("{}", node.stack[stack_idx]));
+            output += fmt::format(" {} │", fmt::format("{}", node.stack[stack_idx]));
           }
         }
         output += "\n       ";
         for (std::size_t i = 0; i < node.stack.size(); ++i) {
-          if (i == 0) {
-            output += "└───┘ ";
-          } else {
-            output += "└───┘ ";
+          if (node.stack.size() == 1) {
+            output += "└───┘";
+            break;
           }
+          if (i == 0) {
+            output += "└───┴";
+            continue;
+          }
+          if (i != node.stack.size() - 1) {
+            output += "───┴";
+            continue;
+          }
+          output += "───┘";
         }
         output += "\n";
       }
