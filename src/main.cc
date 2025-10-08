@@ -133,6 +133,39 @@ int main() {
   std::cout << "Showing beautiful step-by-step trace for 'abba':\n";
   run("abba", true);  // with trace enabled
 
+  // Trace with natural language explanations demonstration
+  std::cout << "\n=== Trace with Natural Language Explanations ===\n";
+  std::cout << "Showing trace with natural language explanations for 'abcba':\n";
+  auto run_with_explanations = [&](std::string_view s) {
+    auto r = m.run(
+      s,
+      npda::RunOptions{
+        .bfs = true,
+        .max_expansions = 100000,
+        .track_witness = true,
+        .trace = true,
+        .trace_colors = true,
+        .trace_compact = false,
+        .trace_explanations = true  // Enable natural language explanations
+      }
+    );
+    if (!r) {
+      std::cout << s << " -> error: " << r.error().message << "\n";
+      return;
+    }
+    std::cout << s << " -> accepted=" << std::boolalpha << r->accepted
+              << " expansions=" << r->expansions;
+    if (r->witness) {
+      std::cout << " witness_rules=[";
+      for (std::size_t i = 0; i < r->witness->size(); ++i) {
+        std::cout << (*r->witness)[i] << (i + 1 < r->witness->size() ? "," : "");
+      }
+      std::cout << "]";
+    }
+    std::cout << "\n";
+  };
+  run_with_explanations("abcba");
+
   std::cout << "\n=== Trace for Rejected Input ===\n";
   std::cout << "Showing trace for rejected input 'abab':\n";
   run("abab", true);
