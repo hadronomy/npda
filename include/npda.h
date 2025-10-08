@@ -677,7 +677,8 @@ class NPDA {
     if (opt.trace_colors) {
       sink(fmt::format(
         fmt::fg(config::colors::banner_text),
-        "\n🎯 Accepting path found! Replaying {} steps...\n",
+        "\n{} Accepting path found! Replaying {} steps...\n",
+        config::symbols::info,
         rule_path.size()
       ));
     } else {
@@ -707,7 +708,9 @@ class NPDA {
     }
 
     if (opt.trace_colors) {
-      sink(fmt::format(fmt::fg(config::colors::success), "\n✅ Input accepted!\n"));
+      sink(fmt::format(
+        fmt::fg(config::colors::success), "\n{} Input accepted!\n", config::symbols::success
+      ));
     } else {
       sink("\nInput accepted!\n");
     }
@@ -731,7 +734,8 @@ class NPDA {
     if (opt.trace_colors) {
       sink(fmt::format(
         fmt::fg(config::colors::banner_text),
-        "\n❌ Input rejected! Showing furthest path explored ({} expansions)...\n",
+        "\n{} Input rejected! Showing furthest path explored ({} expansions)...\n",
+        config::symbols::error,
         expansions
       ));
     } else {
@@ -800,7 +804,11 @@ class NPDA {
     }
 
     if (opt.trace_colors) {
-      sink(fmt::format(fmt::fg(config::colors::error), "\n❌ Input rejected at this point!\n"));
+      sink(fmt::format(
+        fmt::fg(config::colors::error),
+        "\n{} Input rejected at this point!\n",
+        config::symbols::error
+      ));
     } else {
       sink("\nInput rejected at this point!\n");
     }
