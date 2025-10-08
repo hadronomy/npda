@@ -105,14 +105,39 @@ int main() {
       std::cout << s << " -> error: " << r.error().message << "\n";
       return;
     }
-    std::cout << s << " -> accepted=" << std::boolalpha << r->accepted
-              << " expansions=" << r->expansions;
+
+    // Format input display - show empty string as "λ" (lambda) for clarity
+    std::string input_display = s.empty() ? "λ" : std::string(s);
+
+    // Colorize the result line
+    std::string result_line;
+    if (r->accepted) {
+      result_line = fmt::format(
+        fmt::fg(fmt::terminal_color::green),
+        "{} -> accepted=true expansions={}",
+        input_display,
+        r->expansions
+      );
+    } else {
+      result_line = fmt::format(
+        fmt::fg(fmt::terminal_color::red),
+        "{} -> accepted=false expansions={}",
+        input_display,
+        r->expansions
+      );
+    }
+
+    std::cout << result_line;
+
     if (r->witness) {
-      std::cout << " witness_rules=[";
+      std::cout << fmt::format(fmt::fg(fmt::terminal_color::cyan), " witness_rules=[");
       for (std::size_t i = 0; i < r->witness->size(); ++i) {
-        std::cout << (*r->witness)[i] << (i + 1 < r->witness->size() ? "," : "");
+        std::cout << fmt::format(fmt::fg(fmt::terminal_color::yellow), "{}", (*r->witness)[i]);
+        if (i + 1 < r->witness->size()) {
+          std::cout << fmt::format(fmt::fg(fmt::terminal_color::cyan), ",");
+        }
       }
-      std::cout << "]";
+      std::cout << fmt::format(fmt::fg(fmt::terminal_color::cyan), "]");
     }
     std::cout << "\n";
   };
@@ -133,22 +158,21 @@ int main() {
   std::cout << "Showing beautiful step-by-step trace for 'abba':\n";
   run("abba", true);  // with trace enabled
 
-  // Trace with natural language explanations demonstration
-  std::cout << "\n=== Trace with Natural Language Explanations ===\n";
-  std::cout << "Showing trace with natural language explanations for 'abcba':\n";
-  auto run_with_explanations = [&](std::string_view s) {
-    auto r = m.run(
-      s,
-      npda::RunOptions{
-        .bfs = true,
-        .max_expansions = 100000,
-        .track_witness = true,
-        .trace = true,
-        .trace_colors = true,
-        .trace_compact = false,
-        .trace_explanations = true  // Enable natural language explanations
-      }
-    );
+  // Exploration demonstration
+  std::cout << "\n=== Complete Exploration Trace Demonstration ===\n";
+  std::cout << "Showing complete trace with exploration detection for 'abba':\n";
+  auto run_with_exploration = [&](std::string_view s) {
+    npda::RunOptions options;
+    options.bfs = true;
+    options.max_expansions = 100000;
+    options.track_witness = true;
+    options.trace = true;
+    options.trace_colors = true;
+    options.trace_compact = false;
+    options.show_backtracking = true;  // Enable backtracking detection
+    options.show_full_trace = true;    // Show complete execution trace
+
+    auto r = m.run(s, options);
     if (!r) {
       std::cout << s << " -> error: " << r.error().message << "\n";
       return;
@@ -164,13 +188,51 @@ int main() {
     }
     std::cout << "\n";
   };
-  run_with_explanations("abcba");
+  run_with_exploration("abba");
 
-  std::cout << "\n=== Trace for Rejected Input ===\n";
-  std::cout << "Showing trace for rejected input 'abab':\n";
-  run("abab", true);
+  // Test with a more complex example that should show more exploration
+  std::cout << "\n=== Complex Exploration Example ===\n";
+  std::cout << "Showing exploration for a more complex input 'ababc':\n";
+  run_with_exploration("ababc");
 
-  std::cout << "\n=== Trace for Another Rejected Input ===\n";
-  std::cout << "Showing trace for rejected input 'abca':\n";
-  run("abca", true);
+  // Trace with natural language explanations demonstration
+  // std::cout << "\n=== Trace with Natural Language Explanations ===\n";
+  // std::cout << "Showing trace with natural language explanations for 'abcba':\n";
+  // auto run_with_explanations = [&](std::string_view s) {
+  //   auto r = m.run(
+  //     s,
+  //     npda::RunOptions{
+  //       .bfs = true,
+  //       .max_expansions = 100000,
+  //       .track_witness = true,
+  //       .trace = true,
+  //       .trace_colors = true,
+  //       .trace_compact = false,
+  //       .trace_explanations = true  // Enable natural language explanations
+  //     }
+  //   );
+  //   if (!r) {
+  //     std::cout << s << " -> error: " << r.error().message << "\n";
+  //     return;
+  //   }
+  //   std::cout << s << " -> accepted=" << std::boolalpha << r->accepted
+  //             << " expansions=" << r->expansions;
+  //   if (r->witness) {
+  //     std::cout << " witness_rules=[";
+  //     for (std::size_t i = 0; i < r->witness->size(); ++i) {
+  //       std::cout << (*r->witness)[i] << (i + 1 < r->witness->size() ? "," : "");
+  //     }
+  //     std::cout << "]";
+  //   }
+  //   std::cout << "\n";
+  // };
+  // run_with_explanations("abcba");
+
+  // std::cout << "\n=== Trace for Rejected Input ===\n";
+  // std::cout << "Showing trace for rejected input 'abab':\n";
+  // run("abab", true);
+
+  // std::cout << "\n=== Trace for Another Rejected Input ===\n";
+  // std::cout << "Showing trace for rejected input 'abca':\n";
+  // run("abca", true);
 }
