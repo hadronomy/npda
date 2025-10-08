@@ -153,14 +153,14 @@ class NPDA {
     nodes.reserve(1024);
 
     auto make_root = [&] {
-      NodeType n;
-      n.s = start_;
-      n.pos = 0;
-      n.stack.clear();
-      n.stack.push_back(bottom_);
-      n.parent = npos;
-      n.rule_idx = std::nullopt;
-      return n;
+      NodeType node;
+      node.s = start_;
+      node.pos = 0;
+      node.stack.clear();
+      node.stack.push_back(bottom_);
+      node.parent = npos;
+      node.rule_idx = std::nullopt;
+      return node;
     };
 
     std::deque<std::size_t> work;
@@ -178,12 +178,12 @@ class NPDA {
     std::vector<std::size_t> deadend_nodes;   // Node indices that are dead-ends
     bool exploration_detected = false;
 
-    auto push_node = [&](NodeType&& n, std::size_t parent_idx, std::size_t rule_idx) -> void {
-      KeyType k{n.s, n.pos, n.stack};
+    auto push_node = [&](NodeType&& node, std::size_t parent_idx, std::size_t rule_idx) -> void {
+      KeyType k{node.s, node.pos, node.stack};
       if (visited.insert(std::move(k)).second) {
-        n.parent = parent_idx;
-        n.rule_idx = rule_idx;
-        nodes.push_back(std::move(n));
+        node.parent = parent_idx;
+        node.rule_idx = rule_idx;
+        nodes.push_back(std::move(node));
         work.push_back(nodes.size() - 1);
       }
     };
@@ -198,7 +198,7 @@ class NPDA {
         work.pop_front();
       else
         work.pop_back();
-      const NodeType cur = nodes[idx];  // copy for isolation
+      const NodeType current = nodes[idx];  // copy for isolation
 
       // Track that we're exploring this node and show full detailed trace
       if (opt.trace && opt.show_full_trace) {
@@ -207,16 +207,16 @@ class NPDA {
         // Show full detailed trace for this exploration step
         // Find the rule that led to this node (if any)
         std::optional<rule_type> exploration_rule = std::nullopt;
-        if (cur.rule_idx.has_value() && *cur.rule_idx < rules_.size()) {
-          exploration_rule = rules_[*cur.rule_idx];
+        if (current.rule_idx.has_value() && *current.rule_idx < rules_.size()) {
+          exploration_rule = rules_[*current.rule_idx];
         }
 
-        emit_trace_step(cur, input, exploration_counter++, exploration_rule, opt, false, true);
+        emit_trace_step(current, input, exploration_counter++, exploration_rule, opt, false, true);
       }
 
-      if (is_accepting(cur, input)) {
+      if (is_accepting(current, input)) {
         return build_result(
-          cur,
+          current,
           nodes,
           idx,
           expansions,
@@ -229,8 +229,8 @@ class NPDA {
       }
 
       // Track the most advanced node for potential trace display
-      if (cur.pos > max_pos) {
-        max_pos = cur.pos;
+      if (current.pos > max_pos) {
+        max_pos = current.pos;
         best_trace_idx = idx;
       }
 
@@ -246,37 +246,37 @@ class NPDA {
       std::size_t before = nodes.size();
 
       // Generate epsilon transitions using indices
-      auto epsilon_it = epsilon_by_from_.find(cur.s);
+      auto epsilon_it = epsilon_by_from_.find(current.s);
       if (epsilon_it != epsilon_by_from_.end()) {
         for (std::size_t ri : epsilon_it->second) {
           const auto& r = rules_[ri];
-          if (!stack_matches(cur.stack, r.stack_top))
+          if (!stack_matches(current.stack, r.stack_top))
             continue;
 
-          NodeType nxt = cur;
-          apply_stack(nxt.stack, r);
-          nxt.s = r.to;
+          NodeType next = current;
+          apply_stack(next.stack, r);
+          next.s = r.to;
           ++expansions;
-          push_node(std::move(nxt), idx, ri);
+          push_node(std::move(next), idx, ri);
           if (expansions >= opt.max_expansions)
             return std::unexpected(Error{"max_expansions reached"});
         }
       }
 
       // Generate consuming transitions (if input left) using indices
-      if (cur.pos < input.size()) {
-        const Input sym = input[cur.pos];
-        auto consume_it = consume_by_from_input_.find({cur.s, sym});
+      if (current.pos < input.size()) {
+        const Input sym = input[current.pos];
+        auto consume_it = consume_by_from_input_.find({current.s, sym});
         if (consume_it != consume_by_from_input_.end()) {
           for (std::size_t ri : consume_it->second) {
             const auto& r = rules_[ri];
-            if (!stack_matches(cur.stack, r.stack_top))
+            if (!stack_matches(current.stack, r.stack_top))
               continue;
 
-            NodeType nxt = cur;
+            NodeType nxt = current;
             apply_stack(nxt.stack, r);
             nxt.s = r.to;
-            nxt.pos = cur.pos + 1;
+            nxt.pos = current.pos + 1;
             ++expansions;
             push_node(std::move(nxt), idx, ri);
             if (expansions >= opt.max_expansions)
@@ -298,14 +298,14 @@ class NPDA {
               fmt::fg(config::colors::info),
               "\n{} Exploration: dead-end at position {} (state {}), no applicable transitions\n",
               config::symbols::info,
-              cur.pos,
-              fmt::format("{}", cur.s)
+              current.pos,
+              fmt::format("{}", current.s)
             ));
           } else {
             sink(fmt::format(
               "\nExploration: dead-end at position {} (state {}), no applicable transitions\n",
-              cur.pos,
-              fmt::format("{}", cur.s)
+              current.pos,
+              fmt::format("{}", current.s)
             ));
           }
         }

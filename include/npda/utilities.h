@@ -1,11 +1,10 @@
 #pragma once
 
+#include <string>
+
 #include <fmt/color.h>
 #include <fmt/format.h>
-#include <functional>
-#include <optional>
-#include <string>
-#include <vector>
+
 #include "config.h"
 #include "rule.h"
 
