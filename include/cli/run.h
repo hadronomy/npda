@@ -11,6 +11,7 @@ class RunHandler final : public CommandHandler {
   std::filesystem::path file_path;
   std::vector<std::string> input_strings;
   bool trace_enabled;
+  bool explain;
 
   int operator()(const CommandContext& ctx) override;
 };
@@ -24,5 +25,6 @@ class RunHandler final : public CommandHandler {
     ->multi_option_policy(CLI::MultiOptionPolicy::TakeAll)
     ->required();
   sub.add_flag("--trace,!--no-trace", handler->trace_enabled, "Disable trace mode");
+  sub.add_flag("--explain", handler->explain, "Enable explanations of the transitions");
   return handler;
 }

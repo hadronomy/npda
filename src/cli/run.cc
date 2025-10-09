@@ -35,6 +35,7 @@ int RunHandler::operator()(const CommandContext&) {
           .trace = trace,
           .trace_colors = true,
           .trace_compact = false,
+          .trace_explanations = this->explain,
           .show_full_trace = true,
         }
       );
