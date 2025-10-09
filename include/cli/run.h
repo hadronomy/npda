@@ -23,6 +23,6 @@ class RunHandler final : public CommandHandler {
   sub.add_option("input_string", handler->input_strings, "the string to accept")
     ->multi_option_policy(CLI::MultiOptionPolicy::TakeAll)
     ->required();
-  // sub.add_flag("--trace,!--no-trace", handler->trace_enabled, "Disable trace mode");
+  sub.add_flag("--trace,!--no-trace", handler->trace_enabled, "Disable trace mode");
   return handler;
 }

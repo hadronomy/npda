@@ -86,7 +86,7 @@ int RunHandler::operator()(const CommandContext&) {
                 << "\" execution in "
                 << fmt::format(fmt::fg(fmt::terminal_color::yellow), "{}", file_path.c_str())
                 << "\n";
-      run(input_string, true);
+      run(input_string, this->trace_enabled);
     }
     return 0;
   }
