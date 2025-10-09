@@ -164,5 +164,3 @@ class CommandRegistry {
   std::vector<std::pair<std::string, std::string>> aliases_{};
   int exit_code_{0};
 };
-
-// Factories that set up options for handlers:

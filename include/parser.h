@@ -1,6 +1,4 @@
-// npda_parse.hpp
 // C++23. Parser with rustc-style diagnostics and error recovery.
-// Depends on: npda.hpp, diag.hpp
 
 #pragma once
 
