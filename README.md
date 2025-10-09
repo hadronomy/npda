@@ -32,6 +32,9 @@ See the [docs](/docs/CC_2526_Practica1.pdf) pdf for more information about the a
 
 The automata is implemented to work with, empty stack finalization and with final state finalization.
 
+> [!IMPORTANT] Location of the compiled binary
+> The compiled binary lives in `./zig-out/bin`
+
 ## Requirements
 
 This project uses [mise](https://github.com/jdx/mise) for dependency management. Mise provides a unified interface to manage runtime versions and project-specific tools.
