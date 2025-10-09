@@ -25,6 +25,7 @@
 #include <fmt/format.h>
 
 #include "config.h"
+#include "npda/color_utils.h"
 #include "npda/concepts.h"
 #include "npda/key.h"
 #include "npda/key_hash.h"
@@ -85,6 +86,20 @@ class NPDA {
 
     Builder& accepting(std::initializer_list<State> states) {
       accepting_.insert(accepting_.end(), states.begin(), states.end());
+      return *this;
+    }
+
+    template <std::input_iterator It>
+    requires std::same_as<std::iter_value_t<It>, State> Builder& accepting(It first, It last) {
+      accepting_.insert(accepting_.end(), first, last);
+      return *this;
+    }
+
+    template <std::ranges::input_range R>
+    requires std::same_as<std::ranges::range_value_t<R>, State> Builder& accepting(R&& r) {
+      for (auto&& s : r) {
+        accepting_.push_back(s);
+      }
       return *this;
     }
 
@@ -188,8 +203,8 @@ class NPDA {
       }
     };
 
-    std::size_t best_trace_idx = 0;       // Track the most advanced node for trace display
-    std::size_t max_pos = 0;              // Track the furthest input position reached
+    std::size_t best_trace_idx = 0;       // Track the most advanced node for trace
+    std::size_t max_pos = 0;              // Track the furthest input position
     std::size_t exploration_counter = 0;  // Counter for exploration steps
 
     while (!work.empty()) {
@@ -235,7 +250,8 @@ class NPDA {
       }
 
       if (expansions >= opt.max_expansions) {
-        // If tracing is enabled and we have explored some paths, show the best trace we found
+        // If tracing is enabled and we have explored some paths, show the best
+        // trace we found
         if (opt.trace && nodes.size() > 1) {
           show_rejection_trace(nodes, best_trace_idx, input, opt, expansions);
         }
@@ -296,14 +312,16 @@ class NPDA {
           if (opt.trace_colors) {
             sink(fmt::format(
               fmt::fg(config::colors::info),
-              "\n{} Exploration: dead-end at position {} (state {}), no applicable transitions\n",
+              "\n{} Exploration: dead-end at position {} (state {}), "
+              "no applicable transitions\n",
               config::symbols::info,
               current.pos,
               fmt::format("{}", current.s)
             ));
           } else {
             sink(fmt::format(
-              "\nExploration: dead-end at position {} (state {}), no applicable transitions\n",
+              "\nExploration: dead-end at position {} (state {}), "
+              "no applicable transitions\n",
               current.pos,
               fmt::format("{}", current.s)
             ));
@@ -312,20 +330,21 @@ class NPDA {
       }
     }
 
-    // If tracing is enabled and we explored some paths, show the best trace we found
+    // If tracing is enabled and we explored some paths, show the best trace we
+    // found
     if (opt.trace && nodes.size() > 1) {
       show_rejection_trace(nodes, best_trace_idx, input, opt, expansions);
     }
 
     // Show exploration tree if enabled
     if (opt.trace && opt.show_full_trace && !explored_nodes.empty()) {
-      show_exploration_tree(nodes, explored_nodes, input, opt);
+      show_exploration_tree(nodes, explored_nodes, input, opt, std::vector<std::size_t>{});
     }
 
     return RunResult{false, expansions, std::nullopt};
   }
 
-  // Trace visualization methods
+  // Trace visualization methods (declarations only; implemented out-of-class)
   template <typename NodeT>
   void emit_trace_step(
     const NodeT& node,
@@ -335,208 +354,7 @@ class NPDA {
     const RunOptions& opt = {},
     bool is_backtrack_point = false,
     bool is_exploration = false
-  ) const {
-    if (!opt.trace)
-      return;
-
-    auto sink = opt.trace_sink ? opt.trace_sink : [](std::string_view s) {
-      fmt::print("{}", s);
-    };
-
-    std::string output;
-
-    // Header with step number and exploration/backtracking indicator
-    if (opt.trace_colors) {
-      if (is_exploration) {
-        output +=
-          fmt::format(fmt::fg(config::colors::info), "\n=== Exploration Step {} ===\n", step_num);
-      } else if (is_backtrack_point && opt.show_backtracking) {
-        output += fmt::format(
-          fmt::fg(config::colors::warning),
-          "\n=== Step {} {}(BACKTRACK) ===\n",
-          step_num,
-          config::symbols::warning
-        );
-      } else {
-        output +=
-          fmt::format(fmt::fg(config::colors::section_heading), "\n=== Step {} ===\n", step_num);
-      }
-    } else {
-      if (is_exploration) {
-        output += fmt::format("\n=== Exploration Step {} ===\n", step_num);
-      } else if (is_backtrack_point && opt.show_backtracking) {
-        output += fmt::format("\n=== Step {} (BACKTRACK) ===\n", step_num);
-      } else {
-        output += fmt::format("\n=== Step {} ===\n", step_num);
-      }
-    }
-
-    // Current state
-    if (opt.trace_colors) {
-      output += fmt::format(fmt::fg(config::colors::info), "State: ");
-      output += fmt::format(fmt::fg(config::colors::success), "{}\n", fmt::format("{}", node.s));
-    } else {
-      output += fmt::format("State: {}\n", fmt::format("{}", node.s));
-    }
-
-    // Input tape with pointer
-    output += "Input: ";
-    for (std::size_t i = 0; i < input.size(); ++i) {
-      if (i == node.pos) {
-        if (opt.trace_colors) {
-          output +=
-            fmt::format(fmt::fg(config::colors::warning), "[{}]", fmt::format("{}", input[i]));
-        } else {
-          output += fmt::format("[{}]", fmt::format("{}", input[i]));
-        }
-      } else {
-        output += fmt::format(" {} ", fmt::format("{}", input[i]));
-      }
-    }
-    if (node.pos >= input.size()) {
-      if (opt.trace_colors) {
-        output += fmt::format(fmt::fg(config::colors::success), " [END]");
-      } else {
-        output += " [END]";
-      }
-    }
-    output += "\n";
-
-    // Stack visualization
-    output += "Stack: ";
-    if (node.stack.empty()) {
-      output += "(empty)\n";
-    } else {
-      // Show stack top on the right (conventional)
-      for (std::size_t i = 0; i < node.stack.size(); ++i) {
-        std::size_t stack_idx = node.stack.size() - 1 - i;  // Reverse to show top first
-        if (i == 0) {
-          if (opt.trace_colors) {
-            output += fmt::format(
-              fmt::fg(config::colors::warning), "[{}]", fmt::format("{}", node.stack[stack_idx])
-            );
-          } else {
-            output += fmt::format("[{}]", fmt::format("{}", node.stack[stack_idx]));
-          }
-        } else {
-          output += fmt::format(" {} ", fmt::format("{}", node.stack[stack_idx]));
-        }
-      }
-      output += "\n";
-
-      // Visual stack representation
-      if (!opt.trace_compact) {
-        output += "       ";
-        for (std::size_t i = 0; i < node.stack.size(); ++i) {
-          if (node.stack.size() == 1) {
-            output += "┌───┐";
-            break;
-          }
-          if (i == 0) {
-            output += "┌───┬";
-            continue;
-          }
-          if (i != node.stack.size() - 1) {
-            output += "───┬";
-            continue;
-          }
-          output += "───┐";
-        }
-        output += "\n       ";
-        for (std::size_t i = 0; i < node.stack.size(); ++i) {
-          std::size_t stack_idx = node.stack.size() - 1 - i;
-          if (i == 0) {
-            if (opt.trace_colors) {
-              output += fmt::format(
-                fmt::fg(config::colors::warning), "│ {} │", fmt::format("{}", node.stack[stack_idx])
-              );
-            } else {
-              output += fmt::format("│ {} │", fmt::format("{}", node.stack[stack_idx]));
-            }
-          } else {
-            output += fmt::format(" {} │", fmt::format("{}", node.stack[stack_idx]));
-          }
-        }
-        output += "\n       ";
-        for (std::size_t i = 0; i < node.stack.size(); ++i) {
-          if (node.stack.size() == 1) {
-            output += "└───┘";
-            break;
-          }
-          if (i == 0) {
-            output += "└───┴";
-            continue;
-          }
-          if (i != node.stack.size() - 1) {
-            output += "───┴";
-            continue;
-          }
-          output += "───┘";
-        }
-        output += "\n";
-      }
-    }
-
-    // Rule information
-    if (rule.has_value()) {
-      const auto& r = rule.value();
-      if (opt.trace_colors) {
-        output += fmt::format(fmt::fg(config::colors::info), "Rule: ");
-      } else {
-        output += "Rule: ";
-      }
-
-      // Format rule nicely
-      std::string rule_str = fmt::format("{} → ", fmt::format("{}", r.from));
-
-      // Input symbol
-      if (r.input.has_value()) {
-        rule_str += fmt::format("{}, ", fmt::format("{}", r.input.value()));
-      } else {
-        rule_str += "ε, ";
-      }
-
-      // Stack operation
-      if (r.stack_top.has_value()) {
-        rule_str += fmt::format("pop({}) → ", fmt::format("{}", r.stack_top.value()));
-      } else {
-        rule_str += "nop → ";
-      }
-
-      rule_str += fmt::format("{}, ", fmt::format("{}", r.to));
-
-      // Push symbols
-      if (r.push.empty()) {
-        rule_str += "push()";
-      } else {
-        rule_str += "push(";
-        for (std::size_t i = 0; i < r.push.size(); ++i) {
-          rule_str += fmt::format("{}", fmt::format("{}", r.push[i]));
-          if (i + 1 < r.push.size())
-            rule_str += ", ";
-        }
-        rule_str += ")";
-      }
-
-      if (opt.trace_colors) {
-        output += fmt::format(fmt::fg(config::colors::example), "{}\n", rule_str);
-      } else {
-        output += fmt::format("{}\n", rule_str);
-      }
-
-      // Add natural language explanation if enabled
-      if (opt.trace_explanations) {
-        std::string explanation = npda::explain_rule(r);
-        if (opt.trace_colors) {
-          output += fmt::format(fmt::fg(config::colors::info), "{}\n", explanation);
-        } else {
-          output += fmt::format("{}\n", explanation);
-        }
-      }
-    }
-
-    sink(output);
-  }
+  ) const;
 
   template <typename NodeT>
   std::expected<RunResult, Error> build_result(
@@ -549,57 +367,7 @@ class NPDA {
     bool exploration_detected = false,
     const std::vector<std::size_t>& explored_nodes = {},
     const std::vector<std::size_t>& deadend_nodes = {}
-  ) const {
-    if (!opt.track_witness) {
-      return RunResult{true, expansions, std::nullopt};
-    }
-    std::vector<std::size_t> path;
-    std::size_t cur = idx;
-    while (nodes[cur].parent != npos) {
-      if (nodes[cur].rule_idx.has_value()) {
-        path.push_back(*nodes[cur].rule_idx);
-      } else {
-        break;
-      }
-      cur = nodes[cur].parent;
-    }
-    std::reverse(path.begin(), path.end());
-
-    // Replay the trace if tracing is enabled
-    if (opt.trace) {
-      replay_trace_path(nodes, idx, input, opt);
-
-      // Show exploration summary if enabled
-      if (opt.show_backtracking && exploration_detected) {
-        auto sink = opt.trace_sink ? opt.trace_sink : [](std::string_view s) {
-          fmt::print("{}", s);
-        };
-
-        if (opt.trace_colors) {
-          sink(fmt::format(
-            fmt::fg(config::colors::info),
-            "\n{} Exploration summary: {} nodes explored, {} dead-ends found\n",
-            config::symbols::info,
-            explored_nodes.size(),
-            deadend_nodes.size()
-          ));
-        } else {
-          sink(fmt::format(
-            "\nExploration summary: {} nodes explored, {} dead-ends found\n",
-            explored_nodes.size(),
-            deadend_nodes.size()
-          ));
-        }
-      }
-    }
-
-    // Show exploration tree if enabled
-    if (opt.trace && opt.show_full_trace && !explored_nodes.empty()) {
-      show_exploration_tree(nodes, explored_nodes, input, opt);
-    }
-
-    return RunResult{true, expansions, std::move(path)};
-  }
+  ) const;
 
   template <typename NodeT>
   void replay_trace_path(
@@ -607,75 +375,7 @@ class NPDA {
     std::size_t final_idx,
     const std::vector<Input>& input,
     const RunOptions& opt
-  ) const {
-    if (!opt.trace || !opt.track_witness)
-      return;
-
-    // Reconstruct node and rule paths from root to final
-    std::vector<std::size_t> node_path_rev;
-    std::vector<std::size_t> rule_path_rev;  // rules applied to reach each node (except root)
-
-    std::size_t cur = final_idx;
-    while (true) {
-      node_path_rev.push_back(cur);
-      if (nodes[cur].parent == npos)
-        break;
-      if (nodes[cur].rule_idx.has_value())
-        rule_path_rev.push_back(*nodes[cur].rule_idx);
-      cur = nodes[cur].parent;
-    }
-
-    std::vector<std::size_t> node_path(node_path_rev.rbegin(), node_path_rev.rend());
-    std::vector<std::size_t> rule_path(rule_path_rev.rbegin(), rule_path_rev.rend());
-
-    auto sink = opt.trace_sink ? opt.trace_sink : [](std::string_view s) {
-      fmt::print("{}", s);
-    };
-
-    if (opt.trace_colors) {
-      sink(fmt::format(
-        fmt::fg(config::colors::banner_text),
-        "\n{} Accepting path found! Replaying {} steps...\n",
-        config::symbols::info,
-        rule_path.size()
-      ));
-    } else {
-      sink(fmt::format("\nAccepting path found! Replaying {} steps...\n", rule_path.size()));
-    }
-
-    // Emit each step showing the state after applying the rule
-    std::size_t step_num = 0;
-
-    // First, show the initial state (Step 0) with no rule applied
-    if (!node_path.empty()) {
-      emit_trace_step(nodes[node_path[0]], input, step_num, std::nullopt, opt, false);
-    }
-
-    // Then show the transitions starting from Step 1
-    for (std::size_t i = 1; i < node_path.size(); ++i) {
-      ++step_num;
-      const std::size_t node_idx = node_path[i];
-      const std::size_t rule_idx = rule_path[i - 1];
-
-      // Check if this is a backtrack point by comparing positions
-      bool is_backtrack = (i > 1 && nodes[node_idx].pos < nodes[node_path[i - 1]].pos);
-      emit_trace_step(nodes[node_idx], input, step_num, rules_[rule_idx], opt, is_backtrack);
-    }
-
-    // Show final accepting state (if not already shown)
-    if (node_path.empty() || node_path.back() != final_idx) {
-      emit_trace_step(nodes[final_idx], input, step_num + 1, std::nullopt, opt, false);
-      ++step_num;
-    }
-
-    if (opt.trace_colors) {
-      sink(fmt::format(
-        fmt::fg(config::colors::success), "\n{} Input accepted!\n", config::symbols::success
-      ));
-    } else {
-      sink("\nInput accepted!\n");
-    }
-  }
+  ) const;
 
   template <typename NodeT>
   void show_rejection_trace(
@@ -684,179 +384,24 @@ class NPDA {
     const std::vector<Input>& input,
     const RunOptions& opt,
     std::size_t expansions
-  ) const {
-    if (!opt.trace || !opt.track_witness)
-      return;
+  ) const;
 
-    auto sink = opt.trace_sink ? opt.trace_sink : [](std::string_view s) {
-      fmt::print("{}", s);
-    };
-
-    if (opt.trace_colors) {
-      sink(fmt::format(
-        fmt::fg(config::colors::banner_text),
-        "\n{} Input rejected! Showing furthest path explored ({} expansions)...\n",
-        config::symbols::error,
-        expansions
-      ));
-    } else {
-      sink(fmt::format(
-        "\nInput rejected! Showing furthest path explored ({} expansions)...\n", expansions
-      ));
-    }
-
-    // Reconstruct the path to the best node we found
-    std::vector<std::size_t> node_path_rev;
-    std::vector<std::size_t> rule_path_rev;
-
-    std::size_t cur = best_idx;
-    while (true) {
-      node_path_rev.push_back(cur);
-      if (nodes[cur].parent == npos)
-        break;
-      if (nodes[cur].rule_idx.has_value())
-        rule_path_rev.push_back(*nodes[cur].rule_idx);
-      cur = nodes[cur].parent;
-    }
-
-    std::vector<std::size_t> node_path(node_path_rev.rbegin(), node_path_rev.rend());
-    std::vector<std::size_t> rule_path(rule_path_rev.rbegin(), rule_path_rev.rend());
-
-    // Show how far we got in the input
-    const auto& best_node = nodes[best_idx];
-    std::size_t remaining_input = input.size() - best_node.pos;
-
-    if (opt.trace_colors) {
-      sink(fmt::format(
-        fmt::fg(config::colors::info),
-        "Furthest position: {} / {} ({} characters remaining)\n",
-        best_node.pos,
-        input.size(),
-        remaining_input
-      ));
-    } else {
-      sink(fmt::format(
-        "Furthest position: {} / {} ({} characters remaining)\n",
-        best_node.pos,
-        input.size(),
-        remaining_input
-      ));
-    }
-
-    // Emit each step showing the state after applying the rule
-    std::size_t step_num = 0;
-
-    // First, show the initial state (Step 0) with no rule applied
-    if (!node_path.empty()) {
-      emit_trace_step(nodes[node_path[0]], input, step_num, std::nullopt, opt, false);
-    }
-
-    // Then show the transitions starting from Step 1
-    for (std::size_t i = 1; i < node_path.size(); ++i) {
-      ++step_num;
-      const std::size_t node_idx = node_path[i];
-      const std::size_t rule_idx = rule_path[i - 1];
-
-      // Check if this is a backtrack point by comparing positions
-      bool is_backtrack = (i > 1 && nodes[node_idx].pos < nodes[node_path[i - 1]].pos);
-      emit_trace_step(nodes[node_idx], input, step_num, rules_[rule_idx], opt, is_backtrack);
-    }
-
-    // Show the final state where we got stuck
-    if (!node_path.empty()) {
-      emit_trace_step(nodes[best_idx], input, step_num + 1, std::nullopt, opt, false);
-    }
-
-    if (opt.trace_colors) {
-      sink(fmt::format(
-        fmt::fg(config::colors::error),
-        "\n{} Input rejected at this point!\n",
-        config::symbols::error
-      ));
-    } else {
-      sink("\nInput rejected at this point!\n");
-    }
-  }
-
-  // Show exploration tree structure
   template <typename NodeT>
   void show_exploration_tree(
     const std::vector<NodeT>& nodes,
     const std::vector<std::size_t>& explored_nodes,
     [[maybe_unused]] const std::vector<Input>& input,
     const RunOptions& opt
-  ) const {
-    if (!opt.trace || explored_nodes.empty())
-      return;
+  ) const;
 
-    auto sink = opt.trace_sink ? opt.trace_sink : [](std::string_view s) {
-      fmt::print("{}", s);
-    };
-
-    if (opt.trace_colors) {
-      sink(fmt::format(
-        fmt::fg(config::colors::banner_text),
-        "\n{} Exploration Tree Structure:\n",
-        config::symbols::info
-      ));
-    } else {
-      sink("\nExploration Tree Structure:\n");
-    }
-
-    // Build parent-child relationships
-    std::unordered_map<std::size_t, std::vector<std::size_t>> children;
-    for (std::size_t node_idx : explored_nodes) {
-      if (nodes[node_idx].parent != npos) {
-        children[nodes[node_idx].parent].push_back(node_idx);
-      }
-    }
-
-    // Recursive function to print tree
-    std::function<void(std::size_t, std::string, bool)> print_tree;
-    print_tree = [&](std::size_t node_idx, std::string prefix, bool is_last) {
-      const auto& node = nodes[node_idx];
-
-      // Show node info
-      std::string node_info =
-        fmt::format("[{}] pos:{} state:{} ", node_idx, node.pos, fmt::format("{}", node.s));
-
-      if (opt.trace_colors) {
-        sink(fmt::format(
-          "{}{} {}\n",
-          prefix,
-          is_last ? "└── " : "├── ",
-          fmt::format(fmt::fg(config::colors::info), "{}", node_info)
-        ));
-      } else {
-        sink(fmt::format("{}{} {}\n", prefix, is_last ? "└── " : "├── ", node_info));
-      }
-
-      // Print children
-      if (children.find(node_idx) != children.end()) {
-        const auto& child_nodes = children[node_idx];
-        for (std::size_t i = 0; i < child_nodes.size(); ++i) {
-          bool last_child = (i == child_nodes.size() - 1);
-          std::string child_prefix = prefix + (is_last ? "    " : "│   ");
-          print_tree(child_nodes[i], child_prefix, last_child);
-        }
-      }
-    };
-
-    // Find root nodes (nodes with no parent or parent not in explored_nodes)
-    std::vector<std::size_t> roots;
-    for (std::size_t node_idx : explored_nodes) {
-      if (nodes[node_idx].parent == npos ||
-          std::find(explored_nodes.begin(), explored_nodes.end(), nodes[node_idx].parent) ==
-            explored_nodes.end()) {
-        roots.push_back(node_idx);
-      }
-    }
-
-    // Print all trees
-    for (std::size_t i = 0; i < roots.size(); ++i) {
-      print_tree(roots[i], "", true);
-    }
-  }
+  template <typename NodeT>
+  void show_exploration_tree(
+    const std::vector<NodeT>& nodes,
+    const std::vector<std::size_t>& explored_nodes,
+    [[maybe_unused]] const std::vector<Input>& input,
+    const RunOptions& opt,
+    const std::vector<std::size_t>& accepting_path
+  ) const;
 
   State start_{};
   std::vector<State> accepting_{};
@@ -920,7 +465,9 @@ class NPDA {
   [[nodiscard]] bool is_accepting(const NodeT& n, std::span<const Input> input) const {
     const bool at_end = (n.pos == input.size());
     const bool by_state = contains(accepting_, n.s);
-    const bool by_stack = (n.stack.size() == 1 && n.stack.back() == bottom_);
+    // const bool by_stack =
+    //   (n.stack.size() == 0 || (n.stack.size() == 1 && n.stack.back() == bottom_));
+    const bool by_stack = n.stack.size() == 0;
     switch (policy_) {
       case AcceptBy::FinalState:
         return at_end && by_state;
@@ -934,5 +481,779 @@ class NPDA {
     return false;
   }
 };
+
+//
+// Out-of-class implementations for trace visualization methods
+//
+
+template <Hashable State, Hashable Input, Hashable StackSym>
+template <typename NodeT>
+void NPDA<State, Input, StackSym>::emit_trace_step(
+  const NodeT& node,
+  const std::vector<Input>& input,
+  std::size_t step_num,
+  const std::optional<rule_type>& rule,
+  const RunOptions& opt,
+  bool is_backtrack_point,
+  bool is_exploration
+) const {
+  if (!opt.trace)
+    return;
+
+  auto sink = opt.trace_sink ? opt.trace_sink : [](std::string_view s) {
+    fmt::print("{}", s);
+  };
+
+  std::string output;
+
+  // Header with step number and exploration/backtracking indicator
+  if (opt.trace_colors) {
+    if (is_exploration) {
+      output +=
+        fmt::format(fmt::fg(config::colors::info), "\n=== Exploration Step {} ===\n", step_num);
+    } else if (is_backtrack_point && opt.show_backtracking) {
+      output += fmt::format(
+        fmt::fg(config::colors::warning),
+        "\n=== Step {} {}(BACKTRACK) ===\n",
+        step_num,
+        config::symbols::warning
+      );
+    } else {
+      output +=
+        fmt::format(fmt::fg(config::colors::section_heading), "\n=== Step {} ===\n", step_num);
+    }
+  } else {
+    if (is_exploration) {
+      output += fmt::format("\n=== Exploration Step {} ===\n", step_num);
+    } else if (is_backtrack_point && opt.show_backtracking) {
+      output += fmt::format("\n=== Step {} (BACKTRACK) ===\n", step_num);
+    } else {
+      output += fmt::format("\n=== Step {} ===\n", step_num);
+    }
+  }
+
+  // Current state
+  if (opt.trace_colors) {
+    output += fmt::format(fmt::fg(config::colors::info), "State: ");
+    output += fmt::format(fmt::fg(config::colors::success), "{}\n", fmt::format("{}", node.s));
+  } else {
+    output += fmt::format("State: {}\n", fmt::format("{}", node.s));
+  }
+
+  // Input tape with pointer
+  output += "Input: ";
+  for (std::size_t i = 0; i < input.size(); ++i) {
+    if (i == node.pos) {
+      if (opt.trace_colors) {
+        output +=
+          fmt::format(fmt::fg(config::colors::warning), "[{}]", fmt::format("{}", input[i]));
+      } else {
+        output += fmt::format("[{}]", fmt::format("{}", input[i]));
+      }
+    } else {
+      output += fmt::format(" {} ", fmt::format("{}", input[i]));
+    }
+  }
+  if (node.pos >= input.size()) {
+    if (opt.trace_colors) {
+      output += fmt::format(fmt::fg(config::colors::success), " [END]");
+    } else {
+      output += " [END]";
+    }
+  }
+  output += "\n";
+
+  // Stack visualization
+  output += "Stack: ";
+  if (node.stack.empty()) {
+    output += "(empty)\n";
+  } else {
+    // Show stack top on the right (conventional)
+    for (std::size_t i = 0; i < node.stack.size(); ++i) {
+      std::size_t stack_idx = node.stack.size() - 1 - i;  // top first
+      if (i == 0) {
+        if (opt.trace_colors) {
+          output += fmt::format(
+            fmt::fg(config::colors::warning), "[{}]", fmt::format("{}", node.stack[stack_idx])
+          );
+        } else {
+          output += fmt::format("[{}]", fmt::format("{}", node.stack[stack_idx]));
+        }
+      } else {
+        output += fmt::format(" {} ", fmt::format("{}", node.stack[stack_idx]));
+      }
+    }
+    output += "\n";
+
+    // Visual stack representation
+    if (!opt.trace_compact) {
+      output += "       ";
+      for (std::size_t i = 0; i < node.stack.size(); ++i) {
+        if (node.stack.size() == 1) {
+          output += "┌───┐";
+          break;
+        }
+        if (i == 0) {
+          output += "┌───┬";
+          continue;
+        }
+        if (i != node.stack.size() - 1) {
+          output += "───┬";
+          continue;
+        }
+        output += "───┐";
+      }
+      output += "\n       ";
+      for (std::size_t i = 0; i < node.stack.size(); ++i) {
+        std::size_t stack_idx = node.stack.size() - 1 - i;
+        if (i == 0) {
+          if (opt.trace_colors) {
+            output += fmt::format(
+              fmt::fg(config::colors::warning), "│ {} │", fmt::format("{}", node.stack[stack_idx])
+            );
+          } else {
+            output += fmt::format("│ {} │", fmt::format("{}", node.stack[stack_idx]));
+          }
+        } else {
+          output += fmt::format(" {} │", fmt::format("{}", node.stack[stack_idx]));
+        }
+      }
+      output += "\n       ";
+      for (std::size_t i = 0; i < node.stack.size(); ++i) {
+        if (node.stack.size() == 1) {
+          output += "└───┘";
+          break;
+        }
+        if (i == 0) {
+          output += "└───┴";
+          continue;
+        }
+        if (i != node.stack.size() - 1) {
+          output += "───┴";
+          continue;
+        }
+        output += "───┘";
+      }
+      output += "\n";
+    }
+  }
+
+  // Rule information
+  if (rule.has_value()) {
+    const auto& r = rule.value();
+    if (opt.trace_colors) {
+      output += fmt::format(fmt::fg(config::colors::info), "Rule: ");
+    } else {
+      output += "Rule: ";
+    }
+
+    // Format rule nicely
+    std::string rule_str = fmt::format("{} → ", fmt::format("{}", r.from));
+
+    // Input symbol
+    if (r.input.has_value()) {
+      rule_str += fmt::format("{}, ", fmt::format("{}", r.input.value()));
+    } else {
+      rule_str += "ε, ";
+    }
+
+    // Stack operation
+    if (r.stack_top.has_value()) {
+      rule_str += fmt::format("pop({}) → ", fmt::format("{}", r.stack_top.value()));
+    } else {
+      rule_str += "nop → ";
+    }
+
+    rule_str += fmt::format("{}, ", fmt::format("{}", r.to));
+
+    // Push symbols
+    if (r.push.empty()) {
+      rule_str += "push()";
+    } else {
+      rule_str += "push(";
+      for (std::size_t i = 0; i < r.push.size(); ++i) {
+        rule_str += fmt::format("{}", fmt::format("{}", r.push[i]));
+        if (i + 1 < r.push.size())
+          rule_str += ", ";
+      }
+      rule_str += ")";
+    }
+
+    if (opt.trace_colors) {
+      output += fmt::format(fmt::fg(config::colors::example), "{}\n", rule_str);
+    } else {
+      output += fmt::format("{}\n", rule_str);
+    }
+
+    // Add natural language explanation if enabled
+    if (opt.trace_explanations) {
+      std::string explanation = npda::explain_rule(r);
+      if (opt.trace_colors) {
+        output += fmt::format(fmt::fg(config::colors::info), "{}\n", explanation);
+      } else {
+        output += fmt::format("{}\n", explanation);
+      }
+    }
+  }
+
+  sink(output);
+}
+
+template <Hashable State, Hashable Input, Hashable StackSym>
+template <typename NodeT>
+std::expected<RunResult, Error> NPDA<State, Input, StackSym>::build_result(
+  [[maybe_unused]] const NodeT& acc_node,
+  const std::vector<NodeT>& nodes,
+  std::size_t idx,
+  std::size_t expansions,
+  const RunOptions& opt,
+  const std::vector<Input>& input,
+  bool exploration_detected,
+  const std::vector<std::size_t>& explored_nodes,
+  const std::vector<std::size_t>& deadend_nodes
+) const {
+  if (!opt.track_witness) {
+    return RunResult{true, expansions, std::nullopt};
+  }
+  std::vector<std::size_t> path;
+  std::size_t cur = idx;
+  while (nodes[cur].parent != npos) {
+    if (nodes[cur].rule_idx.has_value()) {
+      path.push_back(*nodes[cur].rule_idx);
+    } else {
+      break;
+    }
+    cur = nodes[cur].parent;
+  }
+  std::reverse(path.begin(), path.end());
+
+  // Replay the trace if tracing is enabled
+  if (opt.trace) {
+    replay_trace_path(nodes, idx, input, opt);
+
+    // Show exploration summary if enabled
+    if (opt.show_backtracking && exploration_detected) {
+      auto sink = opt.trace_sink ? opt.trace_sink : [](std::string_view s) {
+        fmt::print("{}", s);
+      };
+
+      if (opt.trace_colors) {
+        sink(fmt::format(
+          fmt::fg(config::colors::info),
+          "\n{} Exploration summary: {} nodes explored, {} dead-ends found\n",
+          config::symbols::info,
+          explored_nodes.size(),
+          deadend_nodes.size()
+        ));
+      } else {
+        sink(fmt::format(
+          "\nExploration summary: {} nodes explored, {} dead-ends found\n",
+          explored_nodes.size(),
+          deadend_nodes.size()
+        ));
+      }
+    }
+  }
+
+  // Show exploration tree if enabled
+  if (opt.trace && opt.show_full_trace && !explored_nodes.empty()) {
+    show_exploration_tree(nodes, explored_nodes, input, opt, std::vector<std::size_t>{});
+  }
+
+  return RunResult{true, expansions, std::move(path)};
+}
+
+template <Hashable State, Hashable Input, Hashable StackSym>
+template <typename NodeT>
+void NPDA<State, Input, StackSym>::replay_trace_path(
+  const std::vector<NodeT>& nodes,
+  std::size_t final_idx,
+  const std::vector<Input>& input,
+  const RunOptions& opt
+) const {
+  if (!opt.trace || !opt.track_witness)
+    return;
+
+  // Reconstruct node and rule paths from root to final
+  std::vector<std::size_t> node_path_rev;
+  std::vector<std::size_t> rule_path_rev;  // rules applied (except root)
+
+  std::size_t cur = final_idx;
+  while (true) {
+    node_path_rev.push_back(cur);
+    if (nodes[cur].parent == npos)
+      break;
+    if (nodes[cur].rule_idx.has_value())
+      rule_path_rev.push_back(*nodes[cur].rule_idx);
+    cur = nodes[cur].parent;
+  }
+
+  std::vector<std::size_t> node_path(node_path_rev.rbegin(), node_path_rev.rend());
+  std::vector<std::size_t> rule_path(rule_path_rev.rbegin(), rule_path_rev.rend());
+
+  auto sink = opt.trace_sink ? opt.trace_sink : [](std::string_view s) {
+    fmt::print("{}", s);
+  };
+
+  if (opt.trace_colors) {
+    sink(fmt::format(
+      fmt::fg(config::colors::banner_text),
+      "\n{} Accepting path found! Replaying {} steps...\n",
+      config::symbols::info,
+      rule_path.size()
+    ));
+  } else {
+    sink(fmt::format("\nAccepting path found! Replaying {} steps...\n", rule_path.size()));
+  }
+
+  // Emit each step showing the state after applying the rule
+  std::size_t step_num = 0;
+
+  // First, show the initial state (Step 0) with no rule applied
+  if (!node_path.empty()) {
+    emit_trace_step(nodes[node_path[0]], input, step_num, std::nullopt, opt, false);
+  }
+
+  // Then show the transitions starting from Step 1
+  for (std::size_t i = 1; i < node_path.size(); ++i) {
+    ++step_num;
+    const std::size_t node_idx = node_path[i];
+    const std::size_t rule_idx = rule_path[i - 1];
+
+    // Check if this is a backtrack point by comparing positions
+    bool is_backtrack = (i > 1 && nodes[node_idx].pos < nodes[node_path[i - 1]].pos);
+    emit_trace_step(nodes[node_idx], input, step_num, rules_[rule_idx], opt, is_backtrack);
+  }
+
+  // Show final accepting state (if not already shown)
+  if (node_path.empty() || node_path.back() != final_idx) {
+    emit_trace_step(nodes[final_idx], input, step_num + 1, std::nullopt, opt, false);
+    ++step_num;
+  }
+
+  if (opt.trace_colors) {
+    sink(fmt::format(
+      fmt::fg(config::colors::success), "\n{} Input accepted!\n", config::symbols::success
+    ));
+  } else {
+    sink("\nInput accepted!\n");
+  }
+}
+
+template <Hashable State, Hashable Input, Hashable StackSym>
+template <typename NodeT>
+void NPDA<State, Input, StackSym>::show_rejection_trace(
+  const std::vector<NodeT>& nodes,
+  std::size_t best_idx,
+  const std::vector<Input>& input,
+  const RunOptions& opt,
+  std::size_t expansions
+) const {
+  if (!opt.trace || !opt.track_witness)
+    return;
+
+  auto sink = opt.trace_sink ? opt.trace_sink : [](std::string_view s) {
+    fmt::print("{}", s);
+  };
+
+  if (opt.trace_colors) {
+    sink(fmt::format(
+      fmt::fg(config::colors::banner_text),
+      "\n{} Input rejected! Showing furthest path explored ({} "
+      "expansions)...\n",
+      config::symbols::error,
+      expansions
+    ));
+  } else {
+    sink(fmt::format(
+      "\nInput rejected! Showing furthest path explored ({} expansions)...\n", expansions
+    ));
+  }
+
+  // Reconstruct the path to the best node we found
+  std::vector<std::size_t> node_path_rev;
+  std::vector<std::size_t> rule_path_rev;
+
+  std::size_t cur = best_idx;
+  while (true) {
+    node_path_rev.push_back(cur);
+    if (nodes[cur].parent == npos)
+      break;
+    if (nodes[cur].rule_idx.has_value())
+      rule_path_rev.push_back(*nodes[cur].rule_idx);
+    cur = nodes[cur].parent;
+  }
+
+  std::vector<std::size_t> node_path(node_path_rev.rbegin(), node_path_rev.rend());
+  std::vector<std::size_t> rule_path(rule_path_rev.rbegin(), rule_path_rev.rend());
+
+  // Show how far we got in the input
+  const auto& best_node = nodes[best_idx];
+  std::size_t remaining_input = input.size() - best_node.pos;
+
+  if (opt.trace_colors) {
+    sink(fmt::format(
+      fmt::fg(config::colors::info),
+      "Furthest position: {} / {} ({} characters remaining)\n",
+      best_node.pos,
+      input.size(),
+      remaining_input
+    ));
+  } else {
+    sink(fmt::format(
+      "Furthest position: {} / {} ({} characters remaining)\n",
+      best_node.pos,
+      input.size(),
+      remaining_input
+    ));
+  }
+
+  // Emit each step showing the state after applying the rule
+  std::size_t step_num = 0;
+
+  // First, show the initial state (Step 0) with no rule applied
+  if (!node_path.empty()) {
+    emit_trace_step(nodes[node_path[0]], input, step_num, std::nullopt, opt, false);
+  }
+
+  // Then show the transitions starting from Step 1
+  for (std::size_t i = 1; i < node_path.size(); ++i) {
+    ++step_num;
+    const std::size_t node_idx = node_path[i];
+    const std::size_t rule_idx = rule_path[i - 1];
+
+    // Check if this is a backtrack point by comparing positions
+    bool is_backtrack = (i > 1 && nodes[node_idx].pos < nodes[node_path[i - 1]].pos);
+    emit_trace_step(nodes[node_idx], input, step_num, rules_[rule_idx], opt, is_backtrack);
+  }
+
+  // Show the final state where we got stuck
+  if (!node_path.empty()) {
+    emit_trace_step(nodes[best_idx], input, step_num + 1, std::nullopt, opt, false);
+  }
+
+  if (opt.trace_colors) {
+    sink(fmt::format(
+      fmt::fg(config::colors::error), "\n{} Input rejected at this point!\n", config::symbols::error
+    ));
+  } else {
+    sink("\nInput rejected at this point!\n");
+  }
+}
+
+template <Hashable State, Hashable Input, Hashable StackSym>
+template <typename NodeT>
+void NPDA<State, Input, StackSym>::show_exploration_tree(
+  const std::vector<NodeT>& nodes,
+  const std::vector<std::size_t>& explored_nodes,
+  [[maybe_unused]] const std::vector<Input>& input,
+  const RunOptions& opt
+) const {
+  if (!opt.trace || explored_nodes.empty())
+    return;
+
+  auto sink = opt.trace_sink ? opt.trace_sink : [](std::string_view s) {
+    fmt::print("{}", s);
+  };
+
+  if (opt.trace_colors) {
+    sink(fmt::format(
+      fmt::fg(config::colors::banner_text),
+      "\n{} Exploration Tree Structure:\n",
+      config::symbols::info
+    ));
+  } else {
+    sink("\nExploration Tree Structure:\n");
+  }
+
+  // Build parent-child relationships
+  std::unordered_map<std::size_t, std::vector<std::size_t>> children;
+  for (std::size_t node_idx : explored_nodes) {
+    if (nodes[node_idx].parent != npos) {
+      children[nodes[node_idx].parent].push_back(node_idx);
+    }
+  }
+
+  // Recursive function to print tree with enhanced visualization
+  std::function<void(std::size_t, std::string, bool)> print_tree;
+  print_tree = [&](std::size_t node_idx, std::string prefix, bool is_last) {
+    const auto& node = nodes[node_idx];
+
+    // Get current input symbol (if any) - use lambda for empty
+    std::string input_sym = "λ";
+    if (node.pos < input.size()) {
+      input_sym = fmt::format("{}", input[node.pos]);
+    }
+
+    // Get stack representation - show full stack content
+    std::string stack_repr;
+    if (node.stack.empty()) {
+      stack_repr = "[]";
+    } else {
+      // Show stack from bottom to top (left to right)
+      std::string stack_content;
+      for (std::size_t i = 0; i < node.stack.size(); ++i) {
+        if (i > 0)
+          stack_content += ",";
+        stack_content += fmt::format("{}", node.stack[i]);
+      }
+      stack_repr = fmt::format("[{}]", stack_content);
+    }
+
+    // Colorize based on state using type-safe approach
+    fmt::rgb state_color;
+
+    // Use a hash-based approach that works with any state type
+    // First check if it's an accepting state (highest priority)
+    if (contains(accepting_, node.s)) {
+      // Accepting states get a special warm color
+      state_color = config::colors::success;  // Green for accepting states
+    } else {
+      // For non-accepting states, use our specialized color generator
+      std::size_t state_hash = std::hash<State>{}(node.s);
+      state_color = generate_non_accepting_state_color(state_hash);
+    }
+
+    // Colorize input symbol
+    fmt::rgb input_color = (input_sym == "λ")
+                           ? config::colors::banner_text       // Mauve for lambda
+                           : config::colors::section_heading;  // Yellow for others
+
+    // Colorize stack
+    fmt::rgb stack_color = config::colors::option_name;  // Sky blue for stack
+
+    // Show enhanced node info with colors
+    std::string node_info;
+    if (opt.trace_colors) {
+      node_info = fmt::format(
+        "[{}] pos:{} {} state:{} {} ({})",
+        node_idx,
+        node.pos,
+        fmt::format(fmt::fg(input_color), "{}", input_sym),
+        fmt::format(fmt::fg(state_color), "{}", node.s),
+        fmt::format(fmt::fg(stack_color), "{}", stack_repr),
+        node.stack.size()
+      );
+    } else {
+      node_info = fmt::format(
+        "[{}] pos:{} input:{} state:{} {} ({})",
+        node_idx,
+        node.pos,
+        input_sym,
+        fmt::format("{}", node.s),
+        stack_repr,
+        node.stack.size()
+      );
+    }
+
+    if (opt.trace_colors) {
+      // Colorize tree connectors using config colors
+      fmt::rgb connector_color = config::colors::progress;  // Subtle gray from config
+      std::string connector = is_last ? "└── " : "├── ";
+      sink(fmt::format(
+        "{}{} {}\n", prefix, fmt::format(fmt::fg(connector_color), "{}", connector), node_info
+      ));
+    } else {
+      sink(fmt::format("{}{} {}\n", prefix, is_last ? "└── " : "├── ", node_info));
+    }
+
+    // Print children with colorized tree connectors
+    if (children.find(node_idx) != children.end()) {
+      const auto& child_nodes = children[node_idx];
+      for (std::size_t i = 0; i < child_nodes.size(); ++i) {
+        bool last_child = (i == child_nodes.size() - 1);
+        std::string child_prefix;
+        if (opt.trace_colors) {
+          // Colorize the tree connectors in the prefix
+          std::string vertical_connector =
+            is_last ? "    " : fmt::format(fmt::fg(config::colors::progress), "│   ");
+          child_prefix = prefix + vertical_connector;
+        } else {
+          child_prefix = prefix + (is_last ? "    " : "│   ");
+        }
+        print_tree(child_nodes[i], child_prefix, last_child);
+      }
+    }
+  };
+
+  // Find root nodes (nodes with no parent or parent not in explored_nodes)
+  std::vector<std::size_t> roots;
+  for (std::size_t node_idx : explored_nodes) {
+    if (nodes[node_idx].parent == npos ||
+        std::find(explored_nodes.begin(), explored_nodes.end(), nodes[node_idx].parent) ==
+          explored_nodes.end()) {
+      roots.push_back(node_idx);
+    }
+  }
+
+  // Print all trees
+  for (std::size_t i = 0; i < roots.size(); ++i) {
+    print_tree(roots[i], "", true);
+  }
+}
+
+template <Hashable State, Hashable Input, Hashable StackSym>
+template <typename NodeT>
+void NPDA<State, Input, StackSym>::show_exploration_tree(
+  const std::vector<NodeT>& nodes,
+  const std::vector<std::size_t>& explored_nodes,
+  [[maybe_unused]] const std::vector<Input>& input,
+  const RunOptions& opt,
+  const std::vector<std::size_t>& accepting_path
+) const {
+  // Convert accepting_path to a set for fast lookup
+  std::unordered_set<std::size_t> accepting_nodes(accepting_path.begin(), accepting_path.end());
+
+  if (!opt.trace || explored_nodes.empty())
+    return;
+
+  auto sink = opt.trace_sink ? opt.trace_sink : [](std::string_view s) {
+    fmt::print("{}", s);
+  };
+
+  if (opt.trace_colors) {
+    sink(fmt::format(
+      fmt::fg(config::colors::banner_text),
+      "\n{} Exploration Tree Structure:\n",
+      config::symbols::info
+    ));
+  } else {
+    sink("\nExploration Tree Structure:\n");
+  }
+
+  // Build parent-child relationships
+  std::unordered_map<std::size_t, std::vector<std::size_t>> children;
+  for (std::size_t node_idx : explored_nodes) {
+    if (nodes[node_idx].parent != npos) {
+      children[nodes[node_idx].parent].push_back(node_idx);
+    }
+  }
+
+  // Recursive function to print tree with enhanced visualization
+  std::function<void(std::size_t, std::string, bool)> print_tree;
+  print_tree = [&](std::size_t node_idx, std::string prefix, bool is_last) {
+    const auto& node = nodes[node_idx];
+
+    // Get current input symbol (if any) - use lambda for empty
+    std::string input_sym = "λ";
+    if (node.pos < input.size()) {
+      input_sym = fmt::format("{}", input[node.pos]);
+    }
+
+    // Get stack representation - show full stack content
+    std::string stack_repr;
+    if (node.stack.empty()) {
+      stack_repr = "[]";
+    } else {
+      // Show stack from bottom to top (left to right)
+      std::string stack_content;
+      for (std::size_t i = 0; i < node.stack.size(); ++i) {
+        if (i > 0)
+          stack_content += ",";
+        stack_content += fmt::format("{}", node.stack[i]);
+      }
+      stack_repr = fmt::format("[{}]", stack_content);
+    }
+
+    // Colorize based on state using type-safe approach
+    fmt::rgb state_color;
+
+    // Use a hash-based approach that works with any state type
+    // First check if it's an accepting state (highest priority)
+    if (contains(accepting_, node.s)) {
+      // Accepting states get a special warm color
+      state_color = config::colors::success;  // Green for accepting states
+    } else {
+      // For non-accepting states, use our specialized color generator
+      std::size_t state_hash = std::hash<State>{}(node.s);
+      state_color = generate_non_accepting_state_color(state_hash);
+    }
+
+    // Colorize input symbol
+    fmt::rgb input_color = (input_sym == "λ")
+                           ? config::colors::banner_text       // Mauve for lambda
+                           : config::colors::section_heading;  // Yellow for others
+
+    // Colorize stack
+    fmt::rgb stack_color = config::colors::option_name;  // Sky blue for stack
+
+    // Check if this node is in the accepting path
+    bool is_in_accepting_path = accepting_nodes.find(node_idx) != accepting_nodes.end();
+    std::string accepting_marker =
+      is_in_accepting_path
+        ? fmt::format(fmt::fg(config::colors::success), "{}", config::symbols::success)
+        : "";
+
+    // Show enhanced node info with colors
+    std::string node_info;
+    if (opt.trace_colors) {
+      node_info = fmt::format(
+        "[{}] pos:{} {} state:{} {} ({}) {}",
+        node_idx,
+        node.pos,
+        fmt::format(fmt::fg(input_color), "{}", input_sym),
+        fmt::format(fmt::fg(state_color), "{}", node.s),
+        fmt::format(fmt::fg(stack_color), "{}", stack_repr),
+        node.stack.size(),
+        accepting_marker
+      );
+    } else {
+      node_info = fmt::format(
+        "[{}] pos:{} input:{} state:{} {} ({}) {}",
+        node_idx,
+        node.pos,
+        input_sym,
+        fmt::format("{}", node.s),
+        stack_repr,
+        node.stack.size(),
+        is_in_accepting_path ? config::symbols::success : ""
+      );
+    }
+
+    if (opt.trace_colors) {
+      // Colorize tree connectors using config colors
+      fmt::rgb connector_color = config::colors::progress;  // Subtle gray from config
+      std::string connector = is_last ? "└── " : "├── ";
+      sink(fmt::format(
+        "{}{} {}\n", prefix, fmt::format(fmt::fg(connector_color), "{}", connector), node_info
+      ));
+    } else {
+      sink(fmt::format("{}{} {}\n", prefix, is_last ? "└── " : "├── ", node_info));
+    }
+
+    // Print children with colorized tree connectors
+    if (children.find(node_idx) != children.end()) {
+      const auto& child_nodes = children[node_idx];
+      for (std::size_t i = 0; i < child_nodes.size(); ++i) {
+        bool last_child = (i == child_nodes.size() - 1);
+        std::string child_prefix;
+        if (opt.trace_colors) {
+          // Colorize the tree connectors in the prefix
+          std::string vertical_connector =
+            is_last ? "    " : fmt::format(fmt::fg(config::colors::progress), "│   ");
+          child_prefix = prefix + vertical_connector;
+        } else {
+          child_prefix = prefix + (is_last ? "    " : "│   ");
+        }
+        print_tree(child_nodes[i], child_prefix, last_child);
+      }
+    }
+  };
+
+  // Find root nodes (nodes with no parent or parent not in explored_nodes)
+  std::vector<std::size_t> roots;
+  for (std::size_t node_idx : explored_nodes) {
+    if (nodes[node_idx].parent == npos ||
+        std::find(explored_nodes.begin(), explored_nodes.end(), nodes[node_idx].parent) ==
+          explored_nodes.end()) {
+      roots.push_back(node_idx);
+    }
+  }
+
+  // Print all trees
+  for (std::size_t i = 0; i < roots.size(); ++i) {
+    print_tree(roots[i], "", true);
+  }
+}
 
 }  // namespace npda
