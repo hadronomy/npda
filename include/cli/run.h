@@ -10,6 +10,7 @@ class RunHandler final : public CommandHandler {
  public:
   std::filesystem::path file_path;
   std::vector<std::string> input_strings;
+  bool trace_enabled;
 
   int operator()(const CommandContext& ctx) override;
 };
@@ -22,5 +23,6 @@ class RunHandler final : public CommandHandler {
   sub.add_option("input_string", handler->input_strings, "the string to accept")
     ->multi_option_policy(CLI::MultiOptionPolicy::TakeAll)
     ->required();
+  // sub.add_flag("--trace,!--no-trace", handler->trace_enabled, "Disable trace mode");
   return handler;
 }

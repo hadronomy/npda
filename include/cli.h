@@ -137,6 +137,20 @@ class CommandRegistry {
     try {
       app_.parse(argc, argv);
     } catch (const CLI::ParseError& e) {
+      if (e.get_name() == "RuntimeError")
+        return 1;
+      if (e.get_name() == "CallForHelp") {
+        std::cout << app_.help();
+        return 1;
+      }
+      if (e.get_name() == "CallForAllHelp") {
+        std::cout << app_.help("", CLI::AppFormatMode::All);
+        return 1;
+      }
+      if (e.get_name() == "CallForVersion") {
+        std::cout << e.what() << '\n';
+        return e.get_exit_code();
+      }
       std::stringstream sstream;
       sstream << e.what() << "\n"
               << "\x1b[0m"
