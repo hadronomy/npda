@@ -1,0 +1,17 @@
+# Automata por estados finales
+# epsilon esta representado por un .
+p q r s
+A B C
+X y
+p
+X
+s
+p A X p yX
+p A y p yy
+p B y q yy
+p B X q yX
+q B y q yy
+q C y r .
+r C X r X
+r C y r .
+r . X s X
