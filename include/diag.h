@@ -4,11 +4,10 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <iomanip>
-#include <iostream>
+#include <map>
+#include <ostream>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -173,27 +172,51 @@ inline void render_snippet(
     std::vector<const Label*> primary;
     std::vector<const Label*> secondary;
   };
-  std::unordered_map<std::size_t, LineMarks> per_line;
+  std::map<std::size_t, LineMarks> per_line;
 
   for (const auto& lab : d.labels) {
-    auto [l, c] = src.line_col(lab.span.lo);
-    (lab.primary ? per_line[l].primary : per_line[l].secondary).push_back(&lab);
+    const auto line_info = src.line_col(lab.span.lo);
+    auto& bucket =
+      lab.primary ? per_line[line_info.first].primary : per_line[line_info.first].secondary;
+    bucket.push_back(&lab);
   }
 
-  // Determine the maximum line number length to establish consistent padding
-  std::size_t max_line_num_width = 0;
+  std::size_t max_line_num_width = 2;
   if (!per_line.empty()) {
-    std::size_t max_line = 0;
-    for (const auto& [line_num, _] : per_line) {
-      if (line_num > max_line) {
-        max_line = line_num;
+    max_line_num_width =
+      std::max<std::size_t>(max_line_num_width, std::to_string(per_line.rbegin()->first).length());
+  }
+  std::string pad(max_line_num_width, ' ');
+
+  const auto to_utf8 = [](std::u32string_view s) {
+    std::string out;
+    out.reserve(s.size() * 4);
+    for (char32_t cp : s) {
+      if (cp <= 0x7F) {
+        out.push_back(static_cast<char>(cp));
+      } else if (cp <= 0x7FF) {
+        out.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+        out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+      } else if (cp <= 0xFFFF) {
+        out.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+        out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+      } else {
+        out.push_back(static_cast<char>(0xF0 | (cp >> 18)));
+        out.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
       }
     }
-    max_line_num_width = std::to_string(max_line).length();
-  }
-  if (max_line_num_width < 2) {
-    max_line_num_width = 2;  // Minimum 2 for consistency
-  }
+    return out;
+  };
+
+  constexpr char32_t primary_underline_cp = U'\u223F';
+  constexpr char32_t primary_message_cp = U'\u2191';
+  constexpr char32_t secondary_marker_cp = U'-';
+  const std::string primary_message_utf8 = to_utf8(std::u32string_view(&primary_message_cp, 1));
+  const std::string secondary_marker_utf8(1, '-');
+  const std::string primary_underline_utf8 = to_utf8(std::u32string_view(&primary_underline_cp, 1));
 
   bool header_printed = false;
   for (const auto& [line, marks] : per_line) {
@@ -211,89 +234,83 @@ inline void render_snippet(
     }
 
     auto line_sv = src.line_view(line);
-    os << " " << std::setw(max_line_num_width) << "" << dim(opt.color) << " │" << reset(opt.color)
-       << '\n';
-    os << " " << dim(opt.color) << std::right << std::setw(max_line_num_width) << line << " │ "
-       << reset(opt.color) << line_sv << '\n';
 
-    // Now, for the underline, we need to consider the column where the highlight starts.
-    // We get the first primary label (or any label if no primary) to determine the starting column
-    std::size_t first_label_col_on_line = 0;
-    const Label* representative_label = nullptr;
-    if (!marks.primary.empty()) {
-      representative_label = marks.primary.front();
-    } else if (!marks.secondary.empty()) {
-      representative_label = marks.secondary.front();
-    }
+    os << ' ' << pad << dim(opt.color) << " │" << reset(opt.color) << '\n';
 
-    if (representative_label) {
-      first_label_col_on_line = src.line_col(representative_label->span.lo).second;
-    }
+    std::string line_number = std::to_string(line);
+    if (line_number.size() < max_line_num_width)
+      line_number.insert(0, max_line_num_width - line_number.size(), ' ');
+    os << ' ' << dim(opt.color) << line_number << " │ " << reset(opt.color) << line_sv << '\n';
 
-    // Pad to align the `│` and then pad further to the label's start column
-    os << " " << std::setw(max_line_num_width) << "" << dim(opt.color) << " │" << reset(opt.color);
+    std::u32string underline(line_sv.size(), U' ');
+    auto ensure_length = [&](std::size_t size) {
+      if (underline.size() < size)
+        underline.resize(size, U' ');
+    };
 
-    // We print spaces to align the underline.
-    // The underline itself will be printed on a new line, so we need to carry over the alignment.
-    os << '\n';  // Move to the next line for the underline
-
-    os << " " << std::setw(max_line_num_width) << ""  // Space for line number
-       << "   ";                                      // space | space - this is 3 characters.
-
-    // Pad to the column of the highlight within the line
-    for (std::size_t i = 0; i < (first_label_col_on_line - 1); ++i) {
-      os << ' ';
-    }
-
-    std::string underline(line_sv.size(), ' ');  // Initialize with spaces
-
-    auto place_marks = [&](const std::vector<const Label*>& labs, char ch) {
+    auto place_marks = [&](const std::vector<const Label*>& labs, char32_t ch) {
       for (const auto* lb : labs) {
-        auto [l0, c0] = src.line_col(lb->span.lo);
-        std::size_t hi_pos = lb->span.hi;
-        if (hi_pos == 0 && !lb->span.empty())
-          hi_pos = lb->span.lo + 1;
-        else if (hi_pos == 0 && lb->span.empty())
-          hi_pos = lb->span.lo;
-
-        auto [l1, c1] = src.line_col(hi_pos ? hi_pos - 1 : hi_pos);
-
-        if (l0 != line)
+        auto [start_line, start_col] = src.line_col(lb->span.lo);
+        if (start_line != line)
           continue;
-        std::size_t start = c0 ? c0 - 1 : 0;  // 0-indexed start column
-        std::size_t end = (l1 == line) ? (c1 ? c1 : c0) : line_sv.size();
+        std::size_t start = start_col ? start_col - 1 : 0;
 
-        if (end < start)
-          std::swap(start, end);
-        end = std::min(end, line_sv.size());
+        std::size_t end = start + 1;
+        if (!lb->span.empty()) {
+          std::size_t hi_index = lb->span.hi ? lb->span.hi - 1 : lb->span.hi;
+          auto [end_line, end_col] = src.line_col(hi_index);
+          if (end_line == line)
+            end = end_col ? end_col : start + 1;
+          else if (end_line > line)
+            end = underline.size();
+        }
+
+        if (end <= start)
+          end = start + 1;
+
+        ensure_length(end);
         for (std::size_t i = start; i < end; ++i)
           underline[i] = ch;
-        if (start == end && start < underline.size()) {
-          underline[start] = ch;
-        }
       }
     };
 
-    place_marks(marks.secondary, '-');
-    place_marks(marks.primary, '^');
+    place_marks(marks.secondary, secondary_marker_cp);
+    place_marks(marks.primary, primary_underline_cp);
 
-    os << underline << '\n';
+    while (!underline.empty() && underline.back() == U' ')
+      underline.pop_back();
+
+    if (!underline.empty()) {
+      os << ' ' << pad << dim(opt.color) << " │ " << reset(opt.color);
+      for (char32_t ch : underline) {
+        if (ch == primary_underline_cp) {
+          os << sev_color(d.severity, opt.color) << primary_underline_utf8 << reset(opt.color);
+        } else if (ch == secondary_marker_cp) {
+          os << blue(opt.color) << secondary_marker_utf8 << reset(opt.color);
+        } else {
+          os << to_utf8(std::u32string_view(&ch, 1));
+        }
+      }
+      os << '\n';
+    }
 
     auto print_msgs = [&](const std::vector<const Label*>& labs, bool primary) {
       for (const auto* lb : labs) {
-        auto [l0, c0] = src.line_col(lb->span.lo);
-        std::size_t start_col_0_indexed = c0 ? c0 - 1 : 0;
+        auto [msg_line, msg_col] = src.line_col(lb->span.lo);
+        if (msg_line != line)
+          continue;
 
-        os << " " << std::setw(max_line_num_width) << ""
-           << "   ";
-
-        // Pad to the start column of the label
-        for (std::size_t i = 0; i < start_col_0_indexed; ++i)
+        os << ' ' << pad << dim(opt.color) << " │ " << reset(opt.color);
+        for (std::size_t i = 0; i < (msg_col ? msg_col - 1 : 0); ++i)
           os << ' ';
 
         const std::string_view col_code =
-          primary ? sev_color(Severity::Error, opt.color) : blue(opt.color);
-        os << col_code << (primary ? "^" : "-") << reset(opt.color) << " " << lb->message << '\n';
+          primary ? sev_color(d.severity, opt.color) : blue(opt.color);
+        const std::string& marker = primary ? primary_message_utf8 : secondary_marker_utf8;
+        os << col_code << marker << reset(opt.color);
+        if (!lb->message.empty())
+          os << ' ' << lb->message;
+        os << '\n';
       }
     };
 
@@ -302,8 +319,7 @@ inline void render_snippet(
   }
 
   for (const auto& n : d.notes) {
-    os << " " << std::setw(max_line_num_width) << "" << dim(opt.color) << " = " << reset(opt.color)
-       << n << '\n';
+    os << ' ' << pad << dim(opt.color) << " = " << reset(opt.color) << n << '\n';
   }
 }
 
