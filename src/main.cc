@@ -1,8 +1,13 @@
-#include "cli.h"
-#include "cli/run.h"
+#include <exception>
+
+#include "application.h"
+#include "ui.h"
 
 int main(int argc, char** argv) {
-  CommandRegistry registry("npda", "a simple cli for running a NPDA and see all the traces");
-  registry.register_command("run", "execute a given NPDA with a given string", make_run);
-  registry.run(argc, argv);
+  try {
+    const auto app = Application();
+    app.run(argc, argv);
+  } catch (std::exception& e) {
+    ui::error(e.what());
+  }
 }

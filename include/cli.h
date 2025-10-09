@@ -4,13 +4,17 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 #include <CLI/CLI.hpp>
+
 #include "colorized_formatter.h"
+#include "fmt/color.h"
+#include "ui.h"
 
 // A small utility to trim and normalize command names
 static std::string normalize_name(std::string_view name) {
@@ -133,8 +137,13 @@ class CommandRegistry {
     try {
       app_.parse(argc, argv);
     } catch (const CLI::ParseError& e) {
-      // Let CLI11 format the error and get an exit code
-      return app_.exit(e);
+      std::stringstream sstream;
+      sstream << e.what() << "\n"
+              << "\x1b[0m"
+              << "Run with " << fmt::format(fmt::fg(fmt::terminal_color::cyan), "--help")
+              << " to see more information\n";
+      ui::error(sstream.str());
+      return 1;
     }
     return exit_code_;
   }

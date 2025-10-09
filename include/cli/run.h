@@ -1,7 +1,9 @@
 #pragma once
 
 #include <filesystem>
-#include "CLI/CLI.hpp"
+
+#include <CLI/CLI.hpp>
+
 #include "cli.h"
 
 class RunHandler final : public CommandHandler {
