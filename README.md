@@ -27,7 +27,10 @@
 
 ## Docs
 
-This project implements algorithms for the Vehicle Routing Problem with Transshipments for Solid Waste Collection with Transfer Stations (VRPT-SWTS). See the [docs](/docs/P5_DAA_VRPT_2024_2025.pdf) pdf for more information about the assignment and [summary](/docs/summary.md) for a detailed problem description.
+This project implements a NPDA (Non-Deterministic Push Down Automata). 
+See the [docs](/docs/CC_2526_Practica1.pdf) pdf for more information about the assignment.
+
+The automata is implemented to work with, empty stack finalization and with final state finalization.
 
 ## Requirements
 
@@ -62,48 +65,13 @@ just run --help
 
 ### Available Commands
 
-- `bench <algorithm> [options]` - Benchmark a specific algorithm
-- `compare <algorithm1> <algorithm2> [options]` - Compare multiple algorithms
-- `list` - List available algorithms
-- `validate <file>` - Validate a solution file
-- `visualize <file>` - Visualize a problem instance
-
-### Options
-
-- `--iteration=N` - Number of iterations
-- `--file=path` - Input file(s) with problem instances (can specify multiple)
-- `--debug` - Enable debug mode output
-- `--time-limit=path` - Time limit per algorithm run (e.g '30s', '1m30', '1h', or milliseconds)
+- `run <file_path> <strings...>` - See if the given automata accepts the given string
 
 ### Examples
 
 ```bash
 # Benchmark greedy CV generator algorithm
-tsp bench greedy_cv_generator -f examples/instance1.txt
-
-# Benchmark GRASP CV generator algorithm
-tsp bench grasp_cv_generator -f examples/instance2.txt
-
-# Benchmark multi-start algorithm
-tsp bench multi_start -f examples/instance3.txt
-
-# Benchmark GVNS algorithm
-tsp bench gvns -f examples/instance4.txt
-
-# Compare greedy CV generator and GRASP CV generator
-tsp compare greedy_cv_generator grasp_cv_generator -f examples/instance5.txt
-
-# Compare all the algorithms
-tsp compare all -f examples/instance1.txt
-
-# List all the available algorithms
-tsp list
-
-# Visualize a problem instance
-tsp visualize examples/instance1.txt
-
-# Enable debug mode
-tsp bench greedy_cv_generator -f examples/instance1.txt --debug
+npda run ./examples/APf-1 "aabb"
 ```
 
 ## License
