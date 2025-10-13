@@ -175,10 +175,20 @@ inline void render_snippet(
   std::map<std::size_t, LineMarks> per_line;
 
   for (const auto& lab : d.labels) {
-    const auto line_info = src.line_col(lab.span.lo);
-    auto& bucket =
-      lab.primary ? per_line[line_info.first].primary : per_line[line_info.first].secondary;
-    bucket.push_back(&lab);
+    auto [start_line, start_col] = src.line_col(lab.span.lo);
+    std::size_t end_line = start_line;
+
+    if (!lab.span.empty()) {
+      std::size_t hi_index = lab.span.hi ? lab.span.hi - 1 : lab.span.hi;
+      auto [end_line_calc, end_col] = src.line_col(hi_index);
+      end_line = end_line_calc;
+    }
+
+    // Store the label on every line it spans
+    for (std::size_t line = start_line; line <= end_line; ++line) {
+      auto& bucket = lab.primary ? per_line[line].primary : per_line[line].secondary;
+      bucket.push_back(&lab);
+    }
   }
 
   std::size_t max_line_num_width = 2;
@@ -251,18 +261,41 @@ inline void render_snippet(
     auto place_marks = [&](const std::vector<const Label*>& labs, char32_t ch) {
       for (const auto* lb : labs) {
         auto [start_line, start_col] = src.line_col(lb->span.lo);
-        if (start_line != line)
-          continue;
-        std::size_t start = start_col ? start_col - 1 : 0;
+        std::size_t end_line = start_line;
+        std::size_t end_col = 0;
 
-        std::size_t end = start + 1;
         if (!lb->span.empty()) {
           std::size_t hi_index = lb->span.hi ? lb->span.hi - 1 : lb->span.hi;
-          auto [end_line, end_col] = src.line_col(hi_index);
-          if (end_line == line)
+          auto [end_line_calc, end_col_calc] = src.line_col(hi_index);
+          end_line = end_line_calc;
+          end_col = end_col_calc;
+        }
+
+        // Skip if this line is not part of the label's span
+        if (line < start_line || line > end_line)
+          continue;
+
+        std::size_t start = 0;
+        std::size_t end = underline.size();
+
+        if (line == start_line) {
+          // First line of the label
+          start = start_col ? start_col - 1 : 0;
+          if (line == end_line) {
+            // Single line label
             end = end_col ? end_col : start + 1;
-          else if (end_line > line)
+          } else {
+            // Multi-line label, first line - extend to end of line
             end = underline.size();
+          }
+        } else if (line == end_line) {
+          // Last line of multi-line label
+          start = 0;
+          end = end_col ? end_col : 1;
+        } else {
+          // Middle line of multi-line label - full line
+          start = 0;
+          end = underline.size();
         }
 
         if (end <= start)
@@ -297,6 +330,7 @@ inline void render_snippet(
     auto print_msgs = [&](const std::vector<const Label*>& labs, bool primary) {
       for (const auto* lb : labs) {
         auto [msg_line, msg_col] = src.line_col(lb->span.lo);
+        // Only print the message on the first line of the label (where it starts)
         if (msg_line != line)
           continue;
 
