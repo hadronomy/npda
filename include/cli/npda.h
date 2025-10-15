@@ -16,7 +16,7 @@ class RunHandler final : public CommandHandler {
   int operator()(const CommandContext& ctx) override;
 };
 
-[[maybe_unused]] static std::unique_ptr<CommandHandler> make_run(CLI::App& sub) {
+[[maybe_unused]] static std::unique_ptr<CommandHandler> make_npda(CLI::App& sub) {
   auto handler = std::make_unique<RunHandler>();
   sub.add_option("file_path", handler->file_path, "the NPDA description file path")
     ->required()

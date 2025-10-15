@@ -1,0 +1,17 @@
+# Turing Machine for L = { a^n b^m | m > n, n > 0 }
+q0 q1 q2 q3 q4
+a b
+a b X Y _
+q0
+_
+q4
+# Transitions
+q0 a q1 X R
+q1 a q1 a R
+q1 b q2 Y R
+q2 b q2 b R
+q2 _ q3 _ L
+q3 Y q3 Y L
+q3 a q3 a L
+q3 X q0 X R
+q0 Y q4 Y R

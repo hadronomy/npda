@@ -4,12 +4,11 @@
 #include <string_view>
 
 #include "cli.h"
+#include "cli/turing.h"
 #include "diag.h"
 #include "fmt/color.h"
-#include "npda.h"
-#include "parser.h"
-
-#include "cli/npda.h"
+#include "turing/parser.h"
+#include "turing/turing.h"
 
 static std::vector<std::string> to_symbols(std::string_view s) {
   std::vector<std::string> v;
@@ -19,24 +18,56 @@ static std::vector<std::string> to_symbols(std::string_view s) {
   return v;
 }
 
-int RunHandler::operator()(const CommandContext&) {
+int TuringHandler::operator()(const CommandContext&) {
   std::filesystem::path filepath = this->file_path;
   std::ifstream file(filepath);
 
-  auto result = npda::parse::parse_with_diagnostics(file, filepath.filename());
-  if (auto dpa = result.value; result.value.has_value()) {
+  auto result = turing::parse::parse_with_diagnostics(file, filepath.filename());
+
+  // Show warnings/errors if any
+  if (!result.diagnostics.items.empty()) {
+    diag::render(
+      std::cerr,
+      result.source,
+      result.diagnostics,
+      diag::RenderOptions{.color = true, .context_lines = 0}
+    );
+    // Terminate if there are any errors
+    if (result.diagnostics.has_errors()) {
+      return 1;
+    }
+  }
+
+  // Check for parsing errors (this should be redundant now but kept for safety)
+  if (!result.value.has_value()) {
+    diag::render(
+      std::cerr,
+      result.source,
+      result.value.error(),
+      diag::RenderOptions{.color = true, .context_lines = 0}
+    );
+    return 1;
+  }
+
+  if (auto& tm = result.value; result.value.has_value()) {
     auto run = [&](std::string_view s, bool trace = false) {
-      auto r = dpa->run(
+      // Create TM configuration from CLI options
+      turing::TMConfig config;
+      config.num_tapes = this->num_tapes;
+      config.tape_direction = this->tape_direction;
+      config.operation_mode = this->operation_mode;
+      config.allow_stay = this->allow_stay;
+
+      auto r = tm->run(
         to_symbols(s),
-        npda::RunOptions{
-          .bfs = true,
-          .max_expansions = 100000,
+        turing::RunOptions{
+          .max_steps = 100000,
           .track_witness = true,
           .trace = trace,
           .trace_colors = true,
           .trace_compact = false,
           .trace_explanations = this->explain,
-          .show_full_trace = true,
+          .show_config = true,
         }
       );
       if (!r) {
@@ -52,16 +83,16 @@ int RunHandler::operator()(const CommandContext&) {
       if (r->accepted) {
         result_line = fmt::format(
           fmt::fg(fmt::terminal_color::green),
-          "{} -> accepted=true expansions={}",
+          "{} -> accepted=true steps={}",
           input_display,
-          r->expansions
+          r->steps
         );
       } else {
         result_line = fmt::format(
           fmt::fg(fmt::terminal_color::red),
-          "{} -> accepted=false expansions={}",
+          "{} -> accepted=false steps={}",
           input_display,
-          r->expansions
+          r->steps
         );
       }
 
@@ -77,6 +108,30 @@ int RunHandler::operator()(const CommandContext&) {
         }
         std::cout << fmt::format(fmt::fg(fmt::terminal_color::cyan), "]");
       }
+
+      // Show final tape configuration
+      if (!r->final_tapes.empty() && !r->final_tapes[0].empty()) {
+        std::cout << fmt::format(fmt::fg(fmt::terminal_color::cyan), " tape=\"");
+
+        const auto& tape = r->final_tapes[0];
+        std::size_t head_pos = r->final_head_positions[0];
+
+        for (std::size_t i = 0; i < tape.size(); ++i) {
+          if (i == head_pos) {
+            std::cout << fmt::format(fmt::fg(fmt::terminal_color::yellow), "[{}]", tape[i]);
+          } else {
+            std::cout << tape[i];
+          }
+        }
+
+        // Show head position if it's beyond the current tape
+        if (head_pos >= tape.size()) {
+          std::cout << fmt::format(fmt::fg(fmt::terminal_color::yellow), "[ ]");
+        }
+
+        std::cout << "\"";
+      }
+
       std::cout << "\n";
     };
 
