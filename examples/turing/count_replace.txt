@@ -1,0 +1,116 @@
+# /// config
+# num_tapes = 2
+# tape_direction = "bidirectional"
+# operation_mode = "independent"
+# allow_stay = true
+# ///
+
+# Q (states)
+qI1 qI2 qI3 qIBack qS qIncAL qIncAR qIncBR qIncBL qRew1 qRew1L qPrepL qPrepL2 qCopyL qCopyR qFinish qFinish2 qAcc
+
+# Σ (input alphabet)
+a b
+
+# Γ (tape alphabet)
+a b 1 * _
+
+# q0 (start state)
+qI1
+
+# b (blank symbol)
+_
+
+# F (accepting states)
+qAcc
+
+# Transiciones multi-cinta (N=2): from r1 r2 to w1 w2 m1 m2
+
+# Inicialización de la cinta 2 como "1 * 1"
+qI1 a _ qI2 a 1 S R
+qI1 b _ qI2 b 1 S R
+qI1 _ _ qI2 _ 1 S R
+
+qI2 a _ qI3 a * S R
+qI2 b _ qI3 b * S R
+qI2 _ _ qI3 _ * S R
+
+qI3 a _ qIBack a 1 S L
+qI3 b _ qIBack b 1 S L
+qI3 _ _ qIBack _ 1 S L
+
+# Volver con la cabeza de la cinta 2 a '*'
+qIBack a 1 qIBack a 1 S L
+qIBack b 1 qIBack b 1 S L
+qIBack _ 1 qIBack _ 1 S L
+qIBack a * qS a * S S
+qIBack b * qS b * S S
+qIBack _ * qS _ * S S
+
+# Escaneo de la entrada en cinta 1
+qS a * qIncAL a * S L
+qS b * qIncBR b * S R
+qS _ * qRew1 _ * S S
+
+# Rebobinar cinta 1 hasta el blanco izquierdo real de la entrada
+qRew1 _ * qRew1L _ * L S
+qRew1 a * qRew1L a * L S
+qRew1 b * qRew1L b * L S
+qRew1L a * qRew1L a * L S
+qRew1L b * qRew1L b * L S
+qRew1L _ * qPrepL _ * R S
+
+# Incrementar conteo de 'a' (añadir '1' a la izquierda de '*')
+qIncAL a 1 qIncAL a 1 S L
+qIncAL a _ qIncAR a 1 S R
+qIncAR a 1 qIncAR a 1 S R
+qIncAR a * qS a * R S
+
+# Incrementar conteo de 'b' (añadir '1' a la derecha de '*')
+qIncBR b 1 qIncBR b 1 S R
+qIncBR b _ qIncBL b 1 S L
+qIncBL b 1 qIncBL b 1 S L
+qIncBL b * qS b * R S
+
+# Preparar: mover cabeza de cinta 2 al primer '1' del bloque izquierdo
+qPrepL a * qPrepL2 a * S L
+qPrepL b * qPrepL2 b * S L
+qPrepL _ * qPrepL2 _ * S L
+
+qPrepL2 a 1 qPrepL2 a 1 S L
+qPrepL2 b 1 qPrepL2 b 1 S L
+qPrepL2 _ 1 qPrepL2 _ 1 S L
+qPrepL2 a _ qCopyL a _ S R
+qPrepL2 b _ qCopyL b _ S R
+qPrepL2 _ _ qCopyL _ _ S R
+
+# Copiar bloque izquierdo de '1's a la cinta 1 (sobrescribe a/b/_/1 con 1)
+qCopyL a 1 qCopyL 1 1 R R
+qCopyL b 1 qCopyL 1 1 R R
+qCopyL _ 1 qCopyL 1 1 R R
+qCopyL 1 1 qCopyL 1 1 R R
+
+# Al encontrar '*' en cinta 2, escribir '*' en cinta 1 (separador temporal) y pasar al bloque derecho
+qCopyL a * qCopyR * * R R
+qCopyL b * qCopyR * * R R
+qCopyL _ * qCopyR * * R R
+qCopyL 1 * qCopyR * * R R
+
+# Copiar bloque derecho de '1's a la cinta 1 (sobrescribe a/b/_/1 con 1)
+qCopyR a 1 qCopyR 1 1 R R
+qCopyR b 1 qCopyR 1 1 R R
+qCopyR _ 1 qCopyR 1 1 R R
+qCopyR 1 1 qCopyR 1 1 R R
+
+# Fin del bloque derecho (cinta 2 lee '_'): pasar a fase de rebobinado final
+qCopyR a _ qFinish a _ L S
+qCopyR b _ qFinish b _ L S
+qCopyR _ _ qFinish _ _ L S
+qCopyR 1 _ qFinish 1 _ L S
+
+# Rebobinar: mover a la izquierda hasta convertir el separador '*' a '_' y seguir al blanco izquierdo
+qFinish 1 _ qFinish 1 _ L S
+qFinish * _ qFinish2 _ _ L S
+
+# Tras convertir '*', seguir a la izquierda hasta el blanco izquierdo y dejar la cabeza en el primer '1'
+qFinish2 1 _ qFinish2 1 _ L S
+qFinish2 _ _ qAcc _ _ R S
