@@ -191,8 +191,9 @@ inline std::string_view unquote_if(std::string_view v) {
   if (v.size() >= 2) {
     const char a = v.front();
     const char b = v.back();
-    if ((a == '"' && b == '"') || (a == '\'' && b == '\''))
+    if ((a == '"' && b == '"') || (a == '\'' && b == '\'')) {
       return v.substr(1, v.size() - 2);
+    }
   }
   return v;
 }
@@ -201,11 +202,9 @@ inline bool parse_uint_nonzero(std::string_view v, std::size_t& out) {
   v = trim_ws(v);
   if (v.empty())
     return false;
-  // digits only to keep consistent with previous behavior
-  if (!std::all_of(v.begin(), v.end(), [](unsigned char c) { return std::isdigit(c) != 0; }))
+  if (!std::all_of(v.begin(), v.end(), [](unsigned char c) { return std::isdigit(c) != 0; })) {
     return false;
-  // std::size_t tmp = 0;
-  // avoid UB with stoul; use from_chars
+  }
   const auto* first = v.data();
   const auto* last = v.data() + v.size();
   unsigned long long ull = 0;
@@ -258,9 +257,9 @@ inline std::size_t
     return m;
   if (m == 0)
     return n;
-  // If length diff already exceeds bound, we can early-exit
-  if (max_dist != std::numeric_limits<std::size_t>::max() && (n > m ? n - m : m - n) > max_dist)
+  if (max_dist != std::numeric_limits<std::size_t>::max() && (n > m ? n - m : m - n) > max_dist) {
     return max_dist + 1;
+  }
 
   std::vector<std::size_t> prev(m + 1), curr(m + 1);
   for (std::size_t j = 0; j <= m; ++j)
@@ -270,15 +269,12 @@ inline std::size_t
     std::size_t row_min = curr[0];
     for (std::size_t j = 1; j <= m; ++j) {
       const std::size_t cost = (a[i - 1] == b[j - 1]) ? 0 : 1;
-      curr[j] = std::min({
-        prev[j] + 1,        // deletion
-        curr[j - 1] + 1,    // insertion
-        prev[j - 1] + cost  // substitution
-      });
+      curr[j] = std::min({prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost});
       row_min = std::min(row_min, curr[j]);
     }
-    if (max_dist != std::numeric_limits<std::size_t>::max() && row_min > max_dist)
+    if (max_dist != std::numeric_limits<std::size_t>::max() && row_min > max_dist) {
       return max_dist + 1;
+    }
     std::swap(prev, curr);
   }
   return prev[m];
@@ -287,14 +283,9 @@ inline std::size_t
 // ---------- Declarative schema for config ----------
 
 struct ConfigKeySpec {
-  // key name as written in spec
   std::string name;
-  // human-friendly expected type string (for diagnostics)
   std::string expected;
-  // enum domain if applicable (printed in diagnostics); empty if not enum
   std::vector<std::string> enum_values;
-  // parser that sets TMConfig; returns true on success, pushes diagnostics on
-  // failure using provided span
   std::function<bool(std::string_view, diag::Span, TMConfig&, diag::Diagnostics&)> parse_and_apply;
 };
 
@@ -402,7 +393,8 @@ inline std::vector<std::string> suggest_keys(
   return out;
 }
 
-// Parse TOML-like configuration from structured comments with comprehensive diagnostics
+// Parse TOML-like configuration from structured comments with
+// comprehensive diagnostics
 // Format: # /// config\n# key = value\n# ///
 inline ConfigParseResult parse_structured_config_with_schema(
   const diag::SourceFile& source,
@@ -595,14 +587,13 @@ inline ConfigParseResult parse_structured_config_with_schema(
     }
 
     if (spec) {
-      // Delegate actual parsing to schema entry
       const bool ok = spec->parse_and_apply(value, value_span, result.config, result.diagnostics);
       if (!ok)
         result.has_errors = true;
       continue;
     }
 
-    // Unknown key: warn and provide suggestions using Levenshtein distance
+    // Unknown key: warn and provide suggestions
     std::vector<std::string> suggestions = suggest_keys(key, schema, 3);
 
     diag::Diagnostic d;
@@ -612,7 +603,6 @@ inline ConfigParseResult parse_structured_config_with_schema(
     d.labels.push_back(
       {.span = diag::Span{key_span_start, key_span_end}, .primary = true, .message = "unknown key"}
     );
-    // Provide suggestions (Levenshtein)
     if (!suggestions.empty()) {
       if (suggestions.size() == 1) {
         d.notes.push_back("Did you mean '" + suggestions.front() + "'?");
@@ -627,7 +617,6 @@ inline ConfigParseResult parse_structured_config_with_schema(
         d.notes.push_back(std::move(note));
       }
     }
-    // Also print known keys to aid discovery
     {
       std::string known = "Known keys are: ";
       for (std::size_t i = 0; i < schema.size(); ++i) {
@@ -683,8 +672,8 @@ inline bool looks_like_single_tape_transition(
 
   if (Q.count(from.text) == 0)
     return false;
-  if (G.count(read.text) == 0)  // Read symbols must be from tape alphabet Γ
-    return false;
+  if (G.count(read.text) == 0)
+    return false;  // Γ
   if (Q.count(to.text) == 0)
     return false;
   if (G.count(write.text) == 0)
@@ -701,8 +690,8 @@ inline bool looks_like_multi_tape_transition(
   const std::unordered_set<std::string>& G,
   std::size_t num_tapes
 ) {
-  // Multi-tape format: from read1,read2,... to write1,write2,... move1,move2,...
-  std::size_t expected_size = 2 + num_tapes * 3;  // from + to + num_tapes*(read+write+move)
+  // Expect: from read1 ... readN to write1 move1 write2 move2 ... writeN moveN
+  const std::size_t expected_size = 2 + num_tapes * 3;
   if (toks.size() != expected_size)
     return false;
 
@@ -710,39 +699,30 @@ inline bool looks_like_multi_tape_transition(
   if (Q.count(from.text) == 0)
     return false;
 
-  // Check to state
-  std::size_t to_idx = 1 + num_tapes;  // after read symbols
+  const std::size_t to_idx = 1 + num_tapes;
   if (to_idx >= toks.size())
     return false;
   const auto& to = toks[to_idx];
   if (Q.count(to.text) == 0)
     return false;
 
-  // Check read symbols
+  // read symbols
   for (std::size_t i = 0; i < num_tapes; ++i) {
     if (1 + i >= toks.size())
       return false;
-    const auto& read = toks[1 + i];
-    if (G.count(read.text) == 0)
+    if (G.count(toks[1 + i].text) == 0)
       return false;
   }
 
-  // Check write symbols
+  // write/move pairs
   for (std::size_t i = 0; i < num_tapes; ++i) {
-    std::size_t write_idx = 1 + num_tapes + 1 + i;
-    if (write_idx >= toks.size())
+    const std::size_t pair_base = 1 + num_tapes + 1 + 2 * i;
+    if (pair_base + 1 >= toks.size())
       return false;
-    const auto& write = toks[write_idx];
+    const auto& write = toks[pair_base];
+    const auto& move = toks[pair_base + 1];
     if (G.count(write.text) == 0)
       return false;
-  }
-
-  // Check move symbols
-  for (std::size_t i = 0; i < num_tapes; ++i) {
-    std::size_t move_idx = 1 + num_tapes + 1 + num_tapes + i;
-    if (move_idx >= toks.size())
-      return false;
-    const auto& move = toks[move_idx];
     if (move.text != "L" && move.text != "R" && move.text != "S")
       return false;
   }
@@ -781,11 +761,11 @@ inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename
   std::size_t i = 0;
   TMConfig config;
 
-  // Parse structured configuration from TOML-like format
+  // Parse structured configuration
   auto config_result = parse_structured_config(out.source);
   config = config_result.config;
 
-  // Add configuration diagnostics to main diagnostics
+  // Accumulate configuration diagnostics
   for (auto& diag : config_result.diagnostics.items) {
     dx.items.push_back(std::move(diag));
   }
@@ -839,6 +819,7 @@ inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename
   const auto Qset = to_set(QToks);
   const auto Sset = to_set(SToks);
   const auto Gset = to_set(GToks);
+  (void)Sset;  // currently unused in transition parsing
 
   // 4) q0 (start state)
   Token q0Tok{"<q0?>", eof_span()};
@@ -947,7 +928,7 @@ inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename
     const auto& T = L.tokens;
 
     if (config.num_tapes == 1) {
-      // Single tape transition
+      // Single tape transition: from read to write move
       if (T.size() != 5) {
         add_simple_error(
           dx,
@@ -959,7 +940,6 @@ inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename
         continue;  // recover by skipping this line
       }
 
-      // Fields
       const Token& from = T[0];
       const Token& read = T[1];
       const Token& to = T[2];
@@ -994,37 +974,40 @@ inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename
         bad_move = true;
       }
 
-      Rule rule;
-      rule.is_multi_tape = false;
-      rule.single.from = from.text;
-      rule.single.read = read.text;
-      rule.single.to = to.text;
-      rule.single.write = write.text;
-
+      // Build arity-1 multi rule (even for invalids to aid recovery)
+      Direction dir = Direction::Stay;
       if (move.text == "L") {
-        rule.single.move = Direction::Left;
+        dir = Direction::Left;
       } else if (move.text == "R") {
-        rule.single.move = Direction::Right;
+        dir = Direction::Right;
       } else {
-        rule.single.move = Direction::Stay;
+        dir = Direction::Stay;
       }
+
+      Rule rule;
+      rule.from = from.text;
+      rule.to = to.text;
+      rule.read = {read.text};
+      rule.write = {write.text};
+      rule.move = {dir};
 
       (void)bad_from;
       (void)bad_to;
       (void)bad_read;
       (void)bad_write;
       (void)bad_move;
+
       rules.push_back(std::move(rule));
     } else {
       // Multi-tape transition
-      std::size_t expected_size = 2 + config.num_tapes * 3;
+      const std::size_t expected_size = 2 + config.num_tapes * 3;
       if (T.size() != expected_size) {
         add_simple_error(
           dx,
           "E0010",
           "multi-tape transition must have correct format",
           L.line_span,
-          "expected: from read1,read2,... to write1,write2,... move1,move2,..."
+          "expected: from read1 ... readN to write1 move1 ... writeN moveN"
         );
         continue;
       }
@@ -1035,7 +1018,7 @@ inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename
         continue;
       }
 
-      std::size_t to_idx = 1 + config.num_tapes;
+      const std::size_t to_idx = 1 + config.num_tapes;
       if (to_idx >= T.size()) {
         add_simple_error(
           dx,
@@ -1046,6 +1029,7 @@ inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename
         );
         continue;
       }
+
       const Token& to = T[to_idx];
       if (Qset.count(to.text) == 0) {
         add_symbol_error(dx, "E0014", "unknown 'to' state", to, "state not in Q");
@@ -1053,18 +1037,17 @@ inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename
       }
 
       Rule rule;
-      rule.is_multi_tape = true;
-      rule.multi.from = from.text;
-      rule.multi.to = to.text;
-      rule.multi.read.resize(config.num_tapes);
-      rule.multi.write.resize(config.num_tapes);
-      rule.multi.move.resize(config.num_tapes);
+      rule.from = from.text;
+      rule.to = to.text;
+      rule.read.resize(config.num_tapes);
+      rule.write.resize(config.num_tapes);
+      rule.move.resize(config.num_tapes);
 
       bool valid = true;
 
       // Parse read symbols
       for (std::size_t tape_idx = 0; tape_idx < config.num_tapes; ++tape_idx) {
-        std::size_t read_idx = 1 + tape_idx;
+        const std::size_t read_idx = 1 + tape_idx;
         if (read_idx >= T.size()) {
           valid = false;
           break;
@@ -1074,44 +1057,37 @@ inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename
           add_symbol_error(dx, "E0012", "unknown read symbol", read, "symbol not in Γ");
           valid = false;
         } else {
-          rule.multi.read[tape_idx] = read.text;
+          rule.read[tape_idx] = read.text;
         }
       }
 
-      // Parse write symbols
+      // Parse (write_i, move_i) pairs after 'to'
       for (std::size_t tape_idx = 0; tape_idx < config.num_tapes; ++tape_idx) {
-        std::size_t write_idx = 1 + config.num_tapes + 1 + tape_idx;
-        if (write_idx >= T.size()) {
+        const std::size_t pair_base = 1 + config.num_tapes + 1 + 2 * tape_idx;
+        if (pair_base + 1 >= T.size()) {
           valid = false;
           break;
         }
-        const Token& write = T[write_idx];
+        const Token& write = T[pair_base];
+        const Token& move = T[pair_base + 1];
+
         if (Gset.count(write.text) == 0) {
           add_symbol_error(dx, "E0015", "unknown write symbol", write, "symbol not in Γ");
           valid = false;
         } else {
-          rule.multi.write[tape_idx] = write.text;
+          rule.write[tape_idx] = write.text;
         }
-      }
 
-      // Parse move symbols
-      for (std::size_t tape_idx = 0; tape_idx < config.num_tapes; ++tape_idx) {
-        std::size_t move_idx = 1 + config.num_tapes + 1 + config.num_tapes + tape_idx;
-        if (move_idx >= T.size()) {
-          valid = false;
-          break;
-        }
-        const Token& move = T[move_idx];
         if (move.text != "L" && move.text != "R" && move.text != "S") {
           add_symbol_error(dx, "E0016", "invalid move direction", move, "must be L, R, or S");
           valid = false;
         } else {
           if (move.text == "L") {
-            rule.multi.move[tape_idx] = Direction::Left;
+            rule.move[tape_idx] = Direction::Left;
           } else if (move.text == "R") {
-            rule.multi.move[tape_idx] = Direction::Right;
+            rule.move[tape_idx] = Direction::Right;
           } else {
-            rule.multi.move[tape_idx] = Direction::Stay;
+            rule.move[tape_idx] = Direction::Stay;
           }
         }
       }
@@ -1122,7 +1098,7 @@ inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename
     }
   }
 
-  // Build Turing Machine regardless; we will suppress returning it if errors exist.
+  // Build Turing Machine regardless; suppress returning it if errors exist
   auto b = TM::Builder();
   b.config(config);
   b.start(q0Tok.text).blank(bTok.text);
@@ -1153,7 +1129,7 @@ inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename
   out.config = config;
   out.diagnostics = std::move(dx);
 
-  if (dx.has_errors()) {
+  if (out.diagnostics.has_errors()) {
     return {
       std::unexpected(std::move(out.diagnostics)),
       out.source,

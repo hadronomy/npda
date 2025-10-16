@@ -21,15 +21,6 @@ enum class OperationMode {
 };
 
 template <Hashable State, Hashable TapeSym>
-struct SingleTapeRule {
-  State from{};
-  TapeSym read{};  // symbol to read from tape
-  State to{};
-  TapeSym write{};                    // symbol to write to tape
-  Direction move = Direction::Right;  // head movement direction
-};
-
-template <Hashable State, Hashable TapeSym>
 struct MultiTapeRule {
   State from{};
   std::vector<TapeSym> read{};  // symbols to read from each tape
@@ -38,12 +29,26 @@ struct MultiTapeRule {
   std::vector<Direction> move{};  // movement for each tape head
 };
 
-// Variant rule type for single/multi-tape support
+// Rule is always multi; arity-1 = "single tape"
 template <Hashable State, Hashable TapeSym>
-struct Rule {
-  bool is_multi_tape = false;
-  SingleTapeRule<State, TapeSym> single{};
-  MultiTapeRule<State, TapeSym> multi{};
-};
+using Rule = MultiTapeRule<State, TapeSym>;
+
+// Helper to conveniently create an arity-1 rule (single tape)
+template <Hashable State, Hashable TapeSym>
+constexpr Rule<State, TapeSym> make_single_rule(
+  const State& from,
+  const TapeSym& read,
+  const State& to,
+  const TapeSym& write,
+  Direction move
+) {
+  return Rule<State, TapeSym>{
+    .from = from,
+    .read = {read},
+    .to = to,
+    .write = {write},
+    .move = {move},
+  };
+}
 
 }  // namespace turing

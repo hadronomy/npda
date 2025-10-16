@@ -13,6 +13,7 @@ class TuringHandler final : public CommandHandler {
   std::vector<std::string> input_strings;
   bool trace_enabled = false;
   bool explain = false;
+  bool graphviz = false;
 
   // Configuration options
   std::size_t num_tapes = 1;
@@ -25,12 +26,12 @@ class TuringHandler final : public CommandHandler {
 
 [[maybe_unused]] static std::unique_ptr<CommandHandler> make_turing(CLI::App& sub) {
   auto handler = std::make_unique<TuringHandler>();
+  auto grp = sub.add_option_group("mode");
   sub.add_option("file_path", handler->file_path, "the Turing Machine description file path")
     ->required()
     ->check(CLI::ExistingFile);
-  sub.add_option("input_string", handler->input_strings, "the string to process")
-    ->multi_option_policy(CLI::MultiOptionPolicy::TakeAll)
-    ->required();
+  grp->add_option("input_string", handler->input_strings, "the string to process")
+    ->multi_option_policy(CLI::MultiOptionPolicy::TakeAll);
   sub.add_flag("--trace,!--no-trace", handler->trace_enabled, "Enable trace mode");
   sub.add_flag("--explain", handler->explain, "Enable explanations of transitions");
 
@@ -46,6 +47,8 @@ class TuringHandler final : public CommandHandler {
   sub.add_flag(
     "--allow-stay,!--no-stay", handler->allow_stay, "Allow stay movement (S) or only L/R"
   );
+  grp->add_flag("--graphviz,-g", handler->graphviz, "Export graphviz image");
+  grp->require_option(1, 1);
 
   return handler;
 }

@@ -44,7 +44,7 @@ constexpr auto timestamp = "{:%H:%M:%S}";
  * Application name and version
  */
 constexpr const char* app_name = "npda";
-constexpr const char* app_version = "0.1.0";
+constexpr const char* app_version = "0.2.0";
 constexpr const char* app_description = "TODO";
 constexpr const char* repo_url = "https://github.com/hadronomy/npda";
 

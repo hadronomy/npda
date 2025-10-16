@@ -3,12 +3,16 @@
 #include <iostream>
 #include <string_view>
 
+#include <fmt/color.h>
+#include <fmt/format.h>
+#include <fmt/ranges.h>
+
 #include "cli.h"
 #include "cli/turing.h"
 #include "diag.h"
-#include "fmt/color.h"
 #include "turing/parser.h"
 #include "turing/turing.h"
+#include "ui.h"
 
 static std::vector<std::string> to_symbols(std::string_view s) {
   std::vector<std::string> v;
@@ -50,6 +54,17 @@ int TuringHandler::operator()(const CommandContext&) {
   }
 
   if (auto& tm = result.value; result.value.has_value()) {
+    if (this->graphviz) {
+      auto new_path = this->file_path.filename().stem().replace_extension("png");
+      ui::info(fmt::format("Writting graphviz image in {}", new_path.c_str()));
+      auto res = tm->export_graphviz_image(new_path);
+      if (const auto err = res.error(); !res) {
+        ui::error(err.message);
+        return -1;
+      }
+      return 0;
+    }
+
     auto run = [&](std::string_view s, bool trace = false) {
       // Create TM configuration from CLI options
       turing::TMConfig config;

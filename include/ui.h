@@ -16,4 +16,13 @@ namespace ui {
   );
 }
 
+[[maybe_unused]] static void info(std::string_view message) {
+  fmt::print(
+    fg(npda::config::colors::info) | fmt::emphasis::bold,
+    "{} {}\n",
+    npda::config::symbols::info,
+    message
+  );
+}
+
 }  // namespace ui

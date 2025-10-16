@@ -17,7 +17,8 @@ namespace npda {
 
 /**
  * @class ColorizedFormatter
- * @brief Custom formatter for CLI11 help text with enhanced colorization
+ * @brief Custom formatter for CLI11 help text with enhanced colorization,
+ *        including explicit support for CLI11 Option_group blocks.
  */
 class ColorizedFormatter : public CLI::Formatter {
  public:
@@ -60,7 +61,7 @@ class ColorizedFormatter : public CLI::Formatter {
     return fmt::format(fg(config::colors::command_name), "  {:<25}", name) + desc + "\n";
   }
 
-  // Dedicated positionals section as requested
+  // Dedicated positionals section
   std::string make_positionals(const CLI::App* app) const override {
     const auto pos = positional_options(app);
     if (pos.empty())
@@ -93,8 +94,17 @@ class ColorizedFormatter : public CLI::Formatter {
   }
 
   std::string make_subcommands(const CLI::App* app, CLI::AppFormatMode /*mode*/) const override {
+    // Hide CLI11 Option_group "subcommands" from the COMMANDS list
+    std::vector<const CLI::App*> subs = app->get_subcommands([&](const CLI::App* sub) {
+      // Skip option groups (identified via RTTI) and also nameless entries
+      if (is_option_group(sub))
+        return false;
+      if (sub->get_name().empty())
+        return false;
+      return true;
+    });
+
     std::string out;
-    const std::vector<const CLI::App*> subs = app->get_subcommands({});
     if (!subs.empty()) {
       constexpr std::string_view group = "COMMANDS";
       out += format_section_header(group);
@@ -139,6 +149,7 @@ class ColorizedFormatter : public CLI::Formatter {
     // Order per docs: positionals, option groups, subcommands
     out += make_positionals(app);
     out += make_groups(app, mode);
+    out += make_option_groups(app);
     out += make_subcommands(app, mode);
 
     // Examples (placeholder)
@@ -240,6 +251,96 @@ class ColorizedFormatter : public CLI::Formatter {
     return path;
   }
 
+  // Render CLI11 Option Groups (Option_group subcommands), separating
+  // positionals from non-positional options within each group.
+  [[nodiscard]] std::string make_option_groups(const CLI::App* app) const {
+    // Collect only Option_group instances attached to this app
+    std::vector<const CLI::App*> groups =
+      app->get_subcommands([&](const CLI::App* sub) { return is_option_group(sub); });
+
+    if (groups.empty())
+      return {};
+
+    std::string out;
+
+    for (const CLI::App* grp : groups) {
+      // Collect visible options in the group
+      std::vector<const CLI::Option*> all_opts = grp->get_options([&](const CLI::Option* opt) {
+        return opt != nullptr && !is_effectively_hidden(opt);
+      });
+      if (all_opts.empty())
+        continue;
+
+      // Partition into positionals and non-positionals
+      std::vector<const CLI::Option*> pos_opts;
+      std::vector<const CLI::Option*> nonpos_opts;
+      pos_opts.reserve(all_opts.size());
+      nonpos_opts.reserve(all_opts.size());
+      for (const CLI::Option* o : all_opts) {
+        (o->get_positional() ? pos_opts : nonpos_opts).push_back(o);
+      }
+
+      // Section header: "[Option Group: <group_name>]"
+      // CLI11's Option_group uses App::group_ to store the display name
+      const std::string header = fmt::format("[Option Group: {}]", grp->get_group());
+      out += format_section_header(header);
+
+      // Requirement constraints (min/max) if any
+      const std::size_t min_req = grp->get_require_option_min();
+      const std::size_t max_req = grp->get_require_option_max();
+      if (min_req > 0 || max_req != 0) {
+        out += make_requirement_line(min_req, max_req);
+        out += "\n";
+      }
+
+      // Render positionals (if any)
+      if (!pos_opts.empty()) {
+        out += format_section_header("POSITIONALS");
+        for (const CLI::Option* opt : pos_opts) {
+          out += make_option(opt, /*is_positional=*/true);
+        }
+      }
+
+      // Render non-positional options (if any)
+      if (!nonpos_opts.empty()) {
+        out += format_section_header("OPTIONS");
+        for (const CLI::Option* opt : nonpos_opts) {
+          out += make_option(opt, /*is_positional=*/false);
+        }
+      }
+    }
+
+    return out;
+  }
+
+  // Build a human-readable requirement line for an option group.
+  [[nodiscard]] std::string make_requirement_line(std::size_t min_req, std::size_t max_req) const {
+    const auto info = fg(config::colors::info) | fmt::emphasis::bold;
+
+    auto push = [&](const std::string& s) {
+      return fmt::format(info, "  [{}]\n", s);
+    };
+
+    if (min_req == 0 && max_req == 1) {
+      return push("At most 1 of the following options may be provided");
+    } else if (min_req == 1 && max_req == 0) {
+      return push("At least 1 of the following options is required");
+    } else if (min_req == 1 && max_req == 1) {
+      return push("Exactly 1 of the following options are required");
+    } else if (min_req == 0 && max_req == 0) {
+      // No constraints
+      return std::string{};
+    } else if (max_req == 0) {
+      return push(fmt::format("At least {} of the following options are required", min_req));
+    } else if (min_req == 0) {
+      return push(fmt::format("At most {} of the following options may be provided", max_req));
+    } else {
+      return push(
+        fmt::format("Between {} and {} of the following options are required", min_req, max_req)
+      );
+    }
+  }
+
   // Compose a concise, clean usage tail.
   [[nodiscard]] std::string build_usage_tail(const CLI::App* app) const {
     std::string tail;
@@ -298,6 +399,17 @@ class ColorizedFormatter : public CLI::Formatter {
     if (!n.empty())
       return n;
     return "<arg>";
+  }
+
+  // Identify CLI11 Option_group subcommands (via RTTI)
+  [[nodiscard]] static bool is_option_group(const CLI::App* app) {
+#if CLI11_USE_STATIC_RTTI == 0
+    return dynamic_cast<const CLI::Option_group*>(app) != nullptr;
+#else
+    // If static RTTI only, fall back to a heuristic:
+    // Option_group subcommands typically have empty name and hold options.
+    return app->get_name().empty() && !app->get_options().empty();
+#endif
   }
 };
 
