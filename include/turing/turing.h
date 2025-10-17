@@ -66,12 +66,28 @@ struct RunResult {
 
 // Graphviz export options
 struct GraphvizOptions {
-  std::string rankdir = "LR";          // "LR", "TB", "RL", "BT"
-  std::string fontname = "Helvetica";  // Font for nodes/edges
-  bool color_accepting = true;         // Accepting states styled
-  bool show_start_edge = true;         // Start arrow to start state
-  bool show_legend = false;            // Include legend subgraph
-  bool compact_labels = true;          // Single-line transition labels
+  std::string rankdir = "LR";              // "LR", "TB", "RL", "BT"
+  std::string fontname = "Anonymous Pro";  // Font for nodes/edges
+  bool color_accepting = true;             // Accepting states styled
+  bool show_start_edge = true;             // Start arrow to start state
+  bool show_legend = false;                // Include legend subgraph
+  bool compact_labels = true;              // Single-line transition labels
+  // Styling (prettier defaults)
+  std::string background = "#FFFFFF";
+  std::string node_shape = "circle";
+  std::string node_color = "#455A64";
+  std::string node_fill = "#ECEFF1";
+  std::string node_font = "#263238";
+  std::string accept_color = "#2E7D32";
+  std::string accept_fill = "#E8F5E9";
+  std::string edge_color = "#37474F";
+  std::string edge_font = "#263238";
+  double node_penwidth = 1.2;
+  double accept_penwidth = 1.6;
+  double edge_penwidth = 1.4;
+  double arrowsize = 0.9;
+  double nodesep = 0.35;
+  double ranksep = 0.6;
 };
 
 template <Hashable State, Hashable TapeSym>
@@ -843,7 +859,17 @@ std::expected<RunResult, Error> TuringMachine<State, TapeSym>::run_multi_tape(
   return finalize_reject(steps);
 }
 
-// ---------- Graphviz export ----------
+// ---------- Graphviz export (prettier, merged edges) ----------
+
+template <typename A, typename B>
+struct PairHash {
+  std::size_t operator()(const std::pair<A, B>& p) const noexcept {
+    std::size_t h1 = std::hash<A>{}(p.first);
+    std::size_t h2 = std::hash<B>{}(p.second);
+    // boost-ish hash combine
+    return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
+  }
+};
 
 template <Hashable State, Hashable TapeSym>
 std::string TuringMachine<State, TapeSym>::to_graphviz_dot(const GraphvizOptions& opt) const {
@@ -857,29 +883,70 @@ std::string TuringMachine<State, TapeSym>::to_graphviz_dot(const GraphvizOptions
     return fmt::format("{}", s);
   };
 
-  auto label_for_rule = [&](const rule_type& r) {
+  auto rule_text = [&](const rule_type& r) {
     const auto reads = join_symbols(r.read);
     const auto writes = join_symbols(r.write);
     const auto moves = join_directions(r.move);
 
     if (opt.compact_labels) {
-      return fmt::format(
-        "[r:({}) | w:({}) | m:({})]", dot_escape(reads), dot_escape(writes), dot_escape(moves)
-      );
+      // Compact, readable item
+      return fmt::format("r:({}) | w:({}) | m:({})", reads, writes, moves);
     }
-    return fmt::format(
-      "read: ({})\\nwrite: ({})\\nmove: ({})",
-      dot_escape(reads),
-      dot_escape(writes),
-      dot_escape(moves)
-    );
+    return fmt::format("read: ({})  write: ({})  move: ({})", reads, writes, moves);
   };
 
+  // Collect all states explicitly
+  std::unordered_set<std::string> all_states;
+  all_states.insert(state_id(start_));
+  for (const auto& s : accepting_)
+    all_states.insert(state_id(s));
+  for (const auto& r : rules_) {
+    all_states.insert(state_id(r.from));
+    all_states.insert(state_id(r.to));
+  }
+
+  // Group edges by (from, to) and aggregate labels
+  using EdgeKey = std::pair<std::string, std::string>;
+  std::unordered_map<EdgeKey, std::vector<std::string>, PairHash<std::string, std::string>>
+    edge_labels;
+
+  edge_labels.reserve(rules_.size());
+  for (const auto& r : rules_) {
+    const auto from_str = state_id(r.from);
+    const auto to_str = state_id(r.to);
+    edge_labels[{from_str, to_str}].push_back(rule_text(r));
+  }
+
+  // Build DOT
   std::string dot;
   dot += "digraph TM {\n";
+  dot += "  graph [\n";
+  dot += fmt::format("    bgcolor=\"{}\",\n", opt.background);
+  dot += "    splines=true,\n";
+  dot += "    overlap=false,\n";
+  dot += fmt::format("    pad=\"{}\",\n", 0.15);
+  dot += fmt::format("    nodesep=\"{}\",\n", opt.nodesep);
+  dot += fmt::format("    ranksep=\"{}\"\n", opt.ranksep);
+  dot += "  ];\n";
   dot += fmt::format("  rankdir={};\n", opt.rankdir);
-  dot += fmt::format("  node [fontname=\"{}\"];\n", dot_escape(opt.fontname));
-  dot += fmt::format("  edge [fontname=\"{}\"];\n", dot_escape(opt.fontname));
+  dot += fmt::format(
+    "  node [fontname=\"{}\", shape={}, style=filled, color=\"{}\", "
+    "fillcolor=\"{}\", fontcolor=\"{}\", penwidth={}];\n",
+    dot_escape(opt.fontname),
+    opt.node_shape,
+    opt.node_color,
+    opt.node_fill,
+    opt.node_font,
+    opt.node_penwidth
+  );
+  dot += fmt::format(
+    "  edge [fontname=\"{}\", color=\"{}\", fontcolor=\"{}\", penwidth={}, arrowsize={}];\n",
+    dot_escape(opt.fontname),
+    opt.edge_color,
+    opt.edge_font,
+    opt.edge_penwidth,
+    opt.arrowsize
+  );
   dot += "  labelloc=\"t\";\n";
   dot += "  labeljust=\"l\";\n";
   dot += fmt::format(
@@ -892,51 +959,77 @@ std::string TuringMachine<State, TapeSym>::to_graphviz_dot(const GraphvizOptions
     dot_escape(fmt::format("{}", blank_))
   );
 
+  // Start node arrow
   if (opt.show_start_edge) {
-    dot += "  __start [shape=point, width=0.15, label=\"\"];\n";
-    dot += fmt::format("  __start -> \"{}\";\n", dot_escape(state_id(start_)));
+    dot += "  __start [shape=point, width=0.15, label=\"\", color=\"" + opt.edge_color + "\"];\n";
+    dot += fmt::format(
+      "  __start -> \"{}\" [color=\"{}\"];\n", dot_escape(state_id(start_)), opt.edge_color
+    );
   }
 
-  std::unordered_set<std::string> all_states;
-  all_states.insert(state_id(start_));
-  for (const auto& s : accepting_)
-    all_states.insert(state_id(s));
-  for (const auto& r : rules_) {
-    all_states.insert(state_id(r.from));
-    all_states.insert(state_id(r.to));
-  }
-
+  // Render states
   for (const auto& s_str : all_states) {
     const bool is_accept = accepting_str.find(s_str) != accepting_str.end();
-    if (is_accept && opt.color_accepting) {
-      dot += fmt::format(
-        "  \"{}\" [shape=doublecircle, color=\"#2e7d32\", "
-        "fontcolor=\"#2e7d32\"];\n",
-        dot_escape(s_str)
-      );
-    } else if (is_accept) {
-      dot += fmt::format("  \"{}\" [shape=doublecircle];\n", dot_escape(s_str));
+    if (is_accept) {
+      if (opt.color_accepting) {
+        dot += fmt::format(
+          "  \"{}\" [shape=doublecircle, color=\"{}\", fontcolor=\"{}\", fillcolor=\"{}\", "
+          "penwidth={}];\n",
+          dot_escape(s_str),
+          opt.accept_color,
+          opt.node_font,
+          opt.accept_fill,
+          opt.accept_penwidth
+        );
+      } else {
+        dot += fmt::format("  \"{}\" [shape=doublecircle];\n", dot_escape(s_str));
+      }
     } else {
-      dot += fmt::format("  \"{}\" [shape=circle];\n", dot_escape(s_str));
+      dot += fmt::format(
+        "  \"{}\" [shape={}, color=\"{}\", fillcolor=\"{}\", fontcolor=\"{}\", penwidth={}];\n",
+        dot_escape(s_str),
+        opt.node_shape,
+        opt.node_color,
+        opt.node_fill,
+        opt.node_font,
+        opt.node_penwidth
+      );
     }
   }
 
-  for (const auto& r : rules_) {
-    const auto from_str = dot_escape(state_id(r.from));
-    const auto to_str = dot_escape(state_id(r.to));
-    const auto elabel = dot_escape(label_for_rule(r));
-    dot += fmt::format("  \"{}\" -> \"{}\" [label=\"{}\"];\n", from_str, to_str, elabel);
+  // Render merged edges; each edge lists all rule variants
+  for (const auto& [key, labels] : edge_labels) {
+    const auto& from_str = key.first;
+    const auto& to_str = key.second;
+
+    // Build combined label with bullets (•) and newlines
+    std::string combined;
+    combined.reserve(64 * labels.size());
+    for (std::size_t i = 0; i < labels.size(); ++i) {
+      if (i)
+        combined += "\\n";
+      combined += "• ";
+      combined += dot_escape(labels[i]);
+    }
+
+    dot += fmt::format(
+      "  \"{}\" -> \"{}\" [label=\"{}\"];\n", dot_escape(from_str), dot_escape(to_str), combined
+    );
   }
 
   if (opt.show_legend) {
     dot += "  subgraph cluster_legend {\n";
     dot += "    label = \"Legend\";\n";
-    dot += "    style = dashed;\n";
-    dot += "    legend_accept [label=\"accepting\", shape=doublecircle];\n";
-    dot += "    legend_state [label=\"state\", shape=circle];\n";
+    dot += "    style = \"rounded,dashed\";\n";
+    dot += "    color = \"#B0BEC5\";\n";
+    dot += "    fontcolor = \"#37474F\";\n";
+    dot += "    legend_accept [label=\"accepting (double circle)\", shape=doublecircle, color=\"" +
+           opt.accept_color + "\", fillcolor=\"" + opt.accept_fill + "\", style=filled];\n";
+    dot += "    legend_state [label=\"state\", shape=" + opt.node_shape + ", color=\"" +
+           opt.node_color + "\", fillcolor=\"" + opt.node_fill + "\", style=filled];\n";
     dot +=
-      "    legend_t [label=\"transition: [r:(... ) | w:(... ) | m:(... "
-      ")]\", shape=box];\n";
+      "    legend_t [label=\"edge label: • r:(reads) | w:(writes) | m:(moves)\", shape=box, "
+      "style=rounded, color=\"#B0BEC5\", fontcolor=\"#37474F\"];\n";
     dot += "    legend_state -> legend_state [style=invis];\n";
     dot += "  }\n";
   }
