@@ -59,11 +59,11 @@ pub fn make(step: *Step, options: Step.MakeOptions) anyerror!void {
     const output_dir = write_config_header.output_dir.path(b, include_path).getPath2(b, &write_config_header.step);
 
     // Use dupeZ to make sure we have a proper owned copy of the path string
-    const header_file = try b.allocator.dupe(u8, write_config_header.config_header.output_file.getPath());
+    const header_file = try b.allocator.dupe(u8, write_config_header.config_header.getOutput().getPath(b));
     defer b.allocator.free(header_file);
 
-    var output = std.ArrayList(u8).init(gpa);
-    defer output.deinit();
+    var output: std.ArrayList(u8) = try .initCapacity(gpa, 100);
+    defer output.deinit(gpa);
 
     // Read the config header output
     const contents = std.fs.cwd().readFileAlloc(
@@ -73,7 +73,7 @@ pub fn make(step: *Step, options: Step.MakeOptions) anyerror!void {
     ) catch |err| {
         return step.fail("unable to read config header file at {s}: {s}", .{ header_file, @errorName(err) });
     };
-    try output.appendSlice(contents);
+    try output.appendSlice(gpa, contents);
 
     // Write the config header to the output directory
     try std.fs.cwd().writeFile(.{

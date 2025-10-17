@@ -15,8 +15,8 @@ pub fn init(
     cppflags: []const []const u8,
     exe: *Step.Compile,
 ) !DependencyResources {
-    var steps = std.ArrayList(*Step).init(b.allocator);
-    errdefer steps.deinit();
+    var steps: std.ArrayList(*Step) = try .initCapacity(b.allocator, 20);
+    errdefer steps.deinit(b.allocator);
 
     var lib_paths = std.StringHashMap([]const u8).init(b.allocator);
     errdefer {
@@ -45,10 +45,13 @@ pub fn init(
         .optimize = optimize,
     });
     const fmt_lib_path = fmt_src.path("./include");
-    const fmt = b.addStaticLibrary(.{
+    const fmt = b.addLibrary(.{
         .name = "fmt",
-        .optimize = optimize,
-        .target = target,
+        .root_module = b.createModule(.{
+            .optimize = optimize,
+            .target = target,
+        }),
+        .linkage = .static,
     });
     fmt.linkLibCpp();
     fmt.addIncludePath(fmt_lib_path);
@@ -77,7 +80,7 @@ pub fn init(
             .flags = cppflags,
         });
     }
-    try steps.append(&fmt.step);
+    try steps.append(b.allocator, &fmt.step);
 
     // Tabulate
     const tabulate_src = b.dependency("tabulate", .{

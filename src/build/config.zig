@@ -23,4 +23,5 @@ pub const cppflags = [_][]const u8{
     "-Wno-unqualified-std-cast-call",
     "-Wno-bitwise-instead-of-logical", //for notcurses
     "-fno-sanitize=undefined",
+    "-U_LIBCPP_ENABLE_CXX17_REMOVED_UNEXPECTED_FUNCTIONS",
 };

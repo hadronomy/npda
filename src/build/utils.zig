@@ -10,7 +10,7 @@ pub fn relativePath(b: *std.Build, target_path: []const u8) ![]const u8 {
 }
 
 pub fn findFilesRecursive(b: *std.Build, dir_name: []const u8, exts: []const []const u8) ![][]const u8 {
-    var sources = std.ArrayList([]const u8).init(b.allocator);
+    var sources: std.ArrayList([]const u8) = try .initCapacity(b.allocator, 100);
 
     var dir = try b.build_root.handle.openDir(dir_name, .{ .iterate = true });
     var walker = try dir.walk(b.allocator);
@@ -23,7 +23,7 @@ pub fn findFilesRecursive(b: *std.Build, dir_name: []const u8, exts: []const []c
             }
         } else false;
         if (include_file) {
-            try sources.append(b.fmt("{s}/{s}", .{ dir_name, entry.path }));
+            try sources.append(b.allocator, b.fmt("{s}/{s}", .{ dir_name, entry.path }));
         }
     }
 
@@ -31,7 +31,7 @@ pub fn findFilesRecursive(b: *std.Build, dir_name: []const u8, exts: []const []c
 }
 
 pub fn findDependencyFiles(b: *Build, dep_path: Build.LazyPath, exts: []const []const u8) ![]const Build.LazyPath {
-    var sources = std.ArrayList(Build.LazyPath).init(b.allocator);
+    var sources: std.ArrayList(Build.LazyPath) = try .initCapacity(b.allocator, 100);
     const abs_path = dep_path.getPath(b);
 
     // Check if the path exists
@@ -58,7 +58,7 @@ pub fn findDependencyFiles(b: *Build, dep_path: Build.LazyPath, exts: []const []
             // The path field already contains the relative path from the root directory
             // Just use it directly to create a LazyPath
             const file_path = dep_path.path(b, entry.path);
-            try sources.append(file_path);
+            try sources.append(b.allocator, file_path);
         }
     }
 

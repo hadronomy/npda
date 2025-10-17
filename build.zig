@@ -11,7 +11,7 @@ const utils = buildpkg.utils;
 // - https://github.com/ghostty-org/ghostty/blob/main/build.zig
 
 comptime {
-    buildpkg.zig.requireZig("0.14.0");
+    buildpkg.zig.requireZig("0.15.2");
 }
 
 pub fn build(b: *std.Build) !void {
@@ -24,8 +24,10 @@ pub fn build(b: *std.Build) !void {
 
     const exe = b.addExecutable(.{
         .name = b.fmt("{s}-{s}-{s}", .{ config.program_name, triple, @tagName(optimize) }),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     exe.linkLibCpp();
@@ -62,8 +64,8 @@ pub fn build(b: *std.Build) !void {
 
     // Add source files to the executable
     const sources = try utils.findFilesRecursive(b, "src", &config.cfiles_exts);
-    var all_sources = std.ArrayList([]const u8).init(b.allocator);
-    try all_sources.appendSlice(sources);
+    var all_sources: std.ArrayList([]const u8) = try .initCapacity(b.allocator, 100);
+    try all_sources.appendSlice(b.allocator, sources);
 
     // Add source files to executable
     exe.addCSourceFiles(.{
@@ -74,7 +76,7 @@ pub fn build(b: *std.Build) !void {
 
     // Add specific steps to run just flex or bison
     generate_step.dependOn(&write_config_h.step);
-    buildpkg.compile_commands.createStep(b, "zcc", .{
+    try buildpkg.compile_commands.createStep(b, "zcc", .{
         .target = exe,
     });
 
