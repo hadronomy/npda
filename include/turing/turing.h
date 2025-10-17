@@ -254,9 +254,9 @@ class TuringMachine {
 
   [[nodiscard]] std::expected<void, Error> export_graphviz_image(
     const std::filesystem::path& output_path,
+    std::string_view dot_exe = "dot",
     std::string_view format = "png",
-    const GraphvizOptions& opt = {},
-    std::string_view dot_exe = "dot"
+    const GraphvizOptions& opt = {}
   ) const;
 
  private:
@@ -929,6 +929,7 @@ std::string TuringMachine<State, TapeSym>::to_graphviz_dot(const GraphvizOptions
   dot += fmt::format("    ranksep=\"{}\"\n", opt.ranksep);
   dot += "  ];\n";
   dot += fmt::format("  rankdir={};\n", opt.rankdir);
+  dot += fmt::format("  dpi={};", 300);
   dot += fmt::format(
     "  node [fontname=\"{}\", shape={}, style=filled, color=\"{}\", "
     "fillcolor=\"{}\", fontcolor=\"{}\", penwidth={}];\n",
@@ -1066,9 +1067,9 @@ std::expected<void, Error> TuringMachine<State, TapeSym>::write_graphviz_dot(
 template <Hashable State, Hashable TapeSym>
 std::expected<void, Error> TuringMachine<State, TapeSym>::export_graphviz_image(
   const std::filesystem::path& output_path,
+  std::string_view dot_exe,
   std::string_view format,
-  const GraphvizOptions& opt,
-  std::string_view dot_exe
+  const GraphvizOptions& opt
 ) const {
   std::error_code ec;
   const auto tmp_dir = std::filesystem::temp_directory_path(ec);
@@ -1082,7 +1083,7 @@ std::expected<void, Error> TuringMachine<State, TapeSym>::export_graphviz_image(
   }
 
   const auto cmd = fmt::format(
-    "\"{}\" -T{} \"{}\" -o \"{}\"",
+    "\"{}\" -T{} \"{}\" -Goverlap=false -Gmodel=subset -o \"{}\"",
     std::string(dot_exe),
     std::string(format),
     tmp_dot.string(),

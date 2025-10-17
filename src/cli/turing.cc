@@ -57,7 +57,16 @@ int TuringHandler::operator()(const CommandContext&) {
     if (this->graphviz) {
       auto new_path = this->file_path.filename().stem().replace_extension("png");
       ui::info(fmt::format("Writting graphviz image in {}", new_path.c_str()));
-      auto res = tm->export_graphviz_image(new_path);
+      auto exe = this->graphviz_exe;
+      if (this->dot_only) {
+        auto res = tm->write_graphviz_dot(new_path.replace_extension("dot"));
+        if (const auto err = res.error(); !res) {
+          ui::error(err.message);
+          return -1;
+        }
+        return 0;
+      }
+      auto res = tm->export_graphviz_image(new_path, exe);
       if (const auto err = res.error(); !res) {
         ui::error(err.message);
         return -1;

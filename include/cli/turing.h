@@ -14,6 +14,8 @@ class TuringHandler final : public CommandHandler {
   bool trace_enabled = false;
   bool explain = false;
   bool graphviz = false;
+  std::string graphviz_exe = "dot";
+  bool dot_only = false;
 
   // Configuration options
   std::size_t num_tapes = 1;
@@ -48,7 +50,13 @@ class TuringHandler final : public CommandHandler {
     "--allow-stay,!--no-stay", handler->allow_stay, "Allow stay movement (S) or only L/R"
   );
   grp->add_flag("--graphviz,-g", handler->graphviz, "Export graphviz image");
+  sub.add_option("--exe,-e", handler->graphviz_exe, "The graphviz executable to use")
+    ->needs("--graphviz");
+  sub
+    .add_flag(
+      "--dot-only", handler->dot_only, "Whether to only output the graphviz file and no image"
+    )
+    ->needs("--graphviz");
   grp->require_option(1, 1);
-
   return handler;
 }
