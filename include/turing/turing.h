@@ -42,7 +42,7 @@ struct Error {
 };
 
 struct RunOptions {
-  std::size_t max_steps = 1000000;
+  std::size_t max_steps = 1'000'000;
   bool track_witness = true;
 
   bool trace = false;
