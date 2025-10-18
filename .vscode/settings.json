@@ -1,0 +1,18 @@
+{
+  "terminal.integrated.defaultProfile.linux": "bash",
+  "python.autoComplete.extraPaths": [
+    "${workspaceFolder}/sources/poky/bitbake/lib"
+  ],
+  "clangd.arguments": [
+    "--background-index"
+  ],
+  "files.watcherExclude": {
+    "**/config.h": true
+  },
+  "search.exclude": {
+    "**/config.h": true
+  },
+  "files.readonlyInclude": {
+    "**/config.h": true
+  }
+}
