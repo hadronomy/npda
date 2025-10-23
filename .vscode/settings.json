@@ -14,5 +14,22 @@
   },
   "files.readonlyInclude": {
     "**/config.h": true
+  },
+  "editor.semanticTokenColorCustomizations": {
+    "enabled": true,
+    "rules": {
+      "state": "#a6e3a1",
+      "stateSection": "#a6e3a1",
+      "input": "#89dceb",
+      "tape": "#94e2d5",
+      "blank": "#f38ba8",
+      "wildcard": "#fab387",
+      "read": "#74c7ec",
+      "write": "#f9e2af",
+      "move": "#cba6f7",
+      "key": "#f38ba8",
+      "value": "#89dceb",
+      "comment": "#6c7086"
+    }
   }
 }

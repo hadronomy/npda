@@ -1,0 +1,73 @@
+{
+  "publisher": "hadronomy",
+  "name": "turing-lang",
+  "displayName": "turing-lang",
+  "type": "module",
+  "version": "0.0.1",
+  "private": true,
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.cjs",
+  "icon": "res/icon.png",
+  "engines": {
+    "vscode": "^1.89.0"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "turing-lang.helloWorld",
+        "title": "Hello World"
+      }
+    ],
+    "configuration": {
+      "title": "turing-lang",
+      "properties": {
+        "turing-lang.message": {
+          "type": "string",
+          "default": "Hello World",
+          "description": "The message to show in the notification"
+        }
+      }
+    },
+    "languages": [
+      {
+        "id": "turing",
+        "aliases": [
+          "TURING",
+          "turing"
+        ],
+        "extensions": [
+          ".turing"
+        ],
+        "icon": {
+          "light": "./res/icon.svg",
+          "dark": "./res/icon.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "turing",
+        "scopeName": "source.turing",
+        "path": "./syntax/turing.tmLanguage.json"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "tsdown --env.NODE_ENV production",
+    "dev": "tsdown --watch ./src --env.NODE_ENV development",
+    "typecheck": "tsc --noEmit",
+    "vscode:prepublish": "pnpm run build"
+  },
+  "devDependencies": {
+    "@types/node": "22.x",
+    "@types/vscode": "^1.101.0",
+    "reactive-vscode": "^0.4.0",
+    "tsdown": "^0.14.2",
+    "typescript": "^5.9.2"
+  }
+}

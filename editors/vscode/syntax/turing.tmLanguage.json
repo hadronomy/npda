@@ -1,0 +1,216 @@
+{
+  "name": "Turing Machine Spec",
+  "scopeName": "source.turing",
+  "fileTypes": ["tm", "turing", "tmspec", "turing-spec"],
+  "patterns": [
+    { "include": "#config-block" },
+    { "include": "#comments" },
+    { "include": "#sections" },
+    { "include": "#transition-lines" },
+    { "include": "#fallback" }
+  ],
+  "repository": {
+    "comments": {
+      "name": "comment.line.number-sign.turing",
+      "match": "(^|\\s)(#).*$",
+      "captures": { "2": { "name": "punctuation.definition.comment.turing" } }
+    },
+
+    "config-block": {
+      "name": "meta.config.block.turing",
+      "begin": "^[ \\t]*(#)[ \\t]*///[ \\t]*config[ \\t]*$",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.comment.turing" }
+      },
+      "end": "^[ \\t]*(#)[ \\t]*///[ \\t]*$",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.comment.turing" }
+      },
+      "patterns": [
+        {
+          "name": "meta.config.line.turing",
+          "begin": "^[ \\t]*(#)[ \\t]*",
+          "beginCaptures": {
+            "1": { "name": "punctuation.definition.comment.turing" }
+          },
+          "end": "$",
+          "patterns": [
+            {
+              "name": "meta.config.assignment.turing",
+              "match": "\\b([A-Za-z0-9_-]+)(\\s*=\\s*)([^\\s].*)$",
+              "captures": {
+                "1": { "name": "variable.parameter.turing" },
+                "2": { "name": "keyword.operator.assignment.equals.turing" },
+                "3": { "name": "string.unquoted.value.turing" }
+              }
+            },
+            {
+              "name": "string.quoted.double.turing",
+              "begin": "\"",
+              "end": "\""
+            },
+            { "name": "string.quoted.single.turing", "begin": "'", "end": "'" },
+            {
+              "name": "constant.numeric.integer.turing",
+              "match": "\\b\\d+\\b"
+            },
+            {
+              "name": "constant.language.boolean.turing",
+              "match": "\\b(true|false)\\b"
+            },
+            {
+              "name": "support.constant.config.enum.turing",
+              "match": "\\b(bidirectional|right-only|simultaneous|independent)\\b"
+            }
+          ]
+        }
+      ]
+    },
+
+    "sections": {
+      "patterns": [
+        {
+          "name": "meta.section.states.turing",
+          "begin": "^(?!\\s*#)\\s*(?=\\S)",
+          "end": "$",
+          "contentName": "meta.section.states.content.turing",
+          "patterns": [{ "include": "#states-green" }]
+        },
+        {
+          "name": "meta.section.input-alphabet.turing",
+          "begin": "^(?!\\s*#)\\s*(?=\\S)",
+          "end": "$",
+          "contentName": "meta.section.input.content.turing",
+          "patterns": [{ "include": "#symbols" }]
+        },
+        {
+          "name": "meta.section.tape-alphabet.turing",
+          "begin": "^(?!\\s*#)\\s*(?=\\S)",
+          "end": "$",
+          "contentName": "meta.section.tape.content.turing",
+          "patterns": [{ "include": "#symbols" }]
+        },
+        {
+          "name": "meta.section.start-state.turing",
+          "begin": "^(?!\\s*#)\\s*(?=\\S)",
+          "end": "$",
+          "patterns": [{ "include": "#states-green" }]
+        },
+        {
+          "name": "meta.section.blank-symbol.turing",
+          "begin": "^(?!\\s*#)\\s*(?=\\S)",
+          "end": "$",
+          "patterns": [{ "include": "#symbols" }]
+        },
+        {
+          "name": "meta.section.accepting-or-transition.turing",
+          "begin": "^(?!\\s*#)\\s*(?=\\S)",
+          "end": "$",
+          "patterns": [
+            { "include": "#transition-lines" },
+            { "include": "#states-green" }
+          ]
+        }
+      ]
+    },
+
+    "transition-lines": {
+      "patterns": [
+        { "include": "#transition-multi" },
+        { "include": "#transition-single" }
+      ]
+    },
+
+    "transition-single": {
+      "name": "meta.transition.single.turing",
+      "match": "^(?!\\s*#)\\s*(\\S+)\\s+(\\S+)\\s+(\\S+)\\s+(\\S+)\\s+([LRS])\\s*$",
+      "captures": {
+        "1": { "name": "entity.name.type.state.from.turing" },
+        "2": { "name": "constant.character.tape.read.turing" },
+        "3": { "name": "entity.name.type.state.to.turing" },
+        "4": { "name": "constant.character.tape.write.turing" },
+        "5": { "name": "keyword.operator.direction.move.turing" }
+      }
+    },
+
+    "transition-multi": {
+      "name": "meta.transition.multi.turing",
+      "begin": "^(?!\\s*#)\\s*(\\S+)",
+      "beginCaptures": {
+        "1": { "name": "entity.name.type.state.from.turing" }
+      },
+      "end": "$",
+      "patterns": [
+        {
+          "name": "meta.transition.reads.turing",
+          "begin": "\\G\\s+",
+          "end": "(?=\\s+\\S+\\s+\\S+\\s+[LRS](?:\\s+\\S+\\s+[LRS])*$)|$",
+          "patterns": [
+            { "name": "constant.character.tape.read.turing", "match": "\\S+" }
+          ]
+        },
+        {
+          "name": "entity.name.type.state.to.turing",
+          "match": "(?<=\\s)(\\S+)(?=\\s+\\S+\\s+[LRS])"
+        },
+        {
+          "name": "meta.transition.actions.turing",
+          "begin": "(?=\\s+\\S+\\s+[LRS])",
+          "end": "$",
+          "patterns": [
+            {
+              "name": "meta.transition.pair.turing",
+              "match": "\\s*(\\S+)\\s+([LRS])",
+              "captures": {
+                "1": { "name": "constant.character.tape.write.turing" },
+                "2": { "name": "keyword.operator.direction.move.turing" }
+              }
+            }
+          ]
+        }
+      ]
+    },
+
+    "states-green": {
+      "patterns": [
+        {
+          "name": "entity.name.constant.turing",
+          "match": "\\bq[A-Za-z0-9_]*\\b"
+        },
+        {
+          "name": "entity.name.constant.turing",
+          "match": "\\bQ[A-Za-z0-9_]*\\b"
+        },
+        {
+          "name": "entity.name.constant.turing",
+          "match": "\\b[A-Za-z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+
+    "symbols": {
+      "patterns": [
+        { "name": "constant.language.blank.turing", "match": "\\b_\\b" },
+        { "name": "constant.character.wildcard.turing", "match": "\\*" },
+        { "name": "constant.numeric.decimal.turing", "match": "\\b\\d+\\b" },
+        {
+          "name": "constant.character.alphabet.turing",
+          "match": "\\b[a-zA-Z]\\b"
+        }
+      ]
+    },
+
+    "fallback": {
+      "patterns": [
+        { "include": "#transition-single" },
+        { "include": "#transition-multi" },
+        { "include": "#symbols" },
+        { "include": "#states-green" },
+        { "include": "#comments" },
+        { "name": "text.plain.turing", "match": "\\S+" }
+      ]
+    }
+  },
+  "uuid": "5c0c6b78-5e10-4a8a-8d5a-6a1c0f3c9c11",
+  "description": "Fixes: keeps transitions tokenization identical, but assigns moves L/R/S to 'keyword.operator.direction.move.turing' so they can be themed distinctly from reads/writes/states. Sections color all tokens in green via 'entity.name.constant.turing'. Config keys remain 'variable.parameter' (red in Catppuccin Mocha)."
+}

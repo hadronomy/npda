@@ -2,5 +2,6 @@
 "cargo:ouch" = "latest"
 just = "latest"
 meson = "latest"
+node = "latest"
 zig = "0.15.2"
 zls = "0.15.0"
