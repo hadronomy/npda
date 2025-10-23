@@ -27,8 +27,107 @@
 
 ## Docs
 
-This project implements a NPDA (Non-Deterministic Push Down Automata). 
-See the [docs](/docs/CC_2526_Practica1.pdf) pdf for more information about the assignment.
+This project implements a Turing Machine and a NPDA (Non-Deterministic Push Down Automata). 
+See the [docs](/docs/CC_2526_Practica2.pdf) and [npda docs](/docs/CC_2526_Practica1.pdf) pdf for more information about the assignment.
+
+The turing machine is implemented to work primaraly in simultaneous mode, with any type of expansion, and with or
+without the stay movement.
+
+The input file format is as follows
+
+### Turing Machine File Format
+
+What this file describes
+- A Turing Machine: its states, symbols, start/blank choices, optional accepting states, and the transition rules it follows.
+- Supports single-tape or multi-tape machines.
+- Comments start with # and continue to end of line.
+
+Basic layout (in order)
+1) Line of states (Q)
+2) Line of input symbols (Σ)
+3) Line of tape symbols (Γ)
+4) Line with the start state (q0)
+5) Line with the blank symbol (b)
+6) Optional line of accepting states (F)
+7) Transition lines (one per line) until the end
+
+> [!NOTE]
+>- Items are words separated by spaces.
+>- The F line is optional. If the next line looks like a transition, it’s treated as a transition (not F).
+
+Configuration block (optional)
+- Set options like number of tapes anywhere in the file:
+```
+# /// config
+# num_tapes = 2
+# tape_direction = right-only        # or "bidirectional"
+# operation_mode = independent       # or "simultaneous"
+# allow_stay = true                  # true or false
+# ///
+```
+
+Single-tape transitions
+- Format: from read to write move
+  - from/to are states (from Q)
+  - read/write are tape symbols (from Γ)
+  - move is L (left), R (right), or S (stay)
+- Example:
+```
+q0 0 q1 1 R
+```
+
+Multi-tape transitions (if num_tapes = N)
+- Format: from read1 ... readN to write1 move1 write2 move2 ... writeN moveN
+  - One read symbol per tape before “to”
+  - Then, for each tape: write symbol and move (L/R/S)
+- Example for 2 tapes:
+```
+q0 0 1 q1 1 R 1 R
+```
+
+Minimal single-tape example
+```
+# states
+q0 q1 qaccept
+# input alphabet
+0 1
+# tape alphabet
+0 1 _
+# start state
+q0
+# blank symbol
+_
+# accepting states
+qaccept
+# transitions
+q0 0 q1 1 R
+q1 1 qaccept 1 S
+```
+
+Minimal two-tape example (with config)
+```
+# /// config
+# num_tapes = 2
+# operation_mode = simultaneous
+# allow_stay = true
+# ///
+q0 q1 qf
+0 1
+0 1 _
+q0
+_
+qf
+# transitions: from r1 r2 to w1 m1 w2 m2
+q0 0 1 q1 1 R 1 R
+q1 _ _ qf _ S _ S
+```
+
+> [!WARNING]
+>- Symbols in transitions must be listed in Γ (tape symbols).
+>- q0 and b lines must have exactly one item.
+>- If the first line after b looks like a transition, it won’t be treated as F.
+>- Use # to add comments; they’re ignored (except special config lines).
+
 
 The automata is implemented to work with, empty stack finalization and with final state finalization.
 
@@ -68,13 +167,18 @@ just run --help
 
 ### Available Commands
 
-- `run <file_path> <strings...>` - See if the given automata accepts the given string
+- `turing <file_path> <strings...>` - Executes and sees if the given turing machine accepts the given strings
+- `npda <file_path> <strings...>` - See if the given automata accepts the given string
 
 ### Examples
 
 ```bash
+cc turing ./examples/turing/count-replace.txt "aabb"
+```
+
+```bash
 # Benchmark greedy CV generator algorithm
-npda run ./examples/APf-1 "aabb"
+cc npda ./examples/APf-1 "aabb"
 ```
 
 ## License

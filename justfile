@@ -1,7 +1,7 @@
-project_name := "PR1-NPDA-2526"
+project_name := "PR2-TURING-2526"
 dir_path := `realpath .`
 dir_name := `basename $(realpath .)`
-bin_name := "npda"
+bin_name := "turing"
 hash_file := "build/.build_hash"
 
 _default:
