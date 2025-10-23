@@ -173,8 +173,20 @@ just run --help
 ### Examples
 
 ```bash
-cc turing ./examples/turing/count-replace.txt "aabb"
+cc turing ./examples/turing/count-replace.turing "aabb"
 ```
+
+> [!IMPORTANT]
+> If you use the `-g` flag without providing any input string
+> it will generate a visualization of the given turing machine
+> **You WILL need to install `graphviz` in your environment for this to work**
+
+
+```bash
+cc turing ./examples/turing/count-replace.turing -g
+```
+
+---
 
 ```bash
 # Benchmark greedy CV generator algorithm
