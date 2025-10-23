@@ -1,0 +1,54 @@
+# States (Q)
+q0 qScanA qScanB qRewind qFindA qFindB qBackLeft qacc
+
+# Input alphabet (Σ)
+a b ?
+
+# Tape alphabet (Γ)
+a b X Y _
+
+# Start state (q0)
+blabla
+
+# Blank symbol (b)
+?
+
+# Accepting states (F)
+qacc
+
+# Transitions (from read to write move)
+
+# Phase 1: Validate shape a^+ b^+ and rewind to start
+q0 a qScanA a R
+
+qScanA a qScanA a R
+qScanA b qScanB b X
+
+qScanB b qScanB b R
+qScanB _ qRewind _ L
+
+qRewind a qRewind a L
+qRewind b qRewind b L
+qRewind X qRewind X L
+qRewind Y qRewind Y L
+qRewind _ qFindA _ R
+
+# Phase 2: Pair each a with a b; then check m > n
+# Find next unmarked 'a'; if we encounter an unmarked 'b' first, accept (m > n)
+qFindA X qFindA X R
+qFindA Y qFindA Y R
+qFindA a qFindB X R
+qFindA b qacc b R
+
+# From marked 'a' (X), find next unmarked 'b' and mark it (Y)
+qFindB a qFindB a R
+qFindB X qFindB X R
+qFindB Y qFindB Y R
+qFindB b qBackLeft Y L
+
+# Return to the left end and repeat
+qBackLeft a qBackLeft a L
+qBackLeft b qBackLeft b L
+qBackLeft X qBackLeft X L
+qBackLeft Y qBackLeft Y L
+qBackLeft _ qFindA _ R
