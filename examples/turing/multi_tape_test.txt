@@ -23,7 +23,7 @@ _
 # F (accepting states)
 qAcc
 
-# Transitions (multi-tape): from r1 r2 to w1 w2 m1 m2
+# Transitions (multi-tape): from r1 r2 to w1 m1 w2 m2
 
 # Phase A: count a’s on tape 2 as X’s
 qA a _ qA a X R R

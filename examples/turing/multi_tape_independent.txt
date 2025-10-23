@@ -23,67 +23,67 @@ _
 # F (accepting states)
 qAcc
 
-# Transitions (multi-tape): from r1 r2 to w1 w2 m1 m2
+# Transitions (multi-tape): from r1 r2 to w1 m1 w2 m2
 
 # Phase A: count a’s on tape 2 as X’s
-qA a _ qA a X R R
+qA a _ qA a R X R
 
 # First c: switch to C phase (stay on same c to process it)
-qA c _ qCw c _ S S
+qA c _ qCw c S _ S
 
 # End-of-input from start: verify no work symbols on tape 2
 # Move one cell left on tape 2; if still blank, accept; if X/Y present, reject.
-qA _ _ qA_end _ _ S L
-qA_end _ _ qAcc _ _ S R
-qA_end _ X qRej _ X S S
-qA_end _ Y qRej _ Y S S
+qA _ _ qA_end _ S _ L
+qA_end _ _ qAcc _ S _ R
+qA_end _ X qRej _ S X S
+qA_end _ Y qRej _ S Y S
 
 # b before c is invalid
-qA b _ qRej b _ S S
+qA b _ qRej b S _ S
 
 # Phase C with X’s available (matching c’s against X’s)
 # For a c: step left on tape 2 to check for X
-qCw c _ qCt c _ S L
+qCw c _ qCt c S _ L
 # C-block ended: check that no X remains (move left to test)
-qCw b _ qCe b _ S L
-qCw _ _ qCe _ _ S L
+qCw b _ qCe b S _ L
+qCw _ _ qCe _ S _ L
 # Seeing an 'a' again is invalid
-qCw a _ qRej a _ S S
+qCw a _ qRej a S _ S
 
 # qCt: after moving left on tape 2
 # If we saw an X: consume it, return right to boundary, advance tape 1
-qCt c X qCw c _ R R
+qCt c X qCw c R _ R
 # If no X left: return to boundary and switch to Y-accumulation
-qCt c _ qCyw c _ S R
+qCt c _ qCyw c S _ R
 
 # First Y write after X’s are depleted
-qCyw c _ qCy c Y R R
+qCyw c _ qCy c R Y R
 
 # qCy: accumulate one Y per extra c
-qCy c _ qCy c Y R R
+qCy c _ qCy c R Y R
 # When b’s start, go to B phase — move tape 2 left onto the last Y
-qCy b _ qBs b _ S L
+qCy b _ qBs b S _ L
 # End of input with leftover Y’s -> reject
-qCy _ _ qRej _ _ S S
+qCy _ _ qRej _ S _ S
 
 # qCe: after C-block ends but we moved tape 2 left to check X
 # If any X remains -> reject (c’s < a’s)
-qCe b X qRej b X S S
-qCe _ X qRej _ X S S
+qCe b X qRej b S X S
+qCe _ X qRej _ S X S
 # No X remains and next is b: proceed to B phase (move right onto first Y)
-qCe b _ qBs b _ S R
+qCe b _ qBs b S _ R
 # No X remains and input ended: accept (m = 0 and all c’s matched a’s)
-qCe _ _ qAcc _ _ S R
+qCe _ _ qAcc _ S _ R
 
 # Phase B (independent-safe): each b must see a Y on tape 2
 # Invariant on entry to qBs: tape 2 head is on a Y if any remain.
 # Consume one Y per b, moving to next b (right) and to previous symbol (left) on tape 2.
-qBs b Y qBs b _ R L
+qBs b Y qBs b R _ L
 # A b without a matching Y -> reject
-qBs b _ qRej b _ S S
+qBs b _ qRej b S _ S
 # At end of input: accept only if no Y remains; reject if a Y is still present
-qBs _ _ qAcc _ _ S S
-qBs _ Y qRej _ Y S S
+qBs _ _ qAcc _ S _ S
+qBs _ Y qRej _ S Y S
 # Any 'a' or 'c' in B phase is invalid
-qBs a _ qRej a _ S S
-qBs c _ qRej c _ S S
+qBs a _ qRej a S _ S
+qBs c _ qRej c S _ S
