@@ -1,17 +1,54 @@
-# Turing Machine for L = { a^n b^m | m > n, n > 0 }
-q0 q1 q2 q3 q4
+# States (Q)
+q0 qScanA qScanB qRewind qFindA qFindB qBackLeft qacc
+
+# Input alphabet (Σ)
 a b
+
+# Tape alphabet (Γ)
 a b X Y _
+
+# Start state (q0)
 q0
+
+# Blank symbol (b)
 _
-q4
-# Transitions
-q0 a q1 X R
-q1 a q1 a R
-q1 b q2 Y R
-q2 b q2 b R
-q2 _ q3 _ L
-q3 Y q3 Y L
-q3 a q3 a L
-q3 X q0 X R
-q0 Y q4 Y R
+
+# Accepting states (F)
+qacc
+
+# Transitions (from read to write move)
+
+# Phase 1: Validate shape a^+ b^+ and rewind to start
+q0 a qScanA a R
+
+qScanA a qScanA a R
+qScanA b qScanB b R
+
+qScanB b qScanB b R
+qScanB _ qRewind _ L
+
+qRewind a qRewind a L
+qRewind b qRewind b L
+qRewind X qRewind X L
+qRewind Y qRewind Y L
+qRewind _ qFindA _ R
+
+# Phase 2: Pair each a with a b; then check m > n
+# Find next unmarked 'a'; if we encounter an unmarked 'b' first, accept (m > n)
+qFindA X qFindA X R
+qFindA Y qFindA Y R
+qFindA a qFindB X R
+qFindA b qacc b R
+
+# From marked 'a' (X), find next unmarked 'b' and mark it (Y)
+qFindB a qFindB a R
+qFindB X qFindB X R
+qFindB Y qFindB Y R
+qFindB b qBackLeft Y L
+
+# Return to the left end and repeat
+qBackLeft a qBackLeft a L
+qBackLeft b qBackLeft b L
+qBackLeft X qBackLeft X L
+qBackLeft Y qBackLeft Y L
+qBackLeft _ qFindA _ R
