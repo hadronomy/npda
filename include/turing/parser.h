@@ -819,7 +819,6 @@ inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename
   const auto Qset = to_set(QToks);
   const auto Sset = to_set(SToks);
   const auto Gset = to_set(GToks);
-  (void)Sset;  // currently unused in transition parsing
 
   // 4) q0 (start state)
   Token q0Tok{"<q0?>", eof_span()};
@@ -871,6 +870,11 @@ inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename
     if (Gset.count(bTok.text) == 0) {
       add_symbol_error(
         dx, "E0008", "blank symbol not in Γ", bTok, "this symbol is not listed in Γ"
+      );
+    }
+    if (Sset.count(bTok.text) == 1) {
+      add_symbol_error(
+        dx, "E0018", "blank symbol cannot be in Σ", bTok, "this symbol is listed in Σ"
       );
     }
   }
