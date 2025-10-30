@@ -1,3 +1,5 @@
+#pragma once
+
 #include <algorithm>
 #include <cstdint>
 #include <iostream>
@@ -29,6 +31,8 @@ inline std::string join_u64(const std::vector<uint64_t>& xs, std::string_view se
 
 class Trace {
  public:
+  enum class Mode { Full, CountsOnly, Off };
+
   struct Node {
     std::string name;
     std::vector<uint64_t> args;
@@ -36,6 +40,10 @@ class Trace {
     size_t depth{};
     std::vector<std::unique_ptr<Node>> children;
   };
+
+  explicit Trace(Mode mode = Mode::Full) : mode_(mode) {}
+  Trace(const Trace&) = delete;
+  Trace& operator=(const Trace&) = delete;
 
   class Scope {
    public:
@@ -77,14 +85,23 @@ class Trace {
     Node* node_{};
   };
 
-  Scope enter(std::string name, std::vector<uint64_t> args) {
-    auto node = std::make_unique<Node>();
-    node->name = std::move(name);
-    node->args = std::move(args);
-    node->depth = stack_.size();
+  // Avoid copying name/args unless we actually record a node.
+  Scope enter(std::string_view name, const std::vector<uint64_t>& args) {
+    if (mode_ != Mode::Off) {
+      // Count call without constructing a new key each time
+      auto it = counts_.try_emplace(std::string{name}, 0).first;
+      it->second += 1;
+    }
 
-    // Count this function call
-    counts_[node->name] += 1;
+    if (mode_ != Mode::Full) {
+      // No node allocation, no stack push
+      return Scope(*this, nullptr);
+    }
+
+    auto node = std::make_unique<Node>();
+    node->name = std::string{name};
+    node->args = args;  // copy only in Full mode
+    node->depth = stack_.size();
 
     Node* raw = node.get();
     if (stack_.empty()) {
@@ -105,8 +122,10 @@ class Trace {
   const std::vector<std::unique_ptr<Node>>& roots() const { return roots_; }
 
   void print(std::ostream& os) const {
-    for (size_t i = 0; i < roots_.size(); ++i) {
-      print_node_(os, *roots_[i], "", i + 1 == roots_.size());
+    if (mode_ == Mode::Full) {
+      for (size_t i = 0; i < roots_.size(); ++i) {
+        print_node_(os, *roots_[i], "", i + 1 == roots_.size());
+      }
     }
     // Print a summary of function call counts
     if (!counts_.empty()) {
@@ -118,11 +137,18 @@ class Trace {
           return a.second > b.second;
         return a.first < b.first;
       });
+      uint64_t total = 0;
       for (const auto& [name, cnt] : items) {
         os << "  " << name << ": " << cnt << "\n";
+        total += cnt;
       }
+      os << "Total"
+         << ": " << total << "\n";
     }
   }
+
+  Mode mode() const { return mode_; }
+  void set_mode(Mode m) { mode_ = m; }
 
  private:
   friend class Scope;
@@ -150,6 +176,7 @@ class Trace {
   std::vector<std::unique_ptr<Node>> roots_;
   std::vector<Node*> stack_;
   std::unordered_map<std::string, uint64_t> counts_;
+  Mode mode_{Mode::Full};
 };
 
 // -------------------- PRF Base --------------------
@@ -167,7 +194,8 @@ class Function {
           << args.size();
       throw std::invalid_argument(oss.str());
     }
-    auto scope = trace.enter(std::string{name()}, args);
+    // Pass string_view and const-ref args: no copies in CountsOnly/Off modes
+    auto scope = trace.enter(name(), args);
     uint64_t r = eval_(args, trace);
     scope.set_result(r);
     return r;
@@ -335,36 +363,35 @@ class PrimitiveRecursion : public Function {
   std::string_view name() const override { return name_; }
 
  protected:
+  // Semantics:
+  //   f(x, 0)   = g(x)
+  //   f(x, t+1) = h(t, f(x, t), x)
   uint64_t eval_(const std::vector<uint64_t>& args, Trace& trace) const override {
-    // args = x + [y], where y is the last element.
-    const size_t n = args.size();
+    // args = x..., y  (recursion variable is last)
     const uint64_t y = args.back();
+    const size_t n_x = args.size() - 1;
     std::vector<uint64_t> xs(args.begin(), args.end() - 1);
-    return eval_rec_last_(xs, y, trace);
+
+    // Base case
+    uint64_t acc = (*g_)(xs, trace);
+    if (y == 0ULL)
+      return acc;
+
+    // Reuse a single buffer for h's arguments: (t, acc, x...)
+    std::vector<uint64_t> h_args;
+    h_args.reserve(2 + n_x);
+
+    for (uint64_t t = 0; t < y; ++t) {
+      h_args.clear();
+      h_args.push_back(t);    // corresponds to (y-1) in the recursive definition
+      h_args.push_back(acc);  // previous f(x, t)
+      h_args.insert(h_args.end(), xs.begin(), xs.end());  // x...
+      acc = (*h_)(h_args, trace);
+    }
+    return acc;
   }
 
  private:
-  uint64_t eval_rec_last_(const std::vector<uint64_t>& xs, uint64_t y, Trace& trace) const {
-    if (y == 0ULL) {
-      return (*g_)(xs, trace);
-    } else {
-      // Compute f(x, y-1)
-      std::vector<uint64_t> prev_args;
-      prev_args.reserve(xs.size() + 1);
-      prev_args.insert(prev_args.end(), xs.begin(), xs.end());
-      prev_args.push_back(y - 1ULL);
-      uint64_t prev = this->operator()(prev_args, trace);
-
-      // Then apply h(y-1, prev, x)
-      std::vector<uint64_t> h_args;
-      h_args.reserve(2 + xs.size());
-      h_args.push_back(y - 1ULL);
-      h_args.push_back(prev);
-      h_args.insert(h_args.end(), xs.begin(), xs.end());
-      return (*h_)(h_args, trace);
-    }
-  }
-
   std::shared_ptr<const Function> g_;
   std::shared_ptr<const Function> h_;
   size_t n_{};

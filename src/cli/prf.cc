@@ -42,7 +42,7 @@ int PRFHandler::operator()(const CommandContext&) {
     "pow"
   );
 
-  prf::Trace trace;
+  prf::Trace trace(this->mode);
 
   {
     std::vector<uint64_t> args = this->params;
