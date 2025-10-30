@@ -54,5 +54,4 @@ int PRFHandler::operator()(const CommandContext&) {
   }
 
   return 0;
-  return 0;
 }
