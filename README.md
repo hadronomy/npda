@@ -27,7 +27,7 @@
 
 ## Docs
 
-This project implements a Turing Machine and a NPDA (Non-Deterministic Push Down Automata). 
+This project implements a Turing Machine and a NPDA (Non-Deterministic Push Down Automata), and Primitive Recursive Functions.
 See the [docs](/docs/CC_2526_Practica2.pdf) and [npda docs](/docs/CC_2526_Practica1.pdf) pdf for more information about the assignment.
 
 The turing machine is implemented to work primaraly in simultaneous mode, with any type of expansion, and with or
@@ -185,6 +185,14 @@ cc turing ./examples/turing/count-replace.turing "aabb"
 ```bash
 cc turing ./examples/turing/count-replace.turing -g
 ```
+
+---
+
+```bash
+cc prf 2 3
+```
+
+This will execute `pow(2, 3)` and show the trace.
 
 ---
 
