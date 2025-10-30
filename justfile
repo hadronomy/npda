@@ -1,4 +1,4 @@
-project_name := "PR2-TURING-2526"
+project_name := "PR3-PRF-2526"
 dir_path := `realpath .`
 dir_name := `basename $(realpath .)`
 bin_name := "turing"
