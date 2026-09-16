@@ -1,12 +1,13 @@
 -- Build npda with xmake. Use LLVM Clang 23 from Homebrew.
--- Keep one flag set for all files. Do not add per-file flags.
--- Pin cli11 to v2.5.0. It matches the Zig build output byte for byte.
--- Move to v2.6.2 or later only with the cli11 module step.
+-- Keep one flag set for all files and both targets. The two
+-- add_cxxflags blocks below must stay identical, or BMI loads fail.
+-- CLI11 is v2.7.2, consumed through its own upstream module file
+-- (third_party/cli11, BSD-3-Clause, unchanged) with pinned headers.
 add_rules("mode.debug", "mode.release")
 set_languages("c++23")
 set_toolchains("llvm")
 
-add_requires("fmt 12.2.0", "cli11 v2.5.0")
+add_requires("fmt 12.2.0", "cli11 v2.7.2")
 
 -- Track headers used in module global fragments.
 -- xmake rebuilds a BMI only when the .cppm file itself changes, so a
@@ -27,11 +28,32 @@ before_build(function (target)
     end
 end)
 
+target("cli11mod")
+    set_kind("static")
+    add_files("third_party/cli11/CLI11.cppm", {public = true})
+    add_files("third_party/cli11/Precompile.cpp")
+    add_packages("cli11")
+    add_defines("CLI11_COMPILE", {public = true})
+    add_cxxflags(
+        "-DASIO_HAS_THREADS",
+        "-fcolor-diagnostics",
+        "-Wall",
+        "-Wextra",
+        "-fexperimental-library",
+        "-Wpedantic",
+        "-Wno-deprecated-declarations",
+        "-Wno-unqualified-std-cast-call",
+        "-Wno-bitwise-instead-of-logical",
+        "-fno-sanitize=undefined",
+        "-U_LIBCPP_ENABLE_CXX17_REMOVED_UNEXPECTED_FUNCTIONS"
+    )
+
 target("cc")
     set_kind("binary")
+    add_deps("cli11mod")
     add_files("src/**.cc", "src/modules/*.cppm")
     add_includedirs("include")
-    add_packages("fmt", "cli11")
+    add_packages("fmt")
     add_cxxflags(
         "-DASIO_HAS_THREADS",
         "-fcolor-diagnostics",

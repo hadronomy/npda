@@ -590,7 +590,7 @@ export std::unique_ptr<CommandHandler> make_npda(CLI::App& sub) {
   auto handler = std::make_unique<RunHandler>();
   sub.add_option("file_path", handler->file_path, "the NPDA description file path")
     ->required()
-    ->check(cli11::ExistingFile);
+    ->check(CLI::ExistingFile);
   sub.add_option("input_string", handler->input_strings, "the string to accept")
     ->multi_option_policy(CLI::MultiOptionPolicy::TakeAll)
     ->required();
@@ -624,7 +624,7 @@ export std::unique_ptr<CommandHandler> make_turing(CLI::App& sub) {
   auto grp = sub.add_option_group("mode");
   sub.add_option("file_path", handler->file_path, "the Turing Machine description file path")
     ->required()
-    ->check(cli11::ExistingFile);
+    ->check(CLI::ExistingFile);
   grp->add_option("input_string", handler->input_strings, "the string to process")
     ->multi_option_policy(CLI::MultiOptionPolicy::TakeAll);
   sub.add_flag("--trace,!--no-trace", handler->trace_enabled, "Enable trace mode");
@@ -632,7 +632,7 @@ export std::unique_ptr<CommandHandler> make_turing(CLI::App& sub) {
 
   // Configuration options
   sub.add_option("--num-tapes", handler->num_tapes, "Number of tapes (default: 1)")
-    ->check(cli11::PositiveNumber);
+    ->check(CLI::PositiveNumber);
   sub.add_option(
     "--tape-direction", handler->tape_direction, "Tape direction: bidirectional or right-only"
   );
