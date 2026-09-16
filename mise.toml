@@ -3,5 +3,7 @@
 just = "latest"
 meson = "latest"
 node = "latest"
-zig = "0.15.2"
-zls = "0.15.0"
+
+# The C++ toolchain (LLVM Clang 23) and xmake are not in the mise
+# registry, so install them from the system package manager.
+# See README.md for the exact steps.

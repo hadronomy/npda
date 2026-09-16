@@ -1,0 +1,40 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-proof:
+    name: Build and prove behavior
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+
+      - name: Install LLVM 23 (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          sudo add-apt-repository -y "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-23 main"
+          sudo apt-get update
+          sudo apt-get install -y clang-23 lldb-23 lld-23 libc++-23-dev libc++abi-23-dev
+
+      - name: Install LLVM 23 (macOS)
+        if: runner.os == 'macOS'
+        run: brew install llvm@23 || brew install llvm
+
+      - name: Build
+        run: xmake build -y
+
+      - name: Prove behavior
+        run: |
+          BIN=$(find build -name cc -type f | head -n 1)
+          ./tests/proof.sh "$BIN"
