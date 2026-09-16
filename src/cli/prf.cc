@@ -1,6 +1,7 @@
 #include "cli/prf.h"
 
 // Import the modules. Keep these imports after all includes.
+import cli11;
 import cli;
 import prf;
 

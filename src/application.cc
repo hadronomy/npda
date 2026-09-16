@@ -4,7 +4,8 @@
 #include "cli/prf.h"
 #include "cli/turing.h"
 
-// Import the CLI module. Keep this import after all includes.
+// Import the modules. Keep these imports after all includes.
+import cli11;
 import cli;
 
 int Application::run(int argc, char** argv) const {

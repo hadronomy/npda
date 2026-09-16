@@ -1,8 +1,12 @@
 #pragma once
 
-#include <CLI/CLI.hpp>
+#include <map>
+#include <string>
 
 #include "../prf.h"
+
+// Import the CLI11 module wrapper. Keep this import after all includes.
+import cli11;
 
 // Import the CLI module. Keep this import after all includes.
 import cli;

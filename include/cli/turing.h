@@ -2,9 +2,15 @@
 
 #include <filesystem>
 
-#include <CLI/CLI.hpp>
+#include <cstddef>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "turing/rule.h"
+
+// Import the CLI11 module wrapper. Keep this import after all includes.
+import cli11;
 
 // Import the CLI module. Keep this import after all includes.
 import cli;
@@ -33,7 +39,7 @@ class TuringHandler final : public CommandHandler {
   auto grp = sub.add_option_group("mode");
   sub.add_option("file_path", handler->file_path, "the Turing Machine description file path")
     ->required()
-    ->check(CLI::ExistingFile);
+    ->check(cli11::ExistingFile);
   grp->add_option("input_string", handler->input_strings, "the string to process")
     ->multi_option_policy(CLI::MultiOptionPolicy::TakeAll);
   sub.add_flag("--trace,!--no-trace", handler->trace_enabled, "Enable trace mode");
@@ -41,7 +47,7 @@ class TuringHandler final : public CommandHandler {
 
   // Configuration options
   sub.add_option("--num-tapes", handler->num_tapes, "Number of tapes (default: 1)")
-    ->check(CLI::PositiveNumber);
+    ->check(cli11::PositiveNumber);
   sub.add_option(
     "--tape-direction", handler->tape_direction, "Tape direction: bidirectional or right-only"
   );

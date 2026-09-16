@@ -9,6 +9,7 @@
 #include "cli/npda.h"
 
 // Import the modules. Keep these imports after all includes.
+import cli11;
 import cli;
 import npda;
 

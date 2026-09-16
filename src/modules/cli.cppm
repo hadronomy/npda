@@ -13,7 +13,6 @@ module;
 #include <utility>
 #include <vector>
 
-#include <CLI/CLI.hpp>
 #include <fmt/color.h>
 #include <fmt/core.h>
 
@@ -22,6 +21,9 @@ module;
 #include "ui.h"
 
 export module cli;
+
+// Import the CLI11 module wrapper.
+import cli11;
 
 // Trim spaces from both ends. Internal use only.
 inline std::string normalize_name(std::string_view name) {

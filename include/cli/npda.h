@@ -1,8 +1,12 @@
 #pragma once
 
 #include <filesystem>
+#include <memory>
+#include <string>
+#include <vector>
 
-#include <CLI/CLI.hpp>
+// Import the CLI11 module wrapper. Keep this import after all includes.
+import cli11;
 
 // Import the CLI module. Keep this import after all includes.
 import cli;
@@ -21,7 +25,7 @@ class RunHandler final : public CommandHandler {
   auto handler = std::make_unique<RunHandler>();
   sub.add_option("file_path", handler->file_path, "the NPDA description file path")
     ->required()
-    ->check(CLI::ExistingFile);
+    ->check(cli11::ExistingFile);
   sub.add_option("input_string", handler->input_strings, "the string to accept")
     ->multi_option_policy(CLI::MultiOptionPolicy::TakeAll)
     ->required();
