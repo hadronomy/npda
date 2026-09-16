@@ -6,8 +6,96 @@ import diag;
 
 export namespace lex {
 
+// An interned symbol: process-lifetime ID for a distinct string.
+// Equality and hashing compare IDs, never bytes. A default Symbol
+// matches nothing; engines overwrite it before use.
+struct Symbol {
+  std::uint32_t id = none;
+  static constexpr std::uint32_t none = static_cast<std::uint32_t>(-1);
+
+  [[nodiscard]] constexpr bool valid() const noexcept { return id != none; }
+  [[nodiscard]] constexpr bool operator==(const Symbol&) const noexcept = default;
+};
+
+// Process-lifetime string table behind Symbol. Entries never move
+// (deque) and never free, so views into the table stay valid.
+class Interner {
+ public:
+  [[nodiscard]] Symbol intern(std::string_view s);
+  [[nodiscard]] std::string_view lookup(Symbol sym) const;
+
+ private:
+  mutable std::mutex mutex_;
+  std::deque<std::string> strings_;
+  std::unordered_map<std::string_view, std::uint32_t> table_;
+  std::uint32_t next_{};
+};
+
+// The shared table. One instance program-wide.
+Interner& shared_table();
+
+// Add a string to the table, or find its ID when present.
+[[nodiscard]] Symbol intern(std::string_view s);
+
+// Read back an interned string. Never retain the view across intern().
+[[nodiscard]] std::string_view name(Symbol s);
+
+// Non-inline definitions live here so exactly one object file emits
+// them: inline copies in importers cannot satisfy cross-object uses.
+Symbol Interner::intern(std::string_view s) {
+  std::lock_guard lock(mutex_);
+  if (const auto it = table_.find(s); it != table_.end())
+    return Symbol{it->second};
+  const std::uint32_t id = next_++;
+  strings_.emplace_back(s);
+  table_.try_emplace(std::string_view(strings_.back()), id);
+  return Symbol{id};
+}
+
+std::string_view Interner::lookup(Symbol sym) const {
+  std::lock_guard lock(mutex_);
+  return strings_.at(sym.id);
+}
+
+Interner& shared_table() {
+  static Interner table;
+  return table;
+}
+
+Symbol intern(std::string_view s) {
+  return shared_table().intern(s);
+}
+
+std::string_view name(Symbol s) {
+  return shared_table().lookup(s);
+}
+
+}  // namespace lex
+
+namespace std {
+// Hash by ID. Makes Symbol satisfy the Hashable concept.
+template <>
+struct hash<lex::Symbol> {
+  std::size_t operator()(lex::Symbol s) const noexcept {
+    return std::hash<std::uint32_t>{}(s.id);
+  }
+};
+
+// Format through the table, so "{}" keeps working on symbols.
+template <typename Char>
+struct formatter<lex::Symbol, Char> {
+  formatter<std::string_view, Char> base_;
+  constexpr auto parse(auto& pc) { return base_.parse(pc); }
+  template <typename Ctx>
+  auto format(lex::Symbol s, Ctx& ctx) const {
+    return base_.format(lex::name(s), ctx);
+  }
+};
+}  // namespace std
+
+export namespace lex {
 struct Token {
-  std::string text;
+  Symbol text;
   diag::Span span;
 };
 
@@ -64,7 +152,7 @@ struct SpecTokens {
       const std::size_t tok_lo = line_start + i;
       const std::size_t tok_hi = line_start + j;
       L.tokens.push_back(Token{
-        std::string(sv.substr(i, j - i)),
+        intern(sv.substr(i, j - i)),
         diag::Span{tok_lo, tok_hi},
       });
 
@@ -120,9 +208,9 @@ inline void add_symbol_error(
   return std::nullopt;
 }
 
-// Turn tokens to set of strings
-[[nodiscard]] inline std::unordered_set<std::string> to_set(const std::vector<Token>& toks) {
-  std::unordered_set<std::string> s;
+// Turn tokens into a set of symbols
+[[nodiscard]] inline std::unordered_set<Symbol> to_set(const std::vector<Token>& toks) {
+  std::unordered_set<Symbol> s;
   s.reserve(toks.size());
   for (const auto& t : toks)
     s.insert(t.text);

@@ -5,15 +5,16 @@ module cli;
 import std;
 import ansi;
 import diag;
+import lex;
 import turing;
 import turing.parser;
 import ui;
 
-static std::vector<std::string> to_symbols(std::string_view s) {
-  std::vector<std::string> v;
+static std::vector<lex::Symbol> to_symbols(std::string_view s) {
+  std::vector<lex::Symbol> v;
   v.reserve(s.size());
   for (char c : s)
-    v.emplace_back(1, c);  // "a" from 'a'
+    v.push_back(lex::intern(std::string_view(&c, 1)));  // "a" from 'a'
   return v;
 }
 

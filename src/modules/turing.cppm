@@ -19,7 +19,7 @@ export namespace turing {
 template <typename State, typename TapeSym>
 struct MultiTapeNode {
   State s{};
-  std::vector<std::vector<TapeSym>> tapes{};  // multiple tapes
+  std::vector<std::deque<TapeSym>> tapes{};  // multiple tapes, deque for O(1) left growth
   std::vector<std::size_t> head_positions{};  // head position on each tape
   std::size_t parent = static_cast<std::size_t>(-1);
   std::optional<std::size_t> rule_idx{};
@@ -457,7 +457,7 @@ class TuringMachine {
       return;
 
     if (pos == 0) {
-      node.tapes[tape_idx].insert(node.tapes[tape_idx].begin(), blank_);
+      node.tapes[tape_idx].push_front(blank_);
       return;
     }
     --pos;
@@ -537,7 +537,7 @@ class TuringMachine {
     node.tapes.resize(config_.num_tapes);
     node.head_positions.resize(config_.num_tapes, 0);
 
-    node.tapes[0] = input;
+    node.tapes[0].assign(input.begin(), input.end());
     for (std::size_t i = 1; i < config_.num_tapes; ++i)
       node.tapes[i] = {};
 

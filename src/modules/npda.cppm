@@ -4,6 +4,7 @@ export module npda;
 import std;
 import ansi;
 import config;
+import lex;
 
 export namespace npda {
 
@@ -535,7 +536,7 @@ class NPDA {
         work.pop_front();
       else
         work.pop_back();
-      const NodeType current = nodes[idx];  // copy for isolation
+      const NodeType& current = nodes[idx];  // ref; re-fetch as nodes[idx] after pushes below
 
       // Track that we're exploring this node and show full detailed trace
       if (opt.trace.enabled && opt.trace.show_full_trace) {
@@ -584,14 +585,14 @@ class NPDA {
       std::size_t before = nodes.size();
 
       // Generate epsilon transitions using indices
-      auto epsilon_it = epsilon_by_from_.find(current.s);
+      auto epsilon_it = epsilon_by_from_.find(nodes[idx].s);
       if (epsilon_it != epsilon_by_from_.end()) {
         for (std::size_t ri : epsilon_it->second) {
           const auto& r = rules_[ri];
-          if (!stack_matches(current.stack, r.stack_top))
+          if (!stack_matches(nodes[idx].stack, r.stack_top))
             continue;
 
-          NodeType next = current;
+          NodeType next = nodes[idx];
           apply_stack(next.stack, r);
           next.s = r.to;
           ++expansions;
@@ -604,17 +605,17 @@ class NPDA {
       // Generate consuming transitions (if input left) using indices
       if (current.pos < input.size()) {
         const Input sym = input[current.pos];
-        auto consume_it = consume_by_from_input_.find({current.s, sym});
+        auto consume_it = consume_by_from_input_.find({nodes[idx].s, sym});
         if (consume_it != consume_by_from_input_.end()) {
           for (std::size_t ri : consume_it->second) {
             const auto& r = rules_[ri];
-            if (!stack_matches(current.stack, r.stack_top))
+            if (!stack_matches(nodes[idx].stack, r.stack_top))
               continue;
 
-            NodeType nxt = current;
+            NodeType nxt = nodes[idx];
             apply_stack(nxt.stack, r);
             nxt.s = r.to;
-            nxt.pos = current.pos + 1;
+            nxt.pos = nodes[idx].pos + 1;
             ++expansions;
             push_node(std::move(nxt), idx, ri);
             if (expansions >= opt.max_expansions)
@@ -633,13 +634,13 @@ class NPDA {
           };
           if (opt.trace.colors) {
             sink(ansi::format(ansi::fg(config::colors::info), "\n{} Exploration: dead-end at position {} (state {}), "
-              "no applicable transitions\n", config::symbols::info, current.pos, std::format("{}", current.s)));
+              "no applicable transitions\n", config::symbols::info, nodes[idx].pos, std::format("{}", nodes[idx].s)));
           } else {
             sink(std::format(
               "\nExploration: dead-end at position {} (state {}), "
               "no applicable transitions\n",
-              current.pos,
-              std::format("{}", current.s)
+              nodes[idx].pos,
+              std::format("{}", nodes[idx].s)
             ));
           }
         }
@@ -1295,8 +1296,9 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
       // Accepting states get a special warm color
       state_color = config::colors::success;  // Green for accepting states
     } else {
-      // For non-accepting states, use our specialized color generator
-      std::size_t state_hash = std::hash<State>{}(node.s);
+      // For non-accepting states, use our specialized color generator.
+      // Hash the table bytes, not the ID, so colors stay stable.
+      std::size_t state_hash = std::hash<std::string>{}(std::string(lex::name(node.s)));
       state_color = generate_non_accepting_state_color(state_hash);
     }
 
@@ -1446,8 +1448,9 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
       // Accepting states get a special warm color
       state_color = config::colors::success;  // Green for accepting states
     } else {
-      // For non-accepting states, use our specialized color generator
-      std::size_t state_hash = std::hash<State>{}(node.s);
+      // For non-accepting states, use our specialized color generator.
+      // Hash the table bytes, not the ID, so colors stay stable.
+      std::size_t state_hash = std::hash<std::string>{}(std::string(lex::name(node.s)));
       state_color = generate_non_accepting_state_color(state_hash);
     }
 

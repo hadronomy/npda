@@ -24,9 +24,10 @@ using lex::add_symbol_error;
 using lex::line_has_tokens;
 using lex::next_nonempty;
 using lex::to_set;
+using lex::Symbol;
 
-using PDA = npda::NPDA<std::string, std::string, std::string>;
-using Rule = npda::Rule<std::string, std::string, std::string>;
+using PDA = npda::NPDA<Symbol, Symbol, Symbol>;
+using Rule = npda::Rule<Symbol, Symbol, Symbol>;
 
 struct ParseResult {
   std::expected<PDA, diag::Diagnostics> value;
@@ -51,9 +52,9 @@ struct ParseResult {
 
 [[nodiscard]] inline bool looks_like_transition(
   const std::vector<Token>& toks,
-  const std::unordered_set<std::string>& Q,
-  const std::unordered_set<std::string>& S,
-  const std::unordered_set<std::string>& G
+  const std::unordered_set<Symbol>& Q,
+  const std::unordered_set<Symbol>& S,
+  const std::unordered_set<Symbol>& G
 ) {
   if (toks.size() < 4)
     return false;
@@ -63,8 +64,8 @@ struct ParseResult {
   const auto& top = toks[2];
   const auto& to = toks[3];
 
-  const auto in_ok = is_eps_tok(in.text) || S.count(in.text) > 0;
-  const auto top_ok = is_eps_tok(top.text) || G.count(top.text) > 0;
+  const auto in_ok = is_eps_tok(lex::name(in.text)) || S.count(in.text) > 0;
+  const auto top_ok = is_eps_tok(lex::name(top.text)) || G.count(top.text) > 0;
 
   if (Q.count(from.text) == 0)
     return false;
@@ -75,13 +76,22 @@ struct ParseResult {
   if (Q.count(to.text) == 0)
     return false;
 
+  // Views of Γ for segmentation probes. The table owns the bytes,
+  // and no interning happens here, so the views stay valid.
+  std::vector<std::string_view> gsyms;
+  gsyms.reserve(G.size());
+  for (const Symbol& g : G)
+    gsyms.push_back(lex::name(g));
+
   // Allow concatenated push strings like "AS" if they can be segmented
   // entirely into Γ symbols.
-  const auto can_segment = [&](std::string_view w) -> bool {
+  const auto can_segment = [&](Symbol sym) -> bool {
+    const std::string_view w = lex::name(sym);
     if (is_eps_tok(w))
       return true;
-    if (G.count(std::string(w)) > 0)
-      return true;
+    for (std::string_view g : gsyms)
+      if (g == w)
+        return true;
     const std::size_t n = w.size();
     if (n == 0)
       return true;
@@ -90,7 +100,7 @@ struct ParseResult {
     for (std::size_t i = 0; i < n; ++i) {
       if (!dp[i])
         continue;
-      for (const auto& g : G) {
+      for (std::string_view g : gsyms) {
         const std::size_t len = g.size();
         if (i + len <= n && w.substr(i, len) == g) {
           dp[i + len] = 1;
@@ -101,8 +111,7 @@ struct ParseResult {
   };
 
   for (std::size_t i = 4; i < toks.size(); ++i) {
-    const auto& tk = toks[i].text;
-    if (!can_segment(tk))
+    if (!can_segment(toks[i].text))
       return false;
   }
   return true;
@@ -169,7 +178,7 @@ struct ParseResult {
   const auto Gset = to_set(GToks);
 
   // 4) q0 (recoverable)
-  Token q0Tok{"<q0?>", eof};
+  Token q0Tok{lex::intern("<q0?>"), eof};
   const std::optional<std::size_t> iq0 = next_nonempty(st, i);
   if (!lex::require_line(dx, iq0, "q0", eof)) {
     // keep default placeholder
@@ -195,7 +204,7 @@ struct ParseResult {
   }
 
   // 5) Z0 (recoverable)
-  Token Z0Tok{"<Z0?>", eof};
+  Token Z0Tok{lex::intern("<Z0?>"), eof};
   const std::optional<std::size_t> iZ0 = next_nonempty(st, i);
   if (!lex::require_line(dx, iZ0, "Z0", eof)) {
     // keep default
@@ -254,7 +263,7 @@ struct ParseResult {
             d.labels.push_back(diag::Label{
               .span = t.span,
               .primary = true,
-              .message = "unknown state '" + t.text + "'",
+              .message = "unknown state '" + std::string(lex::name(t.text)) + "'",
             });
             d.notes.push_back("F must contain only states from Q");
             dx.items.push_back(std::move(d));
@@ -272,12 +281,19 @@ struct ParseResult {
   }
 
   // Helper to segment a concatenated push token into Γ symbols.
-  const auto segment_push = [&](const Token& tok) -> std::optional<std::vector<std::string>> {
-    const std::string& w = tok.text;
+  // Views of Γ for segmentation. Materialized per call; the table
+  // owns the bytes and nothing interns here, so views stay valid.
+  const auto segment_push = [&](const Token& tok) -> std::optional<std::vector<Symbol>> {
+    const std::string_view w = lex::name(tok.text);
     if (is_eps_tok(w))
-      return std::vector<std::string>{};  // epsilon
-    if (Gset.count(w) > 0)
-      return std::vector<std::string>{w};
+      return std::vector<Symbol>{};  // epsilon
+    std::vector<std::string_view> gsyms;
+    gsyms.reserve(Gset.size());
+    for (const Symbol& g : Gset)
+      gsyms.push_back(lex::name(g));
+    for (std::string_view g : gsyms)
+      if (g == w)
+        return std::vector<Symbol>{tok.text};
 
     const std::size_t n = w.size();
     constexpr std::size_t unvisited = static_cast<std::size_t>(-1);
@@ -288,9 +304,9 @@ struct ParseResult {
     for (std::size_t i = 0; i < n; ++i) {
       if (prev[i] == unvisited)
         continue;
-      for (const auto& g : Gset) {
+      for (std::string_view g : gsyms) {
         const std::size_t len = g.size();
-        if (i + len <= n && w.compare(i, len, g) == 0) {
+        if (i + len <= n && w.substr(i, len) == g) {
           if (prev[i + len] == unvisited) {
             prev[i + len] = i;
             len_at[i + len] = len;
@@ -302,11 +318,11 @@ struct ParseResult {
     if (prev[n] == unvisited)
       return std::nullopt;
 
-    std::vector<std::string> parts;
+    std::vector<Symbol> parts;
     for (std::size_t i = n; i > 0;) {
       const std::size_t p = prev[i];
       const std::size_t len = len_at[i];
-      parts.emplace_back(w.substr(p, len));
+      parts.emplace_back(lex::intern(w.substr(p, len)));
       i = p;
     }
     std::reverse(parts.begin(), parts.end());
@@ -341,7 +357,7 @@ struct ParseResult {
     if (Qset.count(from.text) == 0) {
       add_symbol_error(dx, "E0011", "unknown 'from' state", from, "state not in Q");
     }
-    const bool in_is_ok = is_eps_tok(in.text) || Sset.count(in.text) > 0;
+    const bool in_is_ok = is_eps_tok(lex::name(in.text)) || Sset.count(in.text) > 0;
     if (!in_is_ok) {
       add_symbol_error(
         dx,
@@ -352,7 +368,7 @@ struct ParseResult {
       );
       bad_in = true;
     }
-    const bool top_is_ok = is_eps_tok(top.text) || Gset.count(top.text) > 0;
+    const bool top_is_ok = is_eps_tok(lex::name(top.text)) || Gset.count(top.text) > 0;
     if (!top_is_ok) {
       add_symbol_error(
         dx,
@@ -369,16 +385,16 @@ struct ParseResult {
 
     Rule r;
     r.from = from.text;
-    r.input = (bad_in || is_eps_tok(in.text)) ? std::nullopt : std::optional<std::string>(in.text);
+    r.input = (bad_in || is_eps_tok(lex::name(in.text))) ? std::nullopt : std::optional<Symbol>(in.text);
     r.stack_top =
-      (bad_top || is_eps_tok(top.text)) ? std::nullopt : std::optional<std::string>(top.text);
+      (bad_top || is_eps_tok(lex::name(top.text))) ? std::nullopt : std::optional<Symbol>(top.text);
     r.to = to.text;
 
     if (T.size() > 4)
       r.push.reserve(T.size() - 4);
     for (std::size_t m = 4; m < T.size(); ++m) {
       const Token& ps = T[m];
-      if (is_eps_tok(ps.text))
+      if (is_eps_tok(lex::name(ps.text)))
         continue;
 
       if (Gset.count(ps.text) > 0) {
@@ -406,7 +422,7 @@ struct ParseResult {
   b.start(q0Tok.text).stack_bottom(Z0Tok.text);
 
   if (has_F_syntax && !Ftok.empty()) {
-    std::vector<std::string> F;
+    std::vector<Symbol> F;
     F.reserve(Ftok.size());
     for (const auto& t : Ftok)
       F.push_back(t.text);

@@ -25,9 +25,10 @@ using lex::add_symbol_error;
 using lex::line_has_tokens;
 using lex::next_nonempty;
 using lex::to_set;
+using lex::Symbol;
 
-using TM = turing::TuringMachine<std::string, std::string>;
-using Rule = turing::Rule<std::string, std::string>;
+using TM = turing::TuringMachine<Symbol, Symbol>;
+using Rule = turing::Rule<Symbol, Symbol>;
 
 struct ParseResult {
   std::expected<TM, diag::Diagnostics> value;
@@ -526,8 +527,8 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
 
 [[nodiscard]] inline bool looks_like_single_tape_transition(
   const std::vector<Token>& toks,
-  const std::unordered_set<std::string>& Q,
-  const std::unordered_set<std::string>& G
+  const std::unordered_set<Symbol>& Q,
+  const std::unordered_set<Symbol>& G
 ) {
   if (toks.size() != 5)
     return false;
@@ -537,6 +538,7 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
   const auto& to = toks[2];
   const auto& write = toks[3];
   const auto& move = toks[4];
+  const std::string_view move_text = lex::name(move.text);
 
   if (Q.count(from.text) == 0)
     return false;
@@ -546,7 +548,7 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
     return false;
   if (G.count(write.text) == 0)
     return false;
-  if (move.text != "L" && move.text != "R" && move.text != "S")
+  if (move_text != "L" && move_text != "R" && move_text != "S")
     return false;
 
   return true;
@@ -554,8 +556,8 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
 
 [[nodiscard]] inline bool looks_like_multi_tape_transition(
   const std::vector<Token>& toks,
-  const std::unordered_set<std::string>& Q,
-  const std::unordered_set<std::string>& G,
+  const std::unordered_set<Symbol>& Q,
+  const std::unordered_set<Symbol>& G,
   std::size_t num_tapes
 ) {
   // Expect: from read1 ... readN to write1 move1 write2 move2 ... writeN moveN
@@ -589,9 +591,10 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
       return false;
     const auto& write = toks[pair_base];
     const auto& move = toks[pair_base + 1];
+    const std::string_view move_text = lex::name(move.text);
     if (G.count(write.text) == 0)
       return false;
-    if (move.text != "L" && move.text != "R" && move.text != "S")
+    if (move_text != "L" && move_text != "R" && move_text != "S")
       return false;
   }
 
@@ -669,7 +672,7 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
   const auto Gset = to_set(GToks);
 
   // 4) q0 (start state)
-  Token q0Tok{"<q0?>", eof};
+  Token q0Tok{lex::intern("<q0?>"), eof};
   const std::optional<std::size_t> iq0 = next_nonempty(st, i);
   if (!lex::require_line(dx, iq0, "q0", eof)) {
     // keep default placeholder
@@ -695,7 +698,7 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
   }
 
   // 5) b (blank symbol)
-  Token bTok{"<b?>", eof};
+  Token bTok{lex::intern("<b?>"), eof};
   const std::optional<std::size_t> ib = next_nonempty(st, i);
   if (!lex::require_line(dx, ib, "b", eof)) {
     // keep default
@@ -770,7 +773,7 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
               d.labels.push_back(diag::Label{
                 .span = t.span,
                 .primary = true,
-                .message = "unknown state '" + t.text + "'",
+                .message = "unknown state '" + std::string(lex::name(t.text)) + "'",
               });
               d.notes.push_back("F must contain only states from Q");
               dx.items.push_back(std::move(d));
@@ -813,6 +816,7 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
       const Token& to = T[2];
       const Token& write = T[3];
       const Token& move = T[4];
+      const std::string_view move_text = lex::name(move.text);
 
       // bad_* reshape nothing here: unknown fields are hard errors
       // and the rule is still recorded for diagnostics.
@@ -828,15 +832,15 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
       if (Gset.count(write.text) == 0) {
         add_symbol_error(dx, "E0015", "unknown write symbol", write, "symbol not in Γ");
       }
-      if (move.text != "L" && move.text != "R" && move.text != "S") {
+      if (move_text != "L" && move_text != "R" && move_text != "S") {
         add_symbol_error(dx, "E0016", "invalid move direction", move, "must be L, R, or S");
       }
 
       // Build arity-1 multi rule (even for invalids to aid recovery)
       Direction dir = Direction::Stay;
-      if (move.text == "L") {
+      if (move_text == "L") {
         dir = Direction::Left;
-      } else if (move.text == "R") {
+      } else if (move_text == "R") {
         dir = Direction::Right;
       } else {
         dir = Direction::Stay;
@@ -911,6 +915,7 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
         }
         const Token& write = T[pair_base];
         const Token& move = T[pair_base + 1];
+        const std::string_view move_text = lex::name(move.text);
 
         if (Gset.count(write.text) == 0) {
           add_symbol_error(dx, "E0015", "unknown write symbol", write, "symbol not in Γ");
@@ -919,13 +924,13 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
           rule.write[tape_idx] = write.text;
         }
 
-        if (move.text != "L" && move.text != "R" && move.text != "S") {
+        if (move_text != "L" && move_text != "R" && move_text != "S") {
           add_symbol_error(dx, "E0016", "invalid move direction", move, "must be L, R, or S");
           valid = false;
         } else {
-          if (move.text == "L") {
+          if (move_text == "L") {
             rule.move[tape_idx] = Direction::Left;
-          } else if (move.text == "R") {
+          } else if (move_text == "R") {
             rule.move[tape_idx] = Direction::Right;
           } else {
             rule.move[tape_idx] = Direction::Stay;
@@ -945,7 +950,7 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
   b.start(q0Tok.text).blank(bTok.text);
 
   if (has_F_syntax && !Ftok.empty()) {
-    std::vector<std::string> F;
+    std::vector<Symbol> F;
     F.reserve(Ftok.size());
     for (const auto& t : Ftok)
       F.push_back(t.text);
