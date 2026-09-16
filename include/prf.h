@@ -437,14 +437,14 @@ struct Arg {
   size_t i;
 };
 
-constexpr Arg _1{1};
-constexpr Arg _2{2};
-constexpr Arg _3{3};
-constexpr Arg _4{4};
-constexpr Arg _5{5};
-constexpr Arg _6{6};
-constexpr Arg _7{7};
-constexpr Arg _8{8};
+inline constexpr Arg _1{1};
+inline constexpr Arg _2{2};
+inline constexpr Arg _3{3};
+inline constexpr Arg _4{4};
+inline constexpr Arg _5{5};
+inline constexpr Arg _6{6};
+inline constexpr Arg _7{7};
+inline constexpr Arg _8{8};
 
 // A Context knows the current ambient arity n and can:
 // - build Z() and id() at that arity

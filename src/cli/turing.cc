@@ -10,9 +10,10 @@
 #include "cli.h"
 #include "cli/turing.h"
 #include "diag.h"
-#include "turing/parser.h"
-#include "turing/turing.h"
 #include "ui.h"
+
+// Import the Turing module. Keep this import after all includes.
+import turing;
 
 static std::vector<std::string> to_symbols(std::string_view s) {
   std::vector<std::string> v;

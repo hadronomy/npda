@@ -6,10 +6,11 @@
 #include "cli.h"
 #include "diag.h"
 #include "fmt/color.h"
-#include "npda.h"
-#include "parser.h"
 
 #include "cli/npda.h"
+
+// Import the NPDA module. Keep this import after all includes.
+import npda;
 
 static std::vector<std::string> to_symbols(std::string_view s) {
   std::vector<std::string> v;
