@@ -753,26 +753,42 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
     }
 
     if (!is_transition) {
-      has_F_syntax = true;
-      Ftok.reserve(LF.tokens.size());
-      for (const auto& t : LF.tokens) {
-        if (Qset.count(t.text) == 0) {
-          diag::Diagnostic d;
-          d.severity = diag::Severity::Error;
-          d.code = "E0009";
-          d.message = "invalid accepting states line";
-          d.labels.push_back(diag::Label{
-            .span = t.span,
-            .primary = true,
-            .message = "unknown state '" + t.text + "'",
-          });
-          d.notes.push_back("F must contain only states from Q");
-          dx.items.push_back(std::move(d));
-        } else {
-          Ftok.push_back(t);
+      // A line is an F line only if every token names a known state.
+      // A transition-shaped line stays a transition, so typos in rules
+      // report transition errors instead of F errors. Any other line is
+      // neither: report its unknown tokens and skip it.
+      const bool all_states = std::ranges::all_of(LF.tokens, [&](const Token& t) {
+        return Qset.contains(t.text);
+      });
+      if (all_states) {
+        has_F_syntax = true;
+        Ftok = LF.tokens;
+        i = *iF + 1;
+      } else {
+        // Short of transition arity: cannot be a rule. Report unknown
+        // tokens and skip the line. Longer lines fall through to the
+        // transitions loop, which reports per-field errors.
+        const std::size_t arity =
+          (config.num_tapes == 1) ? 5 : 2 + config.num_tapes * 3;
+        if (LF.tokens.size() != arity) {
+          for (const auto& t : LF.tokens) {
+            if (Qset.count(t.text) == 0) {
+              diag::Diagnostic d;
+              d.severity = diag::Severity::Error;
+              d.code = "E0009";
+              d.message = "invalid accepting states line";
+              d.labels.push_back(diag::Label{
+                .span = t.span,
+                .primary = true,
+                .message = "unknown state '" + t.text + "'",
+              });
+              d.notes.push_back("F must contain only states from Q");
+              dx.items.push_back(std::move(d));
+            }
+          }
+          i = *iF + 1;
         }
       }
-      i = *iF + 1;
     }
   }
 
