@@ -1,15 +1,11 @@
 // Own the CLI layer: registry, help formatter, and handlers.
-// fmt stays in the global fragment above the module line.
-// Import everything else. Change this file to change the API.
-module;
-#include <fmt/color.h>
-#include <fmt/core.h>
-
+// Import everything below. Change this file to change the API.
 export module cli;
 
 // Import below. cli11 and config come from wrapper modules,
 // the rest from the standard library.
 import std;
+import ansi;
 import cli11;
 import config;
 import ui;
@@ -60,19 +56,19 @@ class ColorizedFormatter : public CLI::Formatter {
       const std::string left = base.substr(0, split);
       const std::string right = base.substr(split);  // spaces + description
       // Do NOT add extra spaces here; base already has indentation/alignment
-      return fmt::format(fg(config::colors::option_name), "{}", left) +
-             fmt::format(fg(config::colors::info), "{}", right);
+      return ansi::paint(std::format( "{}", left), config::colors::option_name) +
+             ansi::paint(std::format( "{}", right), config::colors::info);
     }
 
     // Fallback: color everything uniformly if we couldn't find a split
-    return fmt::format(fg(config::colors::info), "{}", base);
+    return ansi::paint(std::format( "{}", base), config::colors::info);
   }
 
   std::string make_subcommand(const CLI::App* app) const override {
     const std::string& name = app->get_name();
     const std::string& desc = app->get_description();
     // Simple, readable list for commands
-    return fmt::format(fg(config::colors::command_name), "  {:<25}", name) + desc + "\n";
+    return ansi::paint(std::format( "  {:<25}", name), config::colors::command_name) + desc + "\n";
   }
 
   // Dedicated positionals section
@@ -134,15 +130,11 @@ class ColorizedFormatter : public CLI::Formatter {
     std::string out;
     out.reserve(512);
 
-    const auto title_style = fg(config::colors::banner_text) | fmt::emphasis::bold;
-    const auto version_style = fg(config::colors::info);
-    const auto usage_style = fg(config::colors::usage);
-
     // Header: "<root_name> is <description> (<version>)"
     out += "\n";
-    out += fmt::format(title_style, "{}", root_name(app));
+    out += ansi::paint_bold(std::format("{}", root_name(app)), config::colors::banner_text);
     out += " is " + root(app)->get_description();
-    out += fmt::format(version_style, " ({})\n", config::app_version);
+    out += ansi::paint(std::format(" ({})\n", config::app_version), config::colors::info);
 
     // Usage
     const std::string command_path = full_command_path(app);
@@ -150,12 +142,14 @@ class ColorizedFormatter : public CLI::Formatter {
 
     if (!command_path.empty()) {
       out += "\n";
-      out += fmt::format(
-        usage_style,
-        "Usage: {}{}{}",
-        command_path,
-        usage_tail_str.empty() ? "" : " ",
-        usage_tail_str
+      out += ansi::paint(
+        std::format(
+          "Usage: {}{}{}",
+          command_path,
+          usage_tail_str.empty() ? "" : " ",
+          usage_tail_str
+        ),
+        config::colors::usage
       );
       out += "\n";
     }
@@ -170,12 +164,12 @@ class ColorizedFormatter : public CLI::Formatter {
     if (!app->get_subcommands({}).empty()) {
       constexpr std::string_view group = "EXAMPLES";
       out += format_section_header(group);
-      out += fmt::format(fg(config::colors::example), "  TODO \n");
+      out += ansi::paint(std::format( "  TODO \n"), config::colors::example);
     }
 
     // Footer
     out += "\nLearn more: ";
-    out += fmt::format(fg(config::colors::banner_text), "{}\n", config::repo_url);
+    out += ansi::paint(std::format( "{}\n", config::repo_url), config::colors::banner_text);
 
     return out;
   }
@@ -233,11 +227,10 @@ class ColorizedFormatter : public CLI::Formatter {
     std::string out;
     out.reserve(title.size() * 2 + 16);
 
-    const auto head_style = fg(config::colors::section_heading) | fmt::emphasis::bold;
-    const auto line_style = fg(config::colors::section_heading);
-
-    out += fmt::format(head_style, "\n{}\n", title);
-    out += fmt::format(line_style, "{}\n\n", std::string(title.size(), '-'));
+    out += ansi::paint_bold(std::format("\n{}\n", title), config::colors::section_heading);
+    out += ansi::paint(
+      std::format("{}\n\n", std::string(title.size(), '-')), config::colors::section_heading
+    );
     return out;
   }
 
@@ -296,7 +289,7 @@ class ColorizedFormatter : public CLI::Formatter {
 
       // Section header: "[Option Group: <group_name>]"
       // CLI11's Option_group uses App::group_ to store the display name
-      const std::string header = fmt::format("[Option Group: {}]", grp->get_group());
+      const std::string header = std::format("[Option Group: {}]", grp->get_group());
       out += format_section_header(header);
 
       // Requirement constraints (min/max) if any
@@ -329,10 +322,8 @@ class ColorizedFormatter : public CLI::Formatter {
 
   // Build a human-readable requirement line for an option group.
   [[nodiscard]] std::string make_requirement_line(std::size_t min_req, std::size_t max_req) const {
-    const auto info = fg(config::colors::info) | fmt::emphasis::bold;
-
     auto push = [&](const std::string& s) {
-      return fmt::format(info, "  [{}]\n", s);
+      return ansi::paint_bold(std::format("  [{}]\n", s), config::colors::info);
     };
 
     if (min_req == 0 && max_req == 1) {
@@ -345,12 +336,12 @@ class ColorizedFormatter : public CLI::Formatter {
       // No constraints
       return std::string{};
     } else if (max_req == 0) {
-      return push(fmt::format("At least {} of the following options are required", min_req));
+      return push(std::format("At least {} of the following options are required", min_req));
     } else if (min_req == 0) {
-      return push(fmt::format("At most {} of the following options may be provided", max_req));
+      return push(std::format("At most {} of the following options may be provided", max_req));
     } else {
       return push(
-        fmt::format("Between {} and {} of the following options are required", min_req, max_req)
+        std::format("Between {} and {} of the following options are required", min_req, max_req)
       );
     }
   }
@@ -550,7 +541,7 @@ export class CommandRegistry {
       std::stringstream sstream;
       sstream << e.what() << "\n"
               << "\x1b[0m"
-              << "Run with " << fmt::format(fmt::fg(fmt::terminal_color::cyan), "--help")
+              << "Run with " << ansi::paint(std::format( "--help"), ansi::term::cyan)
               << " to see more information\n";
       ui::error(sstream.str());
       return 1;

@@ -1,16 +1,9 @@
-// Implement RunHandler in the cli module.
-// Textual includes stay in the global fragment above the module line.
-module;
-#include <filesystem>
-#include <fstream>
-#include <iostream>
-#include <string_view>
-
-#include "fmt/color.h"
-
+// Implement RunHandler in the cli module. Import only.
 module cli;
 
 // Import the modules below.
+import std;
+import ansi;
 import diag;
 import npda;
 import npda.parser;
@@ -54,32 +47,30 @@ int RunHandler::operator()(const CommandContext&) {
       // Colorize the result line
       std::string result_line;
       if (r->accepted) {
-        result_line = fmt::format(
-          fmt::fg(fmt::terminal_color::green),
+        result_line = ansi::paint(std::format(
           "{} -> accepted=true expansions={}",
           input_display,
           r->expansions
-        );
+        ), ansi::term::green);
       } else {
-        result_line = fmt::format(
-          fmt::fg(fmt::terminal_color::red),
+        result_line = ansi::paint(std::format(
           "{} -> accepted=false expansions={}",
           input_display,
           r->expansions
-        );
+        ), ansi::term::red);
       }
 
       std::cout << result_line;
 
       if (r->witness) {
-        std::cout << fmt::format(fmt::fg(fmt::terminal_color::cyan), " witness_rules=[");
+        std::cout << ansi::paint(std::format( " witness_rules=["), ansi::term::cyan);
         for (std::size_t i = 0; i < r->witness->size(); ++i) {
-          std::cout << fmt::format(fmt::fg(fmt::terminal_color::yellow), "{}", (*r->witness)[i]);
+          std::cout << ansi::paint(std::format( "{}", (*r->witness)[i]), ansi::term::yellow);
           if (i + 1 < r->witness->size()) {
-            std::cout << fmt::format(fmt::fg(fmt::terminal_color::cyan), ",");
+            std::cout << ansi::paint(std::format( ","), ansi::term::cyan);
           }
         }
-        std::cout << fmt::format(fmt::fg(fmt::terminal_color::cyan), "]");
+        std::cout << ansi::paint(std::format( "]"), ansi::term::cyan);
       }
       std::cout << "\n";
     };
@@ -87,9 +78,9 @@ int RunHandler::operator()(const CommandContext&) {
     for (const auto& input_string : input_strings) {
       std::cout << "---------------------------------------------------"
                 << "\nShowing \""
-                << fmt::format(fmt::fg(fmt::terminal_color::cyan), "{}", input_string)
+                << ansi::paint(std::format( "{}", input_string), ansi::term::cyan)
                 << "\" execution in "
-                << fmt::format(fmt::fg(fmt::terminal_color::yellow), "{}", file_path.c_str())
+                << ansi::paint(std::format( "{}", file_path.c_str()), ansi::term::yellow)
                 << "\n";
       run(input_string, this->trace_enabled);
     }

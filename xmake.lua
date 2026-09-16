@@ -7,7 +7,7 @@ add_rules("mode.debug", "mode.release")
 set_languages("c++23")
 set_toolchains("llvm")
 
-add_requires("fmt 12.2.0", "cli11 v2.7.2")
+add_requires("cli11 v2.7.2")
 
 -- Track headers used in module global fragments.
 -- xmake rebuilds a BMI only when the .cppm file itself changes, so a
@@ -53,7 +53,6 @@ target("cc")
     add_deps("cli11mod")
     add_files("src/**.cc", "src/modules/*.cppm")
     add_includedirs("include")
-    add_packages("fmt")
     add_cxxflags(
         "-DASIO_HAS_THREADS",
         "-fcolor-diagnostics",

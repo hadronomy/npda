@@ -1,13 +1,8 @@
 // Own the Turing machine engine: tables, runs, and views.
-// fmt stays in the global fragment below. Import the rest.
-// Change this file to change the API.
-module;
-#include <fmt/color.h>
-#include <fmt/format.h>
-#include <fmt/ranges.h>
-
+// Import everything below. Change this file to change the API.
 export module turing;
 import std;
+import ansi;
 import config;
 
 export namespace turing {
@@ -330,15 +325,27 @@ class TuringMachine {
   static constexpr std::size_t npos = static_cast<std::size_t>(-1);
 
   [[nodiscard]] static std::string join_symbols(const std::vector<TapeSym>& symbols) {
-    return fmt::format("{}", fmt::join(symbols, ","));
+    std::string out;
+    bool first = true;
+    for (const auto& sym : symbols) {
+      if (!first)
+        out += ",";
+      first = false;
+      out += std::format("{}", sym);
+    }
+    return out;
   }
 
   [[nodiscard]] static std::string join_directions(const std::vector<Direction>& directions) {
-    std::vector<char> chars;
-    chars.reserve(directions.size());
-    for (auto d : directions)
-      chars.push_back(static_cast<char>(d));
-    return fmt::format("{}", fmt::join(chars, ","));
+    std::string out;
+    bool first = true;
+    for (auto d : directions) {
+      if (!first)
+        out += ",";
+      first = false;
+      out += static_cast<char>(d);
+    }
+    return out;
   }
 
   // Escape string for Graphviz quoted labels/IDs
@@ -440,7 +447,7 @@ class TuringMachine {
         const bool arity_ok =
           r.read.size() == num_tapes && r.write.size() == num_tapes && r.move.size() == num_tapes;
         if (!arity_ok) {
-          set_error(fmt::format(
+          set_error(std::format(
             "rule #{} arity mismatch: expected {} entries in read/write/move", i, num_tapes
           ));
           return;
@@ -448,13 +455,13 @@ class TuringMachine {
 
         if (stay_disallowed) {
           if (std::ranges::any_of(r.move, [](auto d) { return d == Direction::Stay; })) {
-            set_error(fmt::format("rule #{} uses Stay while allow_stay=false", i));
+            set_error(std::format("rule #{} uses Stay while allow_stay=false", i));
             return;
           }
         }
         if (left_disallowed) {
           if (std::ranges::any_of(r.move, [](auto d) { return d == Direction::Left; })) {
-            set_error(fmt::format("rule #{} uses Left while TapeDirection is Right-only", i));
+            set_error(std::format("rule #{} uses Left while TapeDirection is Right-only", i));
             return;
           }
         }
@@ -462,9 +469,9 @@ class TuringMachine {
         MultiKey key = std::make_pair(r.from, r.read);
         auto [it, ok] = multi_transitions_.emplace(std::move(key), i);
         if (!ok) {
-          set_error(fmt::format(
+          set_error(std::format(
             "duplicate multi-tape transition for state '{}' and symbols ({})",
-            fmt::format("{}", r.from),
+            std::format("{}", r.from),
             join_symbols(r.read)
           ));
           return;
@@ -525,7 +532,7 @@ class TuringMachine {
     if (opt.trace_sink)
       return opt.trace_sink;
     return [](std::string_view s) {
-      fmt::print("{}", s);
+      std::print("{}", s);
     };
   }
 
@@ -538,18 +545,17 @@ class TuringMachine {
       return;
     auto sink = sink_of(opt);
     if (opt.trace_colors) {
-      sink(fmt::format(
-        fmt::fg(npda::config::colors::error),
+      sink(ansi::paint(std::format(
         "\n{} No transition available for state '{}' and symbols ({})\n",
         npda::config::symbols::error,
-        fmt::format("{}", node.s),
+        std::format("{}", node.s),
         join_symbols(symbols)
-      ));
+      ), npda::config::colors::error));
       return;
     }
-    sink(fmt::format(
+    sink(std::format(
       "\nNo transition available for state '{}' and symbols ({})\n",
-      fmt::format("{}", node.s),
+      std::format("{}", node.s),
       join_symbols(symbols)
     ));
   }
@@ -572,20 +578,20 @@ void TuringMachine<State, TapeSym>::emit_trace_step(
 
   if (opt.trace_colors) {
     out +=
-      fmt::format(fmt::fg(npda::config::colors::section_heading), "\n=== Step {} ===\n", step_num);
+      ansi::paint(std::format( "\n=== Step {} ===\n", step_num), npda::config::colors::section_heading);
   } else {
-    out += fmt::format("\n=== Step {} ===\n", step_num);
+    out += std::format("\n=== Step {} ===\n", step_num);
   }
 
   if (opt.trace_colors) {
-    out += fmt::format(fmt::fg(npda::config::colors::info), "State: ");
-    out += fmt::format(fmt::fg(npda::config::colors::success), "{}\n", fmt::format("{}", node.s));
+    out += ansi::paint(std::format( "State: "), npda::config::colors::info);
+    out += ansi::paint(std::format( "{}\n", std::format("{}", node.s)), npda::config::colors::success);
   } else {
-    out += fmt::format("State: {}\n", fmt::format("{}", node.s));
+    out += std::format("State: {}\n", std::format("{}", node.s));
   }
 
   for (std::size_t tape_idx = 0; tape_idx < config_.num_tapes; ++tape_idx) {
-    out += fmt::format("Tape {}: ", tape_idx + 1);
+    out += std::format("Tape {}: ", tape_idx + 1);
 
     const auto& tape = node.tapes[tape_idx];
     const std::size_t head_pos = node.head_positions[tape_idx];
@@ -594,21 +600,21 @@ void TuringMachine<State, TapeSym>::emit_trace_step(
       if (i == head_pos) {
         if (opt.trace_colors) {
           out +=
-            fmt::format(fmt::fg(npda::config::colors::warning), "[{}]", fmt::format("{}", tape[i]));
+            ansi::paint(std::format( "[{}]", std::format("{}", tape[i])), npda::config::colors::warning);
         } else {
-          out += fmt::format("[{}]", fmt::format("{}", tape[i]));
+          out += std::format("[{}]", std::format("{}", tape[i]));
         }
       } else {
-        out += fmt::format(" {} ", fmt::format("{}", tape[i]));
+        out += std::format(" {} ", std::format("{}", tape[i]));
       }
     }
 
     if (head_pos >= tape.size()) {
       if (opt.trace_colors) {
         out +=
-          fmt::format(fmt::fg(npda::config::colors::success), " [{}]", fmt::format("{}", blank_));
+          ansi::paint(std::format( " [{}]", std::format("{}", blank_)), npda::config::colors::success);
       } else {
-        out += fmt::format(" [{}]", fmt::format("{}", blank_));
+        out += std::format(" [{}]", std::format("{}", blank_));
       }
     }
 
@@ -627,42 +633,42 @@ void TuringMachine<State, TapeSym>::emit_trace_step(
 
   if (rule.has_value()) {
     if (opt.trace_colors) {
-      out += fmt::format(fmt::fg(npda::config::colors::info), "Rule: ");
+      out += ansi::paint(std::format( "Rule: "), npda::config::colors::info);
     } else {
       out += "Rule: ";
     }
 
     const auto& r = rule.value();
-    const std::string rule_str = fmt::format(
+    const std::string rule_str = std::format(
       "({}, {}) → ({}, {}, {})",
-      fmt::format("{}", r.from),
+      std::format("{}", r.from),
       join_symbols(r.read),
-      fmt::format("{}", r.to),
+      std::format("{}", r.to),
       join_symbols(r.write),
       join_directions(r.move)
     );
 
     if (opt.trace_colors) {
-      out += fmt::format(fmt::fg(npda::config::colors::example), "{}\n", rule_str);
+      out += ansi::paint(std::format( "{}\n", rule_str), npda::config::colors::example);
     } else {
-      out += fmt::format("{}\n", rule_str);
+      out += std::format("{}\n", rule_str);
     }
 
     if (opt.trace_explanations) {
-      const std::string explanation = fmt::format(
+      const std::string explanation = std::format(
         "In state {}, read ({}), write ({}), move heads ({}), and go to "
         "state {}",
-        fmt::format("{}", r.from),
+        std::format("{}", r.from),
         join_symbols(r.read),
         join_symbols(r.write),
         join_directions(r.move),
-        fmt::format("{}", r.to)
+        std::format("{}", r.to)
       );
 
       if (opt.trace_colors) {
-        out += fmt::format(fmt::fg(npda::config::colors::info), "{}\n", explanation);
+        out += ansi::paint(std::format( "{}\n", explanation), npda::config::colors::info);
       } else {
-        out += fmt::format("{}\n", explanation);
+        out += std::format("{}\n", explanation);
       }
     }
   }
@@ -678,22 +684,21 @@ void TuringMachine<State, TapeSym>::show_configuration(const RunOptions& opt) co
   auto sink = sink_of(opt);
 
   if (opt.trace_colors) {
-    sink(fmt::format(
-      fmt::fg(npda::config::colors::banner_text),
+    sink(ansi::paint(std::format(
       "\n{} Turing Machine Configuration:\n",
       npda::config::symbols::info
-    ));
+    ), npda::config::colors::banner_text));
   } else {
     sink("\nTuring Machine Configuration:\n");
   }
 
   auto print_config = [&](std::string_view key, std::string_view value) {
     if (opt.trace_colors) {
-      sink(fmt::format(fmt::fg(npda::config::colors::info), "  {}: ", key));
-      sink(fmt::format(fmt::fg(npda::config::colors::success), "{}\n", value));
+      sink(ansi::paint(std::format( "  {}: ", key), npda::config::colors::info));
+      sink(ansi::paint(std::format( "{}\n", value), npda::config::colors::success));
       return;
     }
-    sink(fmt::format("  {}: {}\n", key, value));
+    sink(std::format("  {}: {}\n", key, value));
   };
 
   print_config("Number of Tapes", std::to_string(config_.num_tapes));
@@ -706,7 +711,7 @@ void TuringMachine<State, TapeSym>::show_configuration(const RunOptions& opt) co
     config_.operation_mode == OperationMode::Simultaneous ? "Simultaneous" : "Independent"
   );
   print_config("Allow Stay Movement", config_.allow_stay ? "Yes" : "No");
-  print_config("Blank Symbol", fmt::format("{}", blank_));
+  print_config("Blank Symbol", std::format("{}", blank_));
 }
 
 template <Hashable State, Hashable TapeSym>
@@ -728,7 +733,7 @@ std::expected<RunResult, Error> TuringMachine<State, TapeSym>::build_result(
       std::vector<std::string> tape_str;
       tape_str.reserve(acc_node.tapes[i].size());
       for (const auto& sym : acc_node.tapes[i])
-        tape_str.push_back(fmt::format("{}", sym));
+        tape_str.push_back(std::format("{}", sym));
       final_tapes.push_back(std::move(tape_str));
       final_head_positions.push_back(acc_node.head_positions[i]);
     }
@@ -783,14 +788,13 @@ void TuringMachine<State, TapeSym>::replay_trace_path(
   auto sink = sink_of(opt);
 
   if (opt.trace_colors) {
-    sink(fmt::format(
-      fmt::fg(npda::config::colors::banner_text),
+    sink(ansi::paint(std::format(
       "\n{} Accepting configuration found! Replaying {} steps...\n",
       npda::config::symbols::info,
       rule_path.size()
-    ));
+    ), npda::config::colors::banner_text));
   } else {
-    sink(fmt::format("\nAccepting configuration found! Replaying {} steps...\n", rule_path.size()));
+    sink(std::format("\nAccepting configuration found! Replaying {} steps...\n", rule_path.size()));
   }
 
   std::size_t step_num = 0;
@@ -807,11 +811,10 @@ void TuringMachine<State, TapeSym>::replay_trace_path(
   }
 
   if (opt.trace_colors) {
-    sink(fmt::format(
-      fmt::fg(npda::config::colors::success),
+    sink(ansi::paint(std::format(
       "\n{} Input accepted!\n",
       npda::config::symbols::success
-    ));
+    ), npda::config::colors::success));
   } else {
     sink("\nInput accepted!\n");
   }
@@ -843,7 +846,7 @@ std::expected<RunResult, Error> TuringMachine<State, TapeSym>::run_multi_tape(
           std::vector<std::string> tape_str;
           tape_str.reserve(current.tapes[i].size());
           for (const auto& sym : current.tapes[i])
-            tape_str.push_back(fmt::format("{}", sym));
+            tape_str.push_back(std::format("{}", sym));
           final_tapes.push_back(std::move(tape_str));
           final_heads.push_back(current.head_positions[i]);
         }
@@ -929,11 +932,11 @@ std::string TuringMachine<State, TapeSym>::to_graphviz_dot(const GraphvizOptions
   std::unordered_set<std::string> accepting_str;
   accepting_str.reserve(accepting_.size());
   for (const auto& s : accepting_) {
-    accepting_str.insert(fmt::format("{}", s));
+    accepting_str.insert(std::format("{}", s));
   }
 
   auto state_id = [](const State& s) {
-    return fmt::format("{}", s);
+    return std::format("{}", s);
   };
 
   auto rule_text = [&](const rule_type& r) {
@@ -943,9 +946,9 @@ std::string TuringMachine<State, TapeSym>::to_graphviz_dot(const GraphvizOptions
 
     if (opt.compact_labels) {
       // Compact, readable item
-      return fmt::format("r:({}) | w:({}) | m:({})", reads, writes, moves);
+      return std::format("r:({}) | w:({}) | m:({})", reads, writes, moves);
     }
-    return fmt::format("read: ({})  write: ({})  move: ({})", reads, writes, moves);
+    return std::format("read: ({})  write: ({})  move: ({})", reads, writes, moves);
   };
 
   // Collect all states explicitly
@@ -974,16 +977,16 @@ std::string TuringMachine<State, TapeSym>::to_graphviz_dot(const GraphvizOptions
   std::string dot;
   dot += "digraph TM {\n";
   dot += "  graph [\n";
-  dot += fmt::format("    bgcolor=\"{}\",\n", opt.background);
+  dot += std::format("    bgcolor=\"{}\",\n", opt.background);
   dot += "    splines=true,\n";
   dot += "    overlap=false,\n";
-  dot += fmt::format("    pad=\"{}\",\n", 0.15);
-  dot += fmt::format("    nodesep=\"{}\",\n", opt.nodesep);
-  dot += fmt::format("    ranksep=\"{}\"\n", opt.ranksep);
+  dot += std::format("    pad=\"{}\",\n", 0.15);
+  dot += std::format("    nodesep=\"{}\",\n", opt.nodesep);
+  dot += std::format("    ranksep=\"{}\"\n", opt.ranksep);
   dot += "  ];\n";
-  dot += fmt::format("  rankdir={};\n", opt.rankdir);
-  dot += fmt::format("  dpi={};", 300);
-  dot += fmt::format(
+  dot += std::format("  rankdir={};\n", opt.rankdir);
+  dot += std::format("  dpi={};", 300);
+  dot += std::format(
     "  node [fontname=\"{}\", shape={}, style=filled, color=\"{}\", "
     "fillcolor=\"{}\", fontcolor=\"{}\", penwidth={}];\n",
     dot_escape(opt.fontname),
@@ -993,7 +996,7 @@ std::string TuringMachine<State, TapeSym>::to_graphviz_dot(const GraphvizOptions
     opt.node_font,
     opt.node_penwidth
   );
-  dot += fmt::format(
+  dot += std::format(
     "  edge [fontname=\"{}\", color=\"{}\", fontcolor=\"{}\", penwidth={}, arrowsize={}];\n",
     dot_escape(opt.fontname),
     opt.edge_color,
@@ -1003,20 +1006,20 @@ std::string TuringMachine<State, TapeSym>::to_graphviz_dot(const GraphvizOptions
   );
   dot += "  labelloc=\"t\";\n";
   dot += "  labeljust=\"l\";\n";
-  dot += fmt::format(
+  dot += std::format(
     "  label=\"Turing Machine\\nTapes: {} | Tape dir: {} | Mode: {} | "
     "AllowStay: {} | Blank: {}\";\n",
     config_.num_tapes,
     (config_.tape_direction == TapeDirection::Bidirectional ? "Bidirectional" : "Right-only"),
     (config_.operation_mode == OperationMode::Simultaneous ? "Simultaneous" : "Independent"),
     (config_.allow_stay ? "true" : "false"),
-    dot_escape(fmt::format("{}", blank_))
+    dot_escape(std::format("{}", blank_))
   );
 
   // Start node arrow
   if (opt.show_start_edge) {
     dot += "  __start [shape=point, width=0.15, label=\"\", color=\"" + opt.edge_color + "\"];\n";
-    dot += fmt::format(
+    dot += std::format(
       "  __start -> \"{}\" [color=\"{}\"];\n", dot_escape(state_id(start_)), opt.edge_color
     );
   }
@@ -1026,7 +1029,7 @@ std::string TuringMachine<State, TapeSym>::to_graphviz_dot(const GraphvizOptions
     const bool is_accept = accepting_str.find(s_str) != accepting_str.end();
     if (is_accept) {
       if (opt.color_accepting) {
-        dot += fmt::format(
+        dot += std::format(
           "  \"{}\" [shape=doublecircle, color=\"{}\", fontcolor=\"{}\", fillcolor=\"{}\", "
           "penwidth={}];\n",
           dot_escape(s_str),
@@ -1036,10 +1039,10 @@ std::string TuringMachine<State, TapeSym>::to_graphviz_dot(const GraphvizOptions
           opt.accept_penwidth
         );
       } else {
-        dot += fmt::format("  \"{}\" [shape=doublecircle];\n", dot_escape(s_str));
+        dot += std::format("  \"{}\" [shape=doublecircle];\n", dot_escape(s_str));
       }
     } else {
-      dot += fmt::format(
+      dot += std::format(
         "  \"{}\" [shape={}, color=\"{}\", fillcolor=\"{}\", fontcolor=\"{}\", penwidth={}];\n",
         dot_escape(s_str),
         opt.node_shape,
@@ -1066,7 +1069,7 @@ std::string TuringMachine<State, TapeSym>::to_graphviz_dot(const GraphvizOptions
       combined += dot_escape(labels[i]);
     }
 
-    dot += fmt::format(
+    dot += std::format(
       "  \"{}\" -> \"{}\" [label=\"{}\"];\n", dot_escape(from_str), dot_escape(to_str), combined
     );
   }
@@ -1102,17 +1105,17 @@ std::expected<void, Error> TuringMachine<State, TapeSym>::write_graphviz_dot(
     std::filesystem::create_directories(path.parent_path(), ec);
     if (ec) {
       return std::unexpected(
-        Error{fmt::format("failed to create directories '{}': {}", path.string(), ec.message())}
+        Error{std::format("failed to create directories '{}': {}", path.string(), ec.message())}
       );
     }
   }
   std::ofstream ofs(path, std::ios::binary);
   if (!ofs) {
-    return std::unexpected(Error{fmt::format("failed to open output '{}'", path.string())});
+    return std::unexpected(Error{std::format("failed to open output '{}'", path.string())});
   }
   ofs << to_graphviz_dot(opt);
   if (!ofs) {
-    return std::unexpected(Error{fmt::format("failed to write DOT to '{}'", path.string())});
+    return std::unexpected(Error{std::format("failed to write DOT to '{}'", path.string())});
   }
   return {};
 }
@@ -1127,15 +1130,15 @@ std::expected<void, Error> TuringMachine<State, TapeSym>::export_graphviz_image(
   std::error_code ec;
   const auto tmp_dir = std::filesystem::temp_directory_path(ec);
   if (ec) {
-    return std::unexpected(Error{fmt::format("failed to get temp directory: {}", ec.message())});
+    return std::unexpected(Error{std::format("failed to get temp directory: {}", ec.message())});
   }
-  const auto tmp_dot = tmp_dir / fmt::format("tm_{}.dot", std::hash<const void*>{}(this));
+  const auto tmp_dot = tmp_dir / std::format("tm_{}.dot", std::hash<const void*>{}(this));
 
   if (auto w = write_graphviz_dot(tmp_dot, opt); !w) {
     return std::unexpected(w.error());
   }
 
-  const auto cmd = fmt::format(
+  const auto cmd = std::format(
     "\"{}\" -T{} \"{}\" -Goverlap=false -Gmodel=subset -o \"{}\"",
     std::string(dot_exe),
     std::string(format),
@@ -1144,7 +1147,7 @@ std::expected<void, Error> TuringMachine<State, TapeSym>::export_graphviz_image(
   );
   const int rc = std::system(cmd.c_str());
   if (rc != 0) {
-    return std::unexpected(Error{fmt::format("graphviz 'dot' failed (exit code {}): {}", rc, cmd)});
+    return std::unexpected(Error{std::format("graphviz 'dot' failed (exit code {}): {}", rc, cmd)});
   }
   return {};
 }

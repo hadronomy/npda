@@ -1,18 +1,9 @@
-// Implement TuringHandler in the cli module.
-// Textual includes stay in the global fragment above the module line.
-module;
-#include <filesystem>
-#include <fstream>
-#include <iostream>
-#include <string_view>
-
-#include <fmt/color.h>
-#include <fmt/format.h>
-#include <fmt/ranges.h>
-
+// Implement TuringHandler in the cli module. Import only.
 module cli;
 
 // Import the modules below.
+import std;
+import ansi;
 import diag;
 import turing;
 import turing.parser;
@@ -60,7 +51,7 @@ int TuringHandler::operator()(const CommandContext&) {
   if (auto& tm = result.value; result.value.has_value()) {
     if (this->graphviz) {
       auto new_path = this->file_path.filename().stem().replace_extension("png");
-      ui::info(fmt::format("Writting graphviz image in {}", new_path.c_str()));
+      ui::info(std::format("Writting graphviz image in {}", new_path.c_str()));
       auto exe = this->graphviz_exe;
       if (this->dot_only) {
         auto res = tm->write_graphviz_dot(new_path.replace_extension("dot"));
@@ -109,44 +100,42 @@ int TuringHandler::operator()(const CommandContext&) {
       // Colorize the result line
       std::string result_line;
       if (r->accepted) {
-        result_line = fmt::format(
-          fmt::fg(fmt::terminal_color::green),
+        result_line = ansi::paint(std::format(
           "{} -> accepted=true steps={}",
           input_display,
           r->steps
-        );
+        ), ansi::term::green);
       } else {
-        result_line = fmt::format(
-          fmt::fg(fmt::terminal_color::red),
+        result_line = ansi::paint(std::format(
           "{} -> accepted=false steps={}",
           input_display,
           r->steps
-        );
+        ), ansi::term::red);
       }
 
       std::cout << result_line;
 
       if (r->witness) {
-        std::cout << fmt::format(fmt::fg(fmt::terminal_color::cyan), " witness_rules=[");
+        std::cout << ansi::paint(std::format( " witness_rules=["), ansi::term::cyan);
         for (std::size_t i = 0; i < r->witness->size(); ++i) {
-          std::cout << fmt::format(fmt::fg(fmt::terminal_color::yellow), "{}", (*r->witness)[i]);
+          std::cout << ansi::paint(std::format( "{}", (*r->witness)[i]), ansi::term::yellow);
           if (i + 1 < r->witness->size()) {
-            std::cout << fmt::format(fmt::fg(fmt::terminal_color::cyan), ",");
+            std::cout << ansi::paint(std::format( ","), ansi::term::cyan);
           }
         }
-        std::cout << fmt::format(fmt::fg(fmt::terminal_color::cyan), "]");
+        std::cout << ansi::paint(std::format( "]"), ansi::term::cyan);
       }
 
       // Show final tape configuration
       if (!r->final_tapes.empty() && !r->final_tapes[0].empty()) {
-        std::cout << fmt::format(fmt::fg(fmt::terminal_color::cyan), " tape=\"");
+        std::cout << ansi::paint(std::format( " tape=\""), ansi::term::cyan);
 
         const auto& tape = r->final_tapes[0];
         std::size_t head_pos = r->final_head_positions[0];
 
         for (std::size_t i = 0; i < tape.size(); ++i) {
           if (i == head_pos) {
-            std::cout << fmt::format(fmt::fg(fmt::terminal_color::yellow), "[{}]", tape[i]);
+            std::cout << ansi::paint(std::format( "[{}]", tape[i]), ansi::term::yellow);
           } else {
             std::cout << tape[i];
           }
@@ -154,7 +143,7 @@ int TuringHandler::operator()(const CommandContext&) {
 
         // Show head position if it's beyond the current tape
         if (head_pos >= tape.size()) {
-          std::cout << fmt::format(fmt::fg(fmt::terminal_color::yellow), "[ ]");
+          std::cout << ansi::paint(std::format( "[ ]"), ansi::term::yellow);
         }
 
         std::cout << "\"";
@@ -166,9 +155,9 @@ int TuringHandler::operator()(const CommandContext&) {
     for (const auto& input_string : input_strings) {
       std::cout << "---------------------------------------------------"
                 << "\nShowing \""
-                << fmt::format(fmt::fg(fmt::terminal_color::cyan), "{}", input_string)
+                << ansi::paint(std::format( "{}", input_string), ansi::term::cyan)
                 << "\" execution in "
-                << fmt::format(fmt::fg(fmt::terminal_color::yellow), "{}", file_path.c_str())
+                << ansi::paint(std::format( "{}", file_path.c_str()), ansi::term::yellow)
                 << "\n";
       run(input_string, this->trace_enabled);
     }
