@@ -44,7 +44,7 @@ class ColorizedFormatter : public CLI::Formatter {
   [[nodiscard]] std::size_t column_width() const { return column_width_; }
 
   // Colorize the fully composed option line to preserve CLI11 alignment.
-  std::string make_option(const CLI::Option* opt, bool is_positional) const override {
+  [[nodiscard]] std::string make_option(const CLI::Option* opt, bool is_positional) const override {
     std::string base = CLI::Formatter::make_option(opt, is_positional);
     if (base.empty())
       return base;
@@ -64,7 +64,7 @@ class ColorizedFormatter : public CLI::Formatter {
     return ansi::format(ansi::fg(config::colors::info), "{}", base);
   }
 
-  std::string make_subcommand(const CLI::App* app) const override {
+  [[nodiscard]] std::string make_subcommand(const CLI::App* app) const override {
     const std::string& name = app->get_name();
     const std::string& desc = app->get_description();
     // Simple, readable list for commands
@@ -72,7 +72,7 @@ class ColorizedFormatter : public CLI::Formatter {
   }
 
   // Dedicated positionals section
-  std::string make_positionals(const CLI::App* app) const override {
+  [[nodiscard]] std::string make_positionals(const CLI::App* app) const override {
     const auto pos = positional_options(app);
     if (pos.empty())
       return {};
@@ -85,7 +85,7 @@ class ColorizedFormatter : public CLI::Formatter {
     return out;
   }
 
-  std::string make_group(
+  [[nodiscard]] std::string make_group(
     std::string group,
     bool is_positional,
     std::vector<const CLI::Option*> opts
@@ -103,7 +103,7 @@ class ColorizedFormatter : public CLI::Formatter {
     return out;
   }
 
-  std::string make_subcommands(const CLI::App* app, CLI::AppFormatMode /*mode*/) const override {
+  [[nodiscard]] std::string make_subcommands(const CLI::App* app, CLI::AppFormatMode /*mode*/) const override {
     // Hide CLI11 Option_group "subcommands" from the COMMANDS list
     std::vector<const CLI::App*> subs = app->get_subcommands([&](const CLI::App* sub) {
       // Skip option groups (identified via RTTI) and also nameless entries
@@ -125,7 +125,7 @@ class ColorizedFormatter : public CLI::Formatter {
     return out;
   }
 
-  std::string make_help(const CLI::App* app, std::string /*name*/, CLI::AppFormatMode mode)
+  [[nodiscard]] std::string make_help(const CLI::App* app, std::string /*name*/, CLI::AppFormatMode mode)
     const override {
     std::string out;
     out.reserve(512);
@@ -439,7 +439,7 @@ export class CommandRegistry {
   // Register a command with a factory that returns a unique_ptr<ICommandHandler>.
   // The builder function is given a CLI::App& to define its options/args.
   template <typename Factory>
-  CLI::App* register_command(std::string name, std::string description, Factory&& factory) {
+  [[nodiscard]] CLI::App* register_command(std::string name, std::string description, Factory&& factory) {
     auto cmd_name = normalize_name(name);
     if (cmd_name.empty()) {
       throw std::invalid_argument("Command name cannot be empty");
@@ -462,57 +462,6 @@ export class CommandRegistry {
 
     subcommands_.emplace(cmd_name, Subcommand{.app = sub, .handler = std::move(handler)});
     return sub;
-  }
-
-  // Convenience: register a simple alias that forwards to an existing command.
-  CLI::App* register_alias(std::string alias, std::string target) {
-    auto a = normalize_name(alias);
-    auto t = normalize_name(target);
-    if (!subcommands_.contains(t)) {
-      throw std::invalid_argument("Target command not found: " + t);
-    }
-    auto* sub = app_.add_subcommand(a, "Alias for '" + t + "'");
-    sub->callback([this, t]() {
-      // Reconstruct to run the target handler. In practice you might
-      // prefer to parse argv differently, but here we simply call it.
-      auto it = subcommands_.find(t);
-      if (it != subcommands_.end()) {
-        exit_code_ = (*(it->second.handler))(ctx_);
-      } else {
-        throw std::runtime_error("Alias target missing at runtime");
-      }
-    });
-    aliases_.push_back({a, t});
-    return sub;
-  }
-
-  // Register a meta command that lists available commands.
-  void register_list_command() {
-    register_command(
-      "list",
-      "List available commands",
-      [this](CLI::App& sub) -> std::unique_ptr<CommandHandler> {
-        struct ListHandler : CommandHandler {
-          const CommandRegistry* reg{};
-          explicit ListHandler(const CommandRegistry* r) : reg(r) {}
-          int operator()(const CommandContext&) override {
-            std::cout << "Available commands:\n";
-            for (const auto& [name, sc] : reg->subcommands_) {
-              std::cout << "  " << name << "  - " << sc.app->get_description() << "\n";
-            }
-            if (!reg->aliases_.empty()) {
-              std::cout << "\nAliases:\n";
-              for (const auto& [a, t] : reg->aliases_) {
-                std::cout << "  " << a << " -> " << t << "\n";
-              }
-            }
-            return 0;
-          }
-        };
-        (void)sub;
-        return std::make_unique<ListHandler>(this);
-      }
-    );
   }
 
   // Parse and execute. Returns the command's exit code or non-zero on errors.
@@ -545,8 +494,8 @@ export class CommandRegistry {
     return exit_code_;
   }
 
-  CLI::App& app() { return app_; }
-  const CLI::App& app() const { return app_; }
+  [[nodiscard]] CLI::App& app() { return app_; }
+  [[nodiscard]] const CLI::App& app() const { return app_; }
 
  private:
   struct Subcommand {
@@ -558,7 +507,6 @@ export class CommandRegistry {
   std::string description_;
   CommandContext ctx_{};
   std::map<std::string, Subcommand> subcommands_{};
-  std::vector<std::pair<std::string, std::string>> aliases_{};
   int exit_code_{0};
 };
 
@@ -573,7 +521,7 @@ export class RunHandler final : public CommandHandler {
   int operator()(const CommandContext& ctx) override;
 };
 
-export std::unique_ptr<CommandHandler> make_npda(CLI::App& sub) {
+export [[nodiscard]] std::unique_ptr<CommandHandler> make_npda(CLI::App& sub) {
   auto handler = std::make_unique<RunHandler>();
   sub.add_option("file_path", handler->file_path, "the NPDA description file path")
     ->required()
@@ -606,7 +554,7 @@ export class TuringHandler final : public CommandHandler {
   int operator()(const CommandContext& ctx) override;
 };
 
-export std::unique_ptr<CommandHandler> make_turing(CLI::App& sub) {
+export [[nodiscard]] std::unique_ptr<CommandHandler> make_turing(CLI::App& sub) {
   auto handler = std::make_unique<TuringHandler>();
   auto grp = sub.add_option_group("mode");
   sub.add_option("file_path", handler->file_path, "the Turing Machine description file path")
@@ -650,7 +598,7 @@ export class PRFHandler final : public CommandHandler {
   int operator()(const CommandContext& ctx) override;
 };
 
-export std::unique_ptr<CommandHandler> make_prf(CLI::App& sub) {
+export [[nodiscard]] std::unique_ptr<CommandHandler> make_prf(CLI::App& sub) {
   auto handler = std::make_unique<PRFHandler>();
   sub.add_option("params", handler->params, "the prf parameters for execution")
     ->expected(2, 2)

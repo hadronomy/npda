@@ -11,11 +11,11 @@ int Application::run(int argc, char** argv) const {
     "cc", "a simple cli for running a NPDA or turing machine and see all the traces"
   );
   try {
-    registry.register_command("npda", "execute a given NPDA with a given string", make_npda);
-    registry.register_command(
+    (void)registry.register_command("npda", "execute a given NPDA with a given string", make_npda);
+    (void)registry.register_command(
       "turing", "execute a given Turing Machine with a given string", make_turing
     );
-    registry.register_command("prf", "execute primitive recursive functions", make_prf);
+    (void)registry.register_command("prf", "execute primitive recursive functions", make_prf);
     return registry.run(argc, argv);
   } catch (const std::exception& e) {
     ui::error(e.what());

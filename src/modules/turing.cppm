@@ -58,7 +58,7 @@ using Rule = MultiTapeRule<State, TapeSym>;
 
 // Helper to conveniently create an arity-1 rule (single tape)
 template <Hashable State, Hashable TapeSym>
-constexpr Rule<State, TapeSym> make_single_rule(
+[[nodiscard]] constexpr Rule<State, TapeSym> make_single_rule(
   const State& from,
   const TapeSym& read,
   const State& to,
@@ -308,7 +308,7 @@ class TuringMachine {
 
   [[nodiscard]] const TMConfig& config() const noexcept { return config_; }
 
-  std::expected<RunResult, Error> build_result(
+  [[nodiscard]] std::expected<RunResult, Error> build_result(
     const MultiTapeNode<State, TapeSym>& acc_node,
     const std::vector<MultiTapeNode<State, TapeSym>>& nodes,
     std::size_t idx,
@@ -453,6 +453,8 @@ class TuringMachine {
 
   void build_indices() const {
     std::call_once(*indices_once_, [this]() {
+      // One entry per rule at most.
+      multi_transitions_.reserve(rules_.size());
       multi_transitions_.clear();
       indices_error_.reset();
 

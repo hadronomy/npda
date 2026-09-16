@@ -7,7 +7,7 @@ export namespace prf {
 
 // -------------------- Utilities --------------------
 
-inline std::string join_u64(const std::vector<std::uint64_t>& xs, std::string_view sep = ", ") {
+[[nodiscard]] inline std::string join_u64(const std::vector<std::uint64_t>& xs, std::string_view sep = ", ") {
   std::ostringstream oss;
   for (std::size_t i = 0; i < xs.size(); ++i) {
     if (i)
@@ -76,7 +76,7 @@ class Trace {
   };
 
   // Avoid copying name/args unless we actually record a node.
-  Scope enter(std::string_view name, const std::vector<std::uint64_t>& args) {
+  [[nodiscard]] Scope enter(std::string_view name, const std::vector<std::uint64_t>& args) {
     if (mode_ != Mode::Off) {
       // Count call without constructing a new key each time
       auto it = counts_.try_emplace(std::string{name}, 0).first;
@@ -113,7 +113,7 @@ class Trace {
     counts_.clear();
   }
 
-  const std::vector<std::unique_ptr<Node>>& roots() const { return roots_; }
+  [[nodiscard]] const std::vector<std::unique_ptr<Node>>& roots() const { return roots_; }
 
   void print(std::ostream& os) const {
     if (mode_ == Mode::Full) {
@@ -141,7 +141,7 @@ class Trace {
     }
   }
 
-  Mode mode() const { return mode_; }
+  [[nodiscard]] Mode mode() const { return mode_; }
   void set_mode(Mode m) { mode_ = m; }
 
  private:
@@ -182,8 +182,8 @@ class Trace {
 class Function {
  public:
   virtual ~Function() = default;
-  virtual std::size_t arity() const = 0;
-  virtual std::string_view name() const = 0;
+  [[nodiscard]] virtual std::size_t arity() const = 0;
+  [[nodiscard]] virtual std::string_view name() const = 0;
 
   std::uint64_t operator()(const std::vector<std::uint64_t>& args, Trace& trace) const {
     if (args.size() != arity()) {
@@ -210,8 +210,8 @@ class Zero : public Function {
   Zero(std::size_t n, std::string name = "") : n_(n) {
     name_ = name.empty() ? ("Z^" + std::to_string(n)) : std::move(name);
   }
-  std::size_t arity() const override { return n_; }
-  std::string_view name() const override { return name_; }
+  [[nodiscard]] std::size_t arity() const override { return n_; }
+  [[nodiscard]] std::string_view name() const override { return name_; }
 
  protected:
   std::uint64_t eval_(const std::vector<std::uint64_t>&, Trace&) const override { return 0ULL; }
@@ -224,8 +224,8 @@ class Zero : public Function {
 class Successor : public Function {
  public:
   explicit Successor(std::string name = "S") : name_(std::move(name)) {}
-  std::size_t arity() const override { return 1; }
-  std::string_view name() const override { return name_; }
+  [[nodiscard]] std::size_t arity() const override { return 1; }
+  [[nodiscard]] std::string_view name() const override { return name_; }
 
  protected:
   std::uint64_t eval_(const std::vector<std::uint64_t>& args, Trace&) const override {
@@ -253,8 +253,8 @@ class Projection : public Function {
       name_ = std::move(name);
     }
   }
-  std::size_t arity() const override { return n_; }
-  std::string_view name() const override { return name_; }
+  [[nodiscard]] std::size_t arity() const override { return n_; }
+  [[nodiscard]] std::string_view name() const override { return name_; }
 
  protected:
   std::uint64_t eval_(const std::vector<std::uint64_t>& args, Trace&) const override { return args[i_ - 1]; }
@@ -305,8 +305,8 @@ class Composition : public Function {
     }
   }
 
-  std::size_t arity() const override { return n_; }
-  std::string_view name() const override { return name_; }
+  [[nodiscard]] std::size_t arity() const override { return n_; }
+  [[nodiscard]] std::string_view name() const override { return name_; }
 
  protected:
   std::uint64_t eval_(const std::vector<std::uint64_t>& args, Trace& trace) const override {
@@ -357,8 +357,8 @@ class PrimitiveRecursion : public Function {
     }
   }
 
-  std::size_t arity() const override { return n_; }
-  std::string_view name() const override { return name_; }
+  [[nodiscard]] std::size_t arity() const override { return n_; }
+  [[nodiscard]] std::string_view name() const override { return name_; }
 
  protected:
   // Semantics:
@@ -398,19 +398,19 @@ class PrimitiveRecursion : public Function {
 
 // -------------------- Factories --------------------
 
-inline std::shared_ptr<const Function> zero(std::size_t n, std::string name = "") {
+[[nodiscard]] inline std::shared_ptr<const Function> zero(std::size_t n, std::string name = "") {
   return std::make_shared<Zero>(n, std::move(name));
 }
 
-inline std::shared_ptr<const Function> succ(std::string name = "S") {
+[[nodiscard]] inline std::shared_ptr<const Function> succ(std::string name = "S") {
   return std::make_shared<Successor>(std::move(name));
 }
 
-inline std::shared_ptr<const Function> proj(std::size_t i, std::size_t n, std::string name = "") {
+[[nodiscard]] inline std::shared_ptr<const Function> proj(std::size_t i, std::size_t n, std::string name = "") {
   return std::make_shared<Projection>(i, n, std::move(name));
 }
 
-inline std::shared_ptr<const Function> compose(
+[[nodiscard]] inline std::shared_ptr<const Function> compose(
   std::shared_ptr<const Function> g,
   std::vector<std::shared_ptr<const Function>> hs,
   std::string name = ""
@@ -418,7 +418,7 @@ inline std::shared_ptr<const Function> compose(
   return std::make_shared<Composition>(std::move(g), std::move(hs), std::move(name));
 }
 
-inline std::shared_ptr<const Function> primitive_rec(
+[[nodiscard]] inline std::shared_ptr<const Function> primitive_rec(
   std::shared_ptr<const Function> g,
   std::shared_ptr<const Function> h,
   std::string name = ""
@@ -450,18 +450,18 @@ inline constexpr Arg _8{8};
 struct Context {
   std::size_t n;
 
-  std::shared_ptr<const prf::Function> Z(std::string name = "") const {
+  [[nodiscard]] std::shared_ptr<const prf::Function> Z(std::string name = "") const {
     return prf::zero(n, std::move(name));
   }
-  std::shared_ptr<const prf::Function> id(std::string name = "id") const {
+  [[nodiscard]] std::shared_ptr<const prf::Function> id(std::string name = "id") const {
     return prf::proj(1, n, std::move(name));
   }
-  std::shared_ptr<const prf::Function> P(std::size_t i, std::string name = "") const {
+  [[nodiscard]] std::shared_ptr<const prf::Function> P(std::size_t i, std::string name = "") const {
     return prf::proj(i, n, std::move(name));
   }
 
   template <typename... Ts>
-  std::shared_ptr<const prf::Function> operator()(std::shared_ptr<const prf::Function> g, Ts... xs)
+  [[nodiscard]] std::shared_ptr<const prf::Function> operator()(std::shared_ptr<const prf::Function> g, Ts... xs)
     const {
     std::vector<std::shared_ptr<const prf::Function>> hs;
     hs.reserve(sizeof...(Ts));
@@ -498,7 +498,7 @@ struct Context {
 // - h_builder receives Context(n+2) and must return h: N^(n+2) -> N
 //   In that context the arguments are ordered as (y, z, x).
 template <typename GBuilder, typename HBuilder>
-std::shared_ptr<const prf::Function>
+[[nodiscard]] std::shared_ptr<const prf::Function>
   Rn(std::size_t n, GBuilder g_builder, HBuilder h_builder, std::string name = "") {
   Context gctx{n};
   Context hctx{n + 2};
@@ -509,7 +509,7 @@ std::shared_ptr<const prf::Function>
 
 // Binary case (arity 2): recursion over the LAST argument (y).
 template <typename GBuilder, typename HBuilder>
-std::shared_ptr<const prf::Function>
+[[nodiscard]] std::shared_ptr<const prf::Function>
   R1(GBuilder g_builder, HBuilder h_builder, std::string name = "") {
   return Rn(1, std::move(g_builder), std::move(h_builder), std::move(name));
 }

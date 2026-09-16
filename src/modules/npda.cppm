@@ -8,7 +8,7 @@ import config;
 export namespace npda {
 
 template <typename T>
-concept Hashable = requires(T t) {
+concept Hashable = std::equality_comparable<T> && requires(const T& t) {
   { std::hash<T>{}(t) } -> std::convertible_to<std::size_t>;
 };
 
@@ -28,20 +28,20 @@ export namespace npda {
 
 template <typename State, typename StackSym>
 struct KeyHash {
-  std::size_t operator()(const struct Key<State, StackSym>& k) const {
+  [[nodiscard]] std::size_t operator()(const struct Key<State, StackSym>& k) const {
     std::size_t h = std::hash<State>{}(k.s);
     h = combine(h, std::hash<std::size_t>{}(k.pos));
     h = combine(h, vec_hash(k.stack));
     return h;
   }
 
-  static std::size_t combine(std::size_t a, std::size_t b) {
+  [[nodiscard]] static std::size_t combine(std::size_t a, std::size_t b) {
     // 64-bit mix (splitmix64-ish)
     std::size_t x = a ^ (b + 0x9e3779b97f4a7c15ULL + (a << 6) + (a >> 2));
     return x;
   }
 
-  static std::size_t vec_hash(const std::vector<StackSym>& v) {
+  [[nodiscard]] static std::size_t vec_hash(const std::vector<StackSym>& v) {
     std::size_t h = 0xcbf29ce484222325ULL;  // FNV offset
     for (const auto& e : v) {
       std::size_t eh = std::hash<StackSym>{}(e);
@@ -49,6 +49,20 @@ struct KeyHash {
       h *= 0x100000001b3ULL;  // FNV prime
     }
     return h;
+  }
+};
+
+}  // namespace npda
+export namespace npda {
+
+// Hash for state/input pairs in the transition index.
+template <typename State, typename Input>
+struct PairHash {
+  std::size_t operator()(const std::pair<State, Input>& p) const noexcept {
+    std::size_t h1 = std::hash<State>{}(p.first);
+    std::size_t h2 = std::hash<Input>{}(p.second);
+    // boost-ish hash combine
+    return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
   }
 };
 
@@ -81,7 +95,7 @@ export namespace npda {
 
 // Generate color for non-accepting states (avoids green hues)
 // Takes a hash value as parameter to ensure consistent colors
-inline ansi::rgb generate_non_accepting_state_color(std::size_t state_hash) {
+[[nodiscard]] inline ansi::rgb generate_non_accepting_state_color(std::size_t state_hash) {
   // Use golden ratio to create visually distinct colors
   // Map hash to a limited set of harmonious colors
   constexpr std::size_t color_palette_size = 8;
@@ -154,7 +168,7 @@ inline ansi::rgb generate_non_accepting_state_color(std::size_t state_hash) {
 export namespace npda {
 
 // Text wrapping utility
-inline std::string wrap_text(const std::string& text, std::size_t width = 35) {
+[[nodiscard]] inline std::string wrap_text(const std::string& text, std::size_t width = 35) {
   std::string result;
   std::size_t start = 0;
 
@@ -183,7 +197,7 @@ inline std::string wrap_text(const std::string& text, std::size_t width = 35) {
 
 // Rule explanation with colorization
 template <Hashable State, Hashable Input, Hashable StackSym>
-std::string explain_rule(const Rule<State, Input, StackSym>& r) {
+[[nodiscard]] std::string explain_rule(const Rule<State, Input, StackSym>& r) {
   std::string explanation;
 
   // Build colored explanation parts
@@ -467,7 +481,9 @@ class NPDA {
     using KeyHashType = KeyHash<State, StackSym>;
 
     std::vector<NodeType> nodes;
-    nodes.reserve(1024);
+    // Cap the upfront reserve: max_expansions bounds the search.
+    constexpr std::size_t kMaxReserve = 65536;
+    nodes.reserve(std::min(opt.max_expansions, kMaxReserve));
 
     auto make_root = [&] {
       NodeType node;
@@ -485,7 +501,7 @@ class NPDA {
     work.push_back(0);
 
     std::unordered_set<KeyType, KeyHashType> visited;
-    visited.reserve(4096);
+    visited.reserve(std::min(opt.max_expansions, kMaxReserve));
     visited.insert(KeyType{nodes[0].s, nodes[0].pos, nodes[0].stack});
 
     std::size_t expansions = 0;
@@ -707,7 +723,8 @@ class NPDA {
 
   // Transition indices for efficient rule lookup
   mutable std::unordered_map<State, std::vector<std::size_t>> epsilon_by_from_;
-  mutable std::map<std::pair<State, Input>, std::vector<std::size_t>> consume_by_from_input_;
+  mutable std::unordered_map<std::pair<State, Input>, std::vector<std::size_t>, PairHash<State, Input>>
+    consume_by_from_input_;
   mutable bool indices_built_ = false;
   mutable std::unique_ptr<std::once_flag> indices_once_ =
     std::make_unique<std::once_flag>();
@@ -715,11 +732,11 @@ class NPDA {
   // Constants and helper functions
   static constexpr std::size_t npos = static_cast<std::size_t>(-1);
 
-  static bool contains(const std::vector<State>& v, const State& s) {
+  [[nodiscard]] static bool contains(const std::vector<State>& v, const State& s) {
     return std::find(v.begin(), v.end(), s) != v.end();
   }
 
-  static bool
+  [[nodiscard]] static bool
     stack_matches(const std::vector<StackSym>& st, const std::optional<StackSym>& need_top) {
     if (!need_top.has_value())
       return true;
@@ -742,6 +759,9 @@ class NPDA {
   // Build transition indices for efficient rule lookup
   void build_indices() const {
     std::call_once(*indices_once_, [this]() {
+      // One entry per rule at most, split across both maps.
+      epsilon_by_from_.reserve(rules_.size());
+      consume_by_from_input_.reserve(rules_.size());
       for (std::size_t i = 0; i < rules_.size(); ++i) {
         const auto& r = rules_[i];
         if (!r.input.has_value()) {

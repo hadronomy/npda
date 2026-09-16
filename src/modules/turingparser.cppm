@@ -43,13 +43,13 @@ struct SpecTokens {
 };
 
 // Read entire stream
-inline std::string read_all(std::istream& is) {
+[[nodiscard]] inline std::string read_all(std::istream& is) {
   std::ostringstream oss;
   oss << is.rdbuf();
   return oss.str();
 }
 
-inline SpecTokens lex(const diag::SourceFile& src) {
+[[nodiscard]] inline SpecTokens lex(const diag::SourceFile& src) {
   SpecTokens st;
   st.lines.reserve(src.line_count());
 
@@ -127,12 +127,12 @@ inline void add_symbol_error(
   add_simple_error(dx, std::move(code), std::move(msg), t.span, std::move(label_msg));
 }
 
-inline bool line_has_tokens(const Line& L) {
+[[nodiscard]] inline bool line_has_tokens(const Line& L) {
   return !L.tokens.empty();
 }
 
 // Next non-empty line >= i
-inline std::optional<std::size_t> next_nonempty(const SpecTokens& st, std::size_t i) {
+[[nodiscard]] inline std::optional<std::size_t> next_nonempty(const SpecTokens& st, std::size_t i) {
   const std::size_t n = st.lines.size();
   for (std::size_t k = i; k < n; ++k) {
     if (line_has_tokens(st.lines[k]))
@@ -142,7 +142,7 @@ inline std::optional<std::size_t> next_nonempty(const SpecTokens& st, std::size_
 }
 
 // Turn tokens to set of strings
-inline std::unordered_set<std::string> to_set(const std::vector<Token>& toks) {
+[[nodiscard]] inline std::unordered_set<std::string> to_set(const std::vector<Token>& toks) {
   std::unordered_set<std::string> s;
   s.reserve(toks.size());
   for (const auto& t : toks)
@@ -171,7 +171,7 @@ struct TomlToken {
 // ---------- Helpers for config parsing ----------
 
 // trim ASCII spaces and tabs only (config grammar uses them)
-inline std::string_view trim_ws(std::string_view s) {
+[[nodiscard]] inline std::string_view trim_ws(std::string_view s) {
   const auto b = s.find_first_not_of(" \t");
   if (b == std::string_view::npos)
     return {};
@@ -179,7 +179,7 @@ inline std::string_view trim_ws(std::string_view s) {
   return s.substr(b, e - b + 1);
 }
 
-inline std::string_view unquote_if(std::string_view v) {
+[[nodiscard]] inline std::string_view unquote_if(std::string_view v) {
   if (v.size() >= 2) {
     const char a = v.front();
     const char b = v.back();
@@ -190,7 +190,7 @@ inline std::string_view unquote_if(std::string_view v) {
   return v;
 }
 
-inline bool parse_uint_nonzero(std::string_view v, std::size_t& out) {
+[[nodiscard]] inline bool parse_uint_nonzero(std::string_view v, std::size_t& out) {
   v = trim_ws(v);
   if (v.empty())
     return false;
@@ -211,7 +211,7 @@ inline bool parse_uint_nonzero(std::string_view v, std::size_t& out) {
   return true;
 }
 
-inline bool parse_bool_literal(std::string_view v, bool& out) {
+[[nodiscard]] inline bool parse_bool_literal(std::string_view v, bool& out) {
   v = trim_ws(unquote_if(v));
   if (v == "true") {
     out = true;
@@ -225,7 +225,7 @@ inline bool parse_bool_literal(std::string_view v, bool& out) {
 }
 
 // Generic enum parser: ensures v is exactly one of allowed values
-inline bool parse_enum_value(
+[[nodiscard]] inline bool parse_enum_value(
   std::string_view v,
   const std::vector<std::string>& allowed,
   std::size_t& idx_out
@@ -369,7 +369,7 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
 }
 
 // For unknown keys: produce suggestions using bounded Levenshtein
-inline std::vector<std::string> suggest_keys(
+[[nodiscard]] inline std::vector<std::string> suggest_keys(
   std::string_view unknown,
   const std::vector<ConfigKeySpec>& schema,
   std::size_t max_distance = 3
@@ -388,7 +388,7 @@ inline std::vector<std::string> suggest_keys(
 // Parse TOML-like configuration from structured comments with
 // comprehensive diagnostics
 // Format: # /// config\n# key = value\n# ///
-inline ConfigParseResult parse_structured_config_with_schema(
+[[nodiscard]] inline ConfigParseResult parse_structured_config_with_schema(
   const diag::SourceFile& source,
   const std::vector<ConfigKeySpec>& schema
 ) {
@@ -644,11 +644,11 @@ inline ConfigParseResult parse_structured_config_with_schema(
 }
 
 // Backwards-compatible entry point using built-in schema
-inline ConfigParseResult parse_structured_config(const diag::SourceFile& source) {
+[[nodiscard]] inline ConfigParseResult parse_structured_config(const diag::SourceFile& source) {
   return parse_structured_config_with_schema(source, default_config_schema());
 }
 
-inline bool looks_like_single_tape_transition(
+[[nodiscard]] inline bool looks_like_single_tape_transition(
   const std::vector<Token>& toks,
   const std::unordered_set<std::string>& Q,
   const std::unordered_set<std::string>& G
@@ -676,7 +676,7 @@ inline bool looks_like_single_tape_transition(
   return true;
 }
 
-inline bool looks_like_multi_tape_transition(
+[[nodiscard]] inline bool looks_like_multi_tape_transition(
   const std::vector<Token>& toks,
   const std::unordered_set<std::string>& Q,
   const std::unordered_set<std::string>& G,
@@ -722,7 +722,7 @@ inline bool looks_like_multi_tape_transition(
   return true;
 }
 
-inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename) {
+[[nodiscard]] inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename) {
   ParseResult out;
   out.source = diag::SourceFile::from(filename, read_all(is));
   const auto st = lex(out.source);
@@ -942,32 +942,22 @@ inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename
       const Token& write = T[3];
       const Token& move = T[4];
 
-      // Recovery flags
-      bool bad_from = false;
-      bool bad_read = false;
-      bool bad_to = false;
-      bool bad_write = false;
-      bool bad_move = false;
-
+      // bad_* reshape nothing here: unknown fields are hard errors
+      // and the rule is still recorded for diagnostics.
       if (Qset.count(from.text) == 0) {
         add_symbol_error(dx, "E0011", "unknown 'from' state", from, "state not in Q");
-        bad_from = true;
       }
       if (Gset.count(read.text) == 0) {
         add_symbol_error(dx, "E0012", "unknown read symbol", read, "symbol not in Γ");
-        bad_read = true;
       }
       if (Qset.count(to.text) == 0) {
         add_symbol_error(dx, "E0014", "unknown 'to' state", to, "state not in Q");
-        bad_to = true;
       }
       if (Gset.count(write.text) == 0) {
         add_symbol_error(dx, "E0015", "unknown write symbol", write, "symbol not in Γ");
-        bad_write = true;
       }
       if (move.text != "L" && move.text != "R" && move.text != "S") {
         add_symbol_error(dx, "E0016", "invalid move direction", move, "must be L, R, or S");
-        bad_move = true;
       }
 
       // Build arity-1 multi rule (even for invalids to aid recovery)
@@ -986,12 +976,6 @@ inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename
       rule.read = {read.text};
       rule.write = {write.text};
       rule.move = {dir};
-
-      (void)bad_from;
-      (void)bad_to;
-      (void)bad_read;
-      (void)bad_write;
-      (void)bad_move;
 
       rules.push_back(std::move(rule));
     } else {
@@ -1015,17 +999,6 @@ inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename
       }
 
       const std::size_t to_idx = 1 + config.num_tapes;
-      if (to_idx >= T.size()) {
-        add_simple_error(
-          dx,
-          "E0014",
-          "missing 'to' state",
-          L.line_span,
-          "multi-tape transition missing target state"
-        );
-        continue;
-      }
-
       const Token& to = T[to_idx];
       if (Qset.count(to.text) == 0) {
         add_symbol_error(dx, "E0014", "unknown 'to' state", to, "state not in Q");
@@ -1129,16 +1102,16 @@ inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename
     diag::Diagnostics errors = std::move(out.diagnostics);
     return {
       std::unexpected(std::move(errors)),
-      out.source,
-      out.config,
+      std::move(out.source),
+      std::move(out.config),
       diag::Diagnostics{}
     };
   }
 
   return {
     std::expected<TM, diag::Diagnostics>(*std::move(built)),
-    out.source,
-    out.config,
+    std::move(out.source),
+    std::move(out.config),
     std::move(out.diagnostics)
   };
 }

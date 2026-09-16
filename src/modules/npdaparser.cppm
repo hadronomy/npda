@@ -40,13 +40,13 @@ struct SpecTokens {
 };
 
 // Read entire stream
-inline std::string read_all(std::istream& is) {
+[[nodiscard]] inline std::string read_all(std::istream& is) {
   std::ostringstream oss;
   oss << is.rdbuf();
   return oss.str();
 }
 
-inline SpecTokens lex(const diag::SourceFile& src) {
+[[nodiscard]] inline SpecTokens lex(const diag::SourceFile& src) {
   SpecTokens st;
   st.lines.reserve(src.line_count());
 
@@ -95,7 +95,7 @@ inline SpecTokens lex(const diag::SourceFile& src) {
   return st;
 }
 
-inline bool is_eps_tok(std::string_view s) {
+[[nodiscard]] inline bool is_eps_tok(std::string_view s) {
   // Accept multiple epsilon spellings, including "."
   switch (s.size()) {
     case 1:
@@ -140,12 +140,12 @@ inline void add_symbol_error(
   add_simple_error(dx, std::move(code), std::move(msg), t.span, std::move(label_msg));
 }
 
-inline bool line_has_tokens(const Line& L) {
+[[nodiscard]] inline bool line_has_tokens(const Line& L) {
   return !L.tokens.empty();
 }
 
 // Next non-empty line >= i
-inline std::optional<std::size_t> next_nonempty(const SpecTokens& st, std::size_t i) {
+[[nodiscard]] inline std::optional<std::size_t> next_nonempty(const SpecTokens& st, std::size_t i) {
   const std::size_t n = st.lines.size();
   for (std::size_t k = i; k < n; ++k) {
     if (line_has_tokens(st.lines[k]))
@@ -155,7 +155,7 @@ inline std::optional<std::size_t> next_nonempty(const SpecTokens& st, std::size_
 }
 
 // Turn tokens to set of strings
-inline std::unordered_set<std::string> to_set(const std::vector<Token>& toks) {
+[[nodiscard]] inline std::unordered_set<std::string> to_set(const std::vector<Token>& toks) {
   std::unordered_set<std::string> s;
   s.reserve(toks.size());
   for (const auto& t : toks)
@@ -163,7 +163,7 @@ inline std::unordered_set<std::string> to_set(const std::vector<Token>& toks) {
   return s;
 }
 
-inline bool looks_like_transition(
+[[nodiscard]] inline bool looks_like_transition(
   const std::vector<Token>& toks,
   const std::unordered_set<std::string>& Q,
   const std::unordered_set<std::string>& S,
@@ -222,7 +222,7 @@ inline bool looks_like_transition(
   return true;
 }
 
-inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename) {
+[[nodiscard]] inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename) {
   ParseResult out;
   out.source = diag::SourceFile::from(filename, read_all(is));
   const auto st = lex(out.source);
@@ -454,15 +454,13 @@ inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename
     const Token& top = T[2];
     const Token& to = T[3];
 
-    // Recovery flags
-    bool bad_from = false;
+    // bad_in/bad_top reshape the rule below; unknown states are
+    // hard errors and the rule is still recorded for diagnostics.
     bool bad_in = false;
     bool bad_top = false;
-    bool bad_to = false;
 
     if (Qset.count(from.text) == 0) {
       add_symbol_error(dx, "E0011", "unknown 'from' state", from, "state not in Q");
-      bad_from = true;
     }
     const bool in_is_ok = is_eps_tok(in.text) || Sset.count(in.text) > 0;
     if (!in_is_ok) {
@@ -488,7 +486,6 @@ inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename
     }
     if (Qset.count(to.text) == 0) {
       add_symbol_error(dx, "E0014", "unknown 'to' state", to, "state not in Q");
-      bad_to = true;
     }
 
     Rule r;
@@ -522,8 +519,6 @@ inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename
       }
     }
 
-    (void)bad_from;
-    (void)bad_to;
     rules.push_back(std::move(r));
   }
 
@@ -558,10 +553,10 @@ inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename
   }
 
   if (dx.has_errors()) {
-    return {std::unexpected(std::move(dx)), out.source};
+    return {std::unexpected(std::move(dx)), std::move(out.source)};
   }
 
-  return {std::expected<PDA, diag::Diagnostics>(*std::move(built)), out.source};
+  return {std::expected<PDA, diag::Diagnostics>(*std::move(built)), std::move(out.source)};
 }
 
 }  // namespace npda::parse
