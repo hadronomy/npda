@@ -3,7 +3,6 @@
 #include <iostream>
 #include <string_view>
 
-#include "cli.h"
 #include "diag.h"
 #include "fmt/color.h"
 
