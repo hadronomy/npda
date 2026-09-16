@@ -1,3 +1,6 @@
+// Implement RunHandler in the cli module.
+// Textual includes stay in the global fragment above the module line.
+module;
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -5,11 +8,9 @@
 
 #include "fmt/color.h"
 
-#include "cli/npda.h"
+module cli;
 
-// Import the modules. Keep these imports after all includes.
-import cli11;
-import cli;
+// Import the modules below.
 import diag;
 import npda;
 import npda.parser;

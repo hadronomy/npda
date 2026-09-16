@@ -1,3 +1,6 @@
+// Implement TuringHandler in the cli module.
+// Textual includes stay in the global fragment above the module line.
+module;
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -7,14 +10,13 @@
 #include <fmt/format.h>
 #include <fmt/ranges.h>
 
-#include "cli/turing.h"
+module cli;
 
-// Import the modules. Keep these imports after all includes.
-import cli11;
-import cli;
+// Import the modules below.
 import diag;
 import turing;
 import turing.parser;
+import ui;
 
 static std::vector<std::string> to_symbols(std::string_view s) {
   std::vector<std::string> v;

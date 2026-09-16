@@ -1,11 +1,14 @@
-#pragma once
-
+// Own the small status helpers.
+// fmt stays in the global fragment. Import the rest below.
+module;
 #include <fmt/color.h>
 #include <fmt/format.h>
 
-#include "config.h"
+export module ui;
+import std;
+import config;
 
-namespace ui {
+export namespace ui {
 
 [[maybe_unused]] inline void error(std::string_view message) {
   fmt::print(

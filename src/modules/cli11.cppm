@@ -16,6 +16,7 @@ namespace CLI {
 export using CLI::App;
 export using CLI::AppFormatMode;
 export using CLI::CheckedTransformer;
+export using CLI::Formatter;
 export using CLI::MultiOptionPolicy;
 export using CLI::Option;
 export using CLI::Option_group;

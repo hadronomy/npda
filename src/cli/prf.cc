@@ -1,8 +1,8 @@
-#include "cli/prf.h"
+// Implement PRFHandler in the cli module.
+module cli;
 
-// Import the modules. Keep these imports after all includes.
-import cli11;
-import cli;
+// Import the modules below.
+import std;
 import prf;
 
 int PRFHandler::operator()(const CommandContext&) {
@@ -49,8 +49,8 @@ int PRFHandler::operator()(const CommandContext&) {
   prf::Trace trace(this->mode);
 
   {
-    std::vector<uint64_t> args = this->params;
-    uint64_t r = (*pow)(args, trace);
+    std::vector<std::uint64_t> args = this->params;
+    std::uint64_t r = (*pow)(args, trace);
     std::cout << "pow(" << prf::join_u64(args) << ") = " << r << "\n";
     trace.print(std::cout);
     trace.clear();

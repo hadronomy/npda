@@ -1,7 +1,7 @@
-#include <exception>
-
-#include "application.h"
-#include "ui.h"
+// Run the application. Import only.
+import std;
+import app;
+import ui;
 
 int main(int argc, char** argv) {
   try {

@@ -12,41 +12,41 @@ namespace config {
 // Color scheme using Catppuccin Mocha palette
 namespace colors {
 // Catppuccin Mocha palette
-constexpr auto banner_text = fmt::rgb(203, 166, 247);      // Mauve
-constexpr auto banner_border = fmt::rgb(180, 190, 254);    // Lavender
-constexpr auto section_heading = fmt::rgb(249, 226, 175);  // Yellow
-constexpr auto command_name = fmt::rgb(250, 179, 135);     // Peach
-constexpr auto option_name = fmt::rgb(137, 220, 235);      // Sky
-constexpr auto example = fmt::rgb(116, 199, 236);          // Sapphire
-constexpr auto success = fmt::rgb(166, 227, 161);          // Green
-constexpr auto info = fmt::rgb(205, 214, 244);             // Text
-constexpr auto warning = fmt::rgb(250, 179, 135);          // Peach
-constexpr auto error = fmt::rgb(243, 139, 168);            // Red
-constexpr auto progress = fmt::rgb(186, 194, 222);         // Subtext1
-constexpr auto usage = fmt::rgb(148, 226, 213);            // Teal
+inline constexpr auto banner_text = fmt::rgb(203, 166, 247);      // Mauve
+inline constexpr auto banner_border = fmt::rgb(180, 190, 254);    // Lavender
+inline constexpr auto section_heading = fmt::rgb(249, 226, 175);  // Yellow
+inline constexpr auto command_name = fmt::rgb(250, 179, 135);     // Peach
+inline constexpr auto option_name = fmt::rgb(137, 220, 235);      // Sky
+inline constexpr auto example = fmt::rgb(116, 199, 236);          // Sapphire
+inline constexpr auto success = fmt::rgb(166, 227, 161);          // Green
+inline constexpr auto info = fmt::rgb(205, 214, 244);             // Text
+inline constexpr auto warning = fmt::rgb(250, 179, 135);          // Peach
+inline constexpr auto error = fmt::rgb(243, 139, 168);            // Red
+inline constexpr auto progress = fmt::rgb(186, 194, 222);         // Subtext1
+inline constexpr auto usage = fmt::rgb(148, 226, 213);            // Teal
 }  // namespace colors
 
 // Symbols for status indicators
 namespace symbols {
-constexpr auto success = "✓";
-constexpr auto error = "✗";
-constexpr auto warning = "!";
-constexpr auto info = "ℹ";
-constexpr auto arrow = "→";
+inline constexpr auto success = "✓";
+inline constexpr auto error = "✗";
+inline constexpr auto warning = "!";
+inline constexpr auto info = "ℹ";
+inline constexpr auto arrow = "→";
 }  // namespace symbols
 
 // Format strings
 namespace formats {
-constexpr auto timestamp = "{:%H:%M:%S}";
+inline constexpr auto timestamp = "{:%H:%M:%S}";
 }
 
 /**
  * Application name and version
  */
-constexpr const char* app_name = "npda";
-constexpr const char* app_version = "0.2.0";
-constexpr const char* app_description = "TODO";
-constexpr const char* repo_url = "https://github.com/hadronomy/npda";
+inline constexpr const char* app_name = "npda";
+inline constexpr const char* app_version = "0.2.0";
+inline constexpr const char* app_description = "TODO";
+inline constexpr const char* repo_url = "https://github.com/hadronomy/npda";
 
 }  // namespace config
 
