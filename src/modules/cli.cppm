@@ -370,7 +370,7 @@ class ColorizedFormatter : public CLI::Formatter {
 
     std::string upper;
     upper.reserve(grp.size());
-    for (char c : grp)
+    for (unsigned char c : grp)
       upper.push_back(static_cast<char>(std::toupper(c)));
 
     return (upper == "HIDDEN" || upper == "INTERNAL");
@@ -429,6 +429,12 @@ export class CommandRegistry {
     // Global options
     app_.add_flag("-v,--verbose", ctx_.verbose, "Enable verbose output");
   }
+
+  // Non-copyable, non-movable: callbacks and subcommands observe this.
+  CommandRegistry(const CommandRegistry&) = delete;
+  CommandRegistry& operator=(const CommandRegistry&) = delete;
+  CommandRegistry(CommandRegistry&&) = delete;
+  CommandRegistry& operator=(CommandRegistry&&) = delete;
 
   // Register a command with a factory that returns a unique_ptr<ICommandHandler>.
   // The builder function is given a CLI::App& to define its options/args.
@@ -518,11 +524,11 @@ export class CommandRegistry {
         return 1;
       if (e.get_name() == "CallForHelp") {
         std::cout << app_.help();
-        return 1;
+        return 0;
       }
       if (e.get_name() == "CallForAllHelp") {
         std::cout << app_.help("", CLI::AppFormatMode::All);
-        return 1;
+        return 0;
       }
       if (e.get_name() == "CallForVersion") {
         std::cout << e.what() << '\n';

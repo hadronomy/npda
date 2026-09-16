@@ -6,8 +6,9 @@ import ui;
 int main(int argc, char** argv) {
   try {
     const auto app = Application();
-    app.run(argc, argv);
-  } catch (std::exception& e) {
+    return app.run(argc, argv);
+  } catch (const std::exception& e) {
     ui::error(e.what());
+    return 1;
   }
 }

@@ -54,9 +54,9 @@ class Trace {
       }
       return *this;
     }
-    ~Scope() { leave_if_needed(); }
+    ~Scope() noexcept { leave_if_needed(); }
 
-    void set_result(std::uint64_t r) {
+    void set_result(std::uint64_t r) const {
       if (!node_)
         return;
       node_->result = r;
@@ -100,10 +100,14 @@ class Trace {
       stack_.back()->children.push_back(std::move(node));
     }
     stack_.push_back(raw);
+    ++active_scopes_;
     return Scope(*this, raw);
   }
 
   void clear() {
+    // Live scopes own stack entries; clearing under them would dangle.
+    if (!stack_.empty() || active_scopes_ != 0)
+      std::abort();
     roots_.clear();
     stack_.clear();
     counts_.clear();
@@ -143,9 +147,12 @@ class Trace {
  private:
   friend class Scope;
 
-  void leave_() {
+  void leave_() noexcept {
+    // Unreachable: every live scope owns its stack entry, and clear()
+    // refuses to run while scopes are live.
     if (stack_.empty())
-      throw std::logic_error("Trace stack underflow");
+      std::abort();
+    --active_scopes_;
     stack_.pop_back();
   }
 
@@ -165,6 +172,7 @@ class Trace {
 
   std::vector<std::unique_ptr<Node>> roots_;
   std::vector<Node*> stack_;
+  std::size_t active_scopes_{};
   std::unordered_map<std::string, std::uint64_t> counts_;
   Mode mode_{Mode::Full};
 };

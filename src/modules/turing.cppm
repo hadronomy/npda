@@ -246,8 +246,45 @@ class TuringMachine {
   };
 
   TuringMachine() : indices_once_(std::make_unique<std::once_flag>()) {}
-  TuringMachine(TuringMachine&&) = default;
-  TuringMachine& operator=(TuringMachine&&) = default;
+  // Custom move: the flag cannot transfer, so both sides get a fresh one
+  // and the source cache is reset for a lazy rebuild.
+  TuringMachine(TuringMachine&& o) noexcept
+      : config_(std::move(o.config_)),
+        start_(std::move(o.start_)),
+        accepting_(std::move(o.accepting_)),
+        accepting_set_(std::move(o.accepting_set_)),
+        blank_(std::move(o.blank_)),
+        rules_(std::move(o.rules_)),
+        multi_transitions_(std::move(o.multi_transitions_)),
+        indices_built_(o.indices_built_),
+        indices_once_(std::make_unique<std::once_flag>()),
+        indices_error_(std::move(o.indices_error_)) {
+    o.multi_transitions_.clear();
+    o.accepting_set_.clear();
+    o.indices_built_ = false;
+    o.indices_once_ = std::make_unique<std::once_flag>();
+    o.indices_error_.reset();
+  }
+  TuringMachine& operator=(TuringMachine&& o) noexcept {
+    if (this != &o) {
+      config_ = std::move(o.config_);
+      start_ = std::move(o.start_);
+      accepting_ = std::move(o.accepting_);
+      accepting_set_ = std::move(o.accepting_set_);
+      blank_ = std::move(o.blank_);
+      rules_ = std::move(o.rules_);
+      multi_transitions_ = std::move(o.multi_transitions_);
+      indices_built_ = o.indices_built_;
+      indices_once_ = std::make_unique<std::once_flag>();
+      indices_error_ = std::move(o.indices_error_);
+      o.multi_transitions_.clear();
+      o.accepting_set_.clear();
+      o.indices_built_ = false;
+      o.indices_once_ = std::make_unique<std::once_flag>();
+      o.indices_error_.reset();
+    }
+    return *this;
+  }
   TuringMachine(const TuringMachine&) = delete;
   TuringMachine& operator=(const TuringMachine&) = delete;
 

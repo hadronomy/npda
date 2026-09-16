@@ -16,10 +16,9 @@ int Application::run(int argc, char** argv) const {
       "turing", "execute a given Turing Machine with a given string", make_turing
     );
     registry.register_command("prf", "execute primitive recursive functions", make_prf);
-    registry.run(argc, argv);
+    return registry.run(argc, argv);
   } catch (const std::exception& e) {
     ui::error(e.what());
     return 1;
   }
-  return 0;
 }

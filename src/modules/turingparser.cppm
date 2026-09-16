@@ -1126,11 +1126,12 @@ inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename
   out.diagnostics = std::move(dx);
 
   if (out.diagnostics.has_errors()) {
+    diag::Diagnostics errors = std::move(out.diagnostics);
     return {
-      std::unexpected(std::move(out.diagnostics)),
+      std::unexpected(std::move(errors)),
       out.source,
       out.config,
-      std::move(out.diagnostics)
+      diag::Diagnostics{}
     };
   }
 

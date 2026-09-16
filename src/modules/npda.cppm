@@ -388,6 +388,67 @@ class NPDA {
 
   NPDA() = default;
 
+  // Copies share nothing mutable: each copy rebuilds indices on first run.
+  NPDA(const NPDA& o)
+      : start_(o.start_),
+        accepting_(o.accepting_),
+        policy_(o.policy_),
+        bottom_(o.bottom_),
+        rules_(o.rules_),
+        epsilon_by_from_(o.epsilon_by_from_),
+        consume_by_from_input_(o.consume_by_from_input_),
+        indices_built_(o.indices_built_),
+        indices_once_(std::make_unique<std::once_flag>()) {}
+  NPDA& operator=(const NPDA& o) {
+    if (this != &o) {
+      start_ = o.start_;
+      accepting_ = o.accepting_;
+      policy_ = o.policy_;
+      bottom_ = o.bottom_;
+      rules_ = o.rules_;
+      epsilon_by_from_ = o.epsilon_by_from_;
+      consume_by_from_input_ = o.consume_by_from_input_;
+      indices_built_ = o.indices_built_;
+      indices_once_ = std::make_unique<std::once_flag>();
+    }
+    return *this;
+  }
+
+  // Moves transfer the cache; the source resets for a lazy rebuild.
+  NPDA(NPDA&& o) noexcept
+      : start_(std::move(o.start_)),
+        accepting_(std::move(o.accepting_)),
+        policy_(o.policy_),
+        bottom_(std::move(o.bottom_)),
+        rules_(std::move(o.rules_)),
+        epsilon_by_from_(std::move(o.epsilon_by_from_)),
+        consume_by_from_input_(std::move(o.consume_by_from_input_)),
+        indices_built_(o.indices_built_),
+        indices_once_(std::make_unique<std::once_flag>()) {
+    o.epsilon_by_from_.clear();
+    o.consume_by_from_input_.clear();
+    o.indices_built_ = false;
+    o.indices_once_ = std::make_unique<std::once_flag>();
+  }
+  NPDA& operator=(NPDA&& o) noexcept {
+    if (this != &o) {
+      start_ = std::move(o.start_);
+      accepting_ = std::move(o.accepting_);
+      policy_ = o.policy_;
+      bottom_ = std::move(o.bottom_);
+      rules_ = std::move(o.rules_);
+      epsilon_by_from_ = std::move(o.epsilon_by_from_);
+      consume_by_from_input_ = std::move(o.consume_by_from_input_);
+      indices_built_ = o.indices_built_;
+      indices_once_ = std::make_unique<std::once_flag>();
+      o.epsilon_by_from_.clear();
+      o.consume_by_from_input_.clear();
+      o.indices_built_ = false;
+      o.indices_once_ = std::make_unique<std::once_flag>();
+    }
+    return *this;
+  }
+
   // Run on any input range; acceptance is checked after all input is consumed.
   template <std::ranges::input_range R>
   requires
@@ -648,6 +709,8 @@ class NPDA {
   mutable std::unordered_map<State, std::vector<std::size_t>> epsilon_by_from_;
   mutable std::map<std::pair<State, Input>, std::vector<std::size_t>> consume_by_from_input_;
   mutable bool indices_built_ = false;
+  mutable std::unique_ptr<std::once_flag> indices_once_ =
+    std::make_unique<std::once_flag>();
 
   // Constants and helper functions
   static constexpr std::size_t npos = static_cast<std::size_t>(-1);
@@ -678,21 +741,20 @@ class NPDA {
 
   // Build transition indices for efficient rule lookup
   void build_indices() const {
-    if (indices_built_)
-      return;
-
-    for (std::size_t i = 0; i < rules_.size(); ++i) {
-      const auto& r = rules_[i];
-      if (!r.input.has_value()) {
-        // Epsilon transition
-        epsilon_by_from_[r.from].push_back(i);
-      } else {
-        // Consuming transition - use a simple hash approach
-        auto key = std::make_pair(r.from, r.input.value());
-        consume_by_from_input_[key].push_back(i);
+    std::call_once(*indices_once_, [this]() {
+      for (std::size_t i = 0; i < rules_.size(); ++i) {
+        const auto& r = rules_[i];
+        if (!r.input.has_value()) {
+          // Epsilon transition
+          epsilon_by_from_[r.from].push_back(i);
+        } else {
+          // Consuming transition - use a simple hash approach
+          auto key = std::make_pair(r.from, r.input.value());
+          consume_by_from_input_[key].push_back(i);
+        }
       }
-    }
-    indices_built_ = true;
+      indices_built_ = true;
+    });
   }
 
   // Check if a node satisfies the acceptance policy

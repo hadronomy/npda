@@ -401,30 +401,31 @@ inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename
       return std::vector<std::string>{w};
 
     const std::size_t n = w.size();
-    std::vector<int> prev(n + 1, -1);
+    constexpr std::size_t unvisited = static_cast<std::size_t>(-1);
+    std::vector<std::size_t> prev(n + 1, unvisited);
     std::vector<std::size_t> len_at(n + 1, 0);
     prev[0] = 0;
 
     for (std::size_t i = 0; i < n; ++i) {
-      if (prev[i] < 0)
+      if (prev[i] == unvisited)
         continue;
       for (const auto& g : Gset) {
         const std::size_t len = g.size();
         if (i + len <= n && w.compare(i, len, g) == 0) {
-          if (prev[i + len] < 0) {
-            prev[i + len] = static_cast<int>(i);
+          if (prev[i + len] == unvisited) {
+            prev[i + len] = i;
             len_at[i + len] = len;
           }
         }
       }
     }
 
-    if (prev[n] < 0)
+    if (prev[n] == unvisited)
       return std::nullopt;
 
     std::vector<std::string> parts;
     for (std::size_t i = n; i > 0;) {
-      const std::size_t p = static_cast<std::size_t>(prev[i]);
+      const std::size_t p = prev[i];
       const std::size_t len = len_at[i];
       parts.emplace_back(w.substr(p, len));
       i = p;

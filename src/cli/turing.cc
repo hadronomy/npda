@@ -55,15 +55,15 @@ int TuringHandler::operator()(const CommandContext&) {
       auto exe = this->graphviz_exe;
       if (this->dot_only) {
         auto res = tm->write_graphviz_dot(new_path.replace_extension("dot"));
-        if (const auto err = res.error(); !res) {
-          ui::error(err.message);
+        if (!res) {
+          ui::error(res.error().message);
           return -1;
         }
         return 0;
       }
       auto res = tm->export_graphviz_image(new_path, exe);
-      if (const auto err = res.error(); !res) {
-        ui::error(err.message);
+      if (!res) {
+        ui::error(res.error().message);
         return -1;
       }
       return 0;
