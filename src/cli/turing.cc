@@ -82,10 +82,11 @@ int TuringHandler::operator()(const CommandContext&) {
         turing::RunOptions{
           .max_steps = 100000,
           .track_witness = true,
-          .trace = trace,
-          .trace_colors = true,
-          .trace_compact = false,
-          .trace_explanations = this->explain,
+          .trace =
+            {.enabled = trace,
+             .colors = true,
+             .compact = false,
+             .explanations = this->explain},
           .show_config = true,
         }
       );

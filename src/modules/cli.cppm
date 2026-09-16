@@ -439,6 +439,9 @@ export class CommandRegistry {
   // Register a command with a factory that returns a unique_ptr<ICommandHandler>.
   // The builder function is given a CLI::App& to define its options/args.
   template <typename Factory>
+    requires std::invocable<Factory&, CLI::App&> && std::convertible_to<
+      std::invoke_result_t<Factory&, CLI::App&>,
+      std::unique_ptr<CommandHandler>>
   [[nodiscard]] CLI::App* register_command(std::string name, std::string description, Factory&& factory) {
     auto cmd_name = normalize_name(name);
     if (cmd_name.empty()) {

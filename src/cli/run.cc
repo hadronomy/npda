@@ -29,11 +29,12 @@ int RunHandler::operator()(const CommandContext&) {
           .bfs = true,
           .max_expansions = 100000,
           .track_witness = true,
-          .trace = trace,
-          .trace_colors = true,
-          .trace_compact = false,
-          .trace_explanations = this->explain,
-          .show_full_trace = true,
+          .trace =
+            {.enabled = trace,
+             .colors = true,
+             .compact = false,
+             .explanations = this->explain,
+             .show_full_trace = true},
         }
       );
       if (!r) {

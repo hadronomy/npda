@@ -89,16 +89,28 @@ struct Error {
   std::string message;
 };
 
+// Trace output options: what to print and where to send it.
+struct TraceOptions {
+  // Pretty, colored per-step trace diagrams printed during run.
+  bool enabled = false;
+  // Optional sink; if not set and tracing is on, prints via std::print.
+  std::function<void(std::string_view)> sink = {};
+
+  // Trace formatting options
+  bool colors = true;
+  bool compact = false;
+  bool explanations = false;
+
+  // Backtracking visualization options
+  bool show_backtracking = true;  // Enable backtracking detection and visualization
+  bool show_full_trace = true;    // Show complete execution trace including backtracks
+};
+
 struct RunOptions {
   std::size_t max_steps = 1'000'000;
   bool track_witness = true;
 
-  bool trace = false;
-  std::function<void(std::string_view)> trace_sink = {};
-
-  bool trace_colors = true;
-  bool trace_compact = false;
-  bool trace_explanations = false;
+  TraceOptions trace{};
 
   bool show_config = true;
 };
@@ -560,8 +572,8 @@ class TuringMachine {
   }
 
   [[nodiscard]] static std::function<void(std::string_view)> sink_of(const RunOptions& opt) {
-    if (opt.trace_sink)
-      return opt.trace_sink;
+    if (opt.trace.sink)
+      return opt.trace.sink;
     return [](std::string_view s) {
       std::print("{}", s);
     };
@@ -572,10 +584,10 @@ class TuringMachine {
     const std::vector<TapeSym>& symbols,
     const RunOptions& opt
   ) const {
-    if (!opt.trace)
+    if (!opt.trace.enabled)
       return;
     auto sink = sink_of(opt);
-    if (opt.trace_colors) {
+    if (opt.trace.colors) {
       sink(ansi::format(ansi::fg(npda::config::colors::error), "\n{} No transition available for state '{}' and symbols ({})\n", npda::config::symbols::error, std::format("{}", node.s), join_symbols(symbols)));
       return;
     }
@@ -596,20 +608,20 @@ void TuringMachine<State, TapeSym>::emit_trace_step(
   const std::optional<rule_type>& rule,
   const RunOptions& opt
 ) const {
-  if (!opt.trace)
+  if (!opt.trace.enabled)
     return;
 
   auto sink = sink_of(opt);
   std::string out;
 
-  if (opt.trace_colors) {
+  if (opt.trace.colors) {
     out +=
       ansi::format(ansi::fg(npda::config::colors::section_heading), "\n=== Step {} ===\n", step_num);
   } else {
     out += std::format("\n=== Step {} ===\n", step_num);
   }
 
-  if (opt.trace_colors) {
+  if (opt.trace.colors) {
     out += ansi::format(ansi::fg(npda::config::colors::info), "State: ");
     out += ansi::format(ansi::fg(npda::config::colors::success), "{}\n", std::format("{}", node.s));
   } else {
@@ -624,7 +636,7 @@ void TuringMachine<State, TapeSym>::emit_trace_step(
 
     for (std::size_t i = 0; i < tape.size(); ++i) {
       if (i == head_pos) {
-        if (opt.trace_colors) {
+        if (opt.trace.colors) {
           out +=
             ansi::format(ansi::fg(npda::config::colors::warning), "[{}]", std::format("{}", tape[i]));
         } else {
@@ -636,7 +648,7 @@ void TuringMachine<State, TapeSym>::emit_trace_step(
     }
 
     if (head_pos >= tape.size()) {
-      if (opt.trace_colors) {
+      if (opt.trace.colors) {
         out +=
           ansi::format(ansi::fg(npda::config::colors::success), " [{}]", std::format("{}", blank_));
       } else {
@@ -658,7 +670,7 @@ void TuringMachine<State, TapeSym>::emit_trace_step(
   }
 
   if (rule.has_value()) {
-    if (opt.trace_colors) {
+    if (opt.trace.colors) {
       out += ansi::format(ansi::fg(npda::config::colors::info), "Rule: ");
     } else {
       out += "Rule: ";
@@ -674,13 +686,13 @@ void TuringMachine<State, TapeSym>::emit_trace_step(
       join_directions(r.move)
     );
 
-    if (opt.trace_colors) {
+    if (opt.trace.colors) {
       out += ansi::format(ansi::fg(npda::config::colors::example), "{}\n", rule_str);
     } else {
       out += std::format("{}\n", rule_str);
     }
 
-    if (opt.trace_explanations) {
+    if (opt.trace.explanations) {
       const std::string explanation = std::format(
         "In state {}, read ({}), write ({}), move heads ({}), and go to "
         "state {}",
@@ -691,7 +703,7 @@ void TuringMachine<State, TapeSym>::emit_trace_step(
         std::format("{}", r.to)
       );
 
-      if (opt.trace_colors) {
+      if (opt.trace.colors) {
         out += ansi::format(ansi::fg(npda::config::colors::info), "{}\n", explanation);
       } else {
         out += std::format("{}\n", explanation);
@@ -709,14 +721,14 @@ void TuringMachine<State, TapeSym>::show_configuration(const RunOptions& opt) co
 
   auto sink = sink_of(opt);
 
-  if (opt.trace_colors) {
+  if (opt.trace.colors) {
     sink(ansi::format(ansi::fg(npda::config::colors::banner_text), "\n{} Turing Machine Configuration:\n", npda::config::symbols::info));
   } else {
     sink("\nTuring Machine Configuration:\n");
   }
 
   auto print_config = [&](std::string_view key, std::string_view value) {
-    if (opt.trace_colors) {
+    if (opt.trace.colors) {
       sink(ansi::format(ansi::fg(npda::config::colors::info), "  {}: ", key));
       sink(ansi::format(ansi::fg(npda::config::colors::success), "{}\n", value));
       return;
@@ -777,7 +789,7 @@ std::expected<RunResult, Error> TuringMachine<State, TapeSym>::build_result(
   }
   std::ranges::reverse(path);
 
-  if (opt.trace)
+  if (opt.trace.enabled)
     replay_trace_path(nodes, idx, opt);
 
   auto [final_tapes, final_heads] = build_final();
@@ -790,7 +802,7 @@ void TuringMachine<State, TapeSym>::replay_trace_path(
   std::size_t final_idx,
   const RunOptions& opt
 ) const {
-  if (!opt.trace || !opt.track_witness)
+  if (!opt.trace.enabled || !opt.track_witness)
     return;
 
   std::vector<std::size_t> node_path_rev;
@@ -810,7 +822,7 @@ void TuringMachine<State, TapeSym>::replay_trace_path(
 
   auto sink = sink_of(opt);
 
-  if (opt.trace_colors) {
+  if (opt.trace.colors) {
     sink(ansi::format(ansi::fg(npda::config::colors::banner_text), "\n{} Accepting configuration found! Replaying {} steps...\n", npda::config::symbols::info, rule_path.size()));
   } else {
     sink(std::format("\nAccepting configuration found! Replaying {} steps...\n", rule_path.size()));
@@ -829,7 +841,7 @@ void TuringMachine<State, TapeSym>::replay_trace_path(
     emit_trace_step(nodes[node_idx], step_num, rule_opt, opt);
   }
 
-  if (opt.trace_colors) {
+  if (opt.trace.colors) {
     sink(ansi::format(ansi::fg(npda::config::colors::success), "\n{} Input accepted!\n", npda::config::symbols::success));
   } else {
     sink("\nInput accepted!\n");
@@ -850,7 +862,7 @@ std::expected<RunResult, Error> TuringMachine<State, TapeSym>::run_multi_tape(
     std::size_t steps = 0;
 
     for (;;) {
-      if (opt.trace)
+      if (opt.trace.enabled)
         emit_trace_step(current, steps, std::nullopt, opt);
       if (is_accepting(current.s)) {
         std::vector<std::vector<std::string>> final_tapes;
@@ -903,7 +915,7 @@ std::expected<RunResult, Error> TuringMachine<State, TapeSym>::run_multi_tape(
     work.pop_front();
     const NodeType& current = nodes[idx];
 
-    if (opt.trace)
+    if (opt.trace.enabled)
       emit_trace_step(current, steps, std::nullopt, opt);
     if (is_accepting(current.s))
       return build_result(current, nodes, idx, steps, opt);

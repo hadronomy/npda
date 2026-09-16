@@ -296,6 +296,23 @@ struct Error {
   std::string message;
 };
 
+// Trace output options: what to print and where to send it.
+struct TraceOptions {
+  // Pretty, colored per-step trace diagrams printed during run.
+  bool enabled = false;
+  // Optional sink; if not set and tracing is on, prints via std::print.
+  std::function<void(std::string_view)> sink = {};
+
+  // Trace formatting options
+  bool colors = true;
+  bool compact = false;
+  bool explanations = false;
+
+  // Backtracking visualization options
+  bool show_backtracking = true;  // Enable backtracking detection and visualization
+  bool show_full_trace = true;    // Show complete execution trace including backtracks
+};
+
 struct RunOptions {
   // If true, BFS (returns a shortest-transition witness). If false, DFS.
   bool bfs = true;
@@ -306,19 +323,7 @@ struct RunOptions {
   // Track and return a witness (sequence of rule indices). Costs memory.
   bool track_witness = true;
 
-  // Pretty, colored per-step trace diagrams printed during run.
-  bool trace = false;
-  // Optional sink; if not set and trace=true, prints via std::print.
-  std::function<void(std::string_view)> trace_sink = {};
-
-  // Trace formatting options
-  bool trace_colors = true;
-  bool trace_compact = false;
-  bool trace_explanations = false;
-
-  // Backtracking visualization options
-  bool show_backtracking = true;  // Enable backtracking detection and visualization
-  bool show_full_trace = true;    // Show complete execution trace including backtracks
+  TraceOptions trace{};
 };
 
 struct RunResult {
@@ -389,6 +394,7 @@ class NPDA {
       m.policy_ = policy_;
       m.bottom_ = *bottom_;
       m.rules_ = std::move(rules_);
+      m.build_indices();
       return m;
     }
 
@@ -409,9 +415,7 @@ class NPDA {
         policy_(o.policy_),
         bottom_(o.bottom_),
         rules_(o.rules_),
-        epsilon_by_from_(o.epsilon_by_from_),
-        consume_by_from_input_(o.consume_by_from_input_),
-        indices_built_(o.indices_built_),
+        indices_built_(false),
         indices_once_(std::make_unique<std::once_flag>()) {}
   NPDA& operator=(const NPDA& o) {
     if (this != &o) {
@@ -420,9 +424,9 @@ class NPDA {
       policy_ = o.policy_;
       bottom_ = o.bottom_;
       rules_ = o.rules_;
-      epsilon_by_from_ = o.epsilon_by_from_;
-      consume_by_from_input_ = o.consume_by_from_input_;
-      indices_built_ = o.indices_built_;
+      epsilon_by_from_.clear();
+      consume_by_from_input_.clear();
+      indices_built_ = false;
       indices_once_ = std::make_unique<std::once_flag>();
     }
     return *this;
@@ -534,7 +538,7 @@ class NPDA {
       const NodeType current = nodes[idx];  // copy for isolation
 
       // Track that we're exploring this node and show full detailed trace
-      if (opt.trace && opt.show_full_trace) {
+      if (opt.trace.enabled && opt.trace.show_full_trace) {
         explored_nodes.push_back(idx);
 
         // Show full detailed trace for this exploration step
@@ -570,7 +574,7 @@ class NPDA {
       if (expansions >= opt.max_expansions) {
         // If tracing is enabled and we have explored some paths, show the best
         // trace we found
-        if (opt.trace && nodes.size() > 1) {
+        if (opt.trace.enabled && nodes.size() > 1) {
           show_rejection_trace(nodes, best_trace_idx, input, opt, expansions);
         }
         return std::unexpected(Error{"max_expansions reached"});
@@ -623,11 +627,11 @@ class NPDA {
       if (!opt.bfs && nodes.size() == before) {
         exploration_detected = true;
         deadend_nodes.push_back(idx);
-        if (opt.trace && opt.show_full_trace) {
-          auto sink = opt.trace_sink ? opt.trace_sink : [](std::string_view s) {
+        if (opt.trace.enabled && opt.trace.show_full_trace) {
+          auto sink = opt.trace.sink ? opt.trace.sink : [](std::string_view s) {
             std::print("{}", s);
           };
-          if (opt.trace_colors) {
+          if (opt.trace.colors) {
             sink(ansi::format(ansi::fg(config::colors::info), "\n{} Exploration: dead-end at position {} (state {}), "
               "no applicable transitions\n", config::symbols::info, current.pos, std::format("{}", current.s)));
           } else {
@@ -644,12 +648,12 @@ class NPDA {
 
     // If tracing is enabled and we explored some paths, show the best trace we
     // found
-    if (opt.trace && nodes.size() > 1) {
+    if (opt.trace.enabled && nodes.size() > 1) {
       show_rejection_trace(nodes, best_trace_idx, input, opt, expansions);
     }
 
     // Show exploration tree if enabled
-    if (opt.trace && opt.show_full_trace && !explored_nodes.empty()) {
+    if (opt.trace.enabled && opt.trace.show_full_trace && !explored_nodes.empty()) {
       show_exploration_tree(nodes, explored_nodes, input, opt, std::vector<std::size_t>{});
     }
 
@@ -759,6 +763,10 @@ class NPDA {
   // Build transition indices for efficient rule lookup
   void build_indices() const {
     std::call_once(*indices_once_, [this]() {
+      // Clear first: copies and moves arrive with a fresh flag but
+      // may carry maps, so rebuilding must stay idempotent.
+      epsilon_by_from_.clear();
+      consume_by_from_input_.clear();
       // One entry per rule at most, split across both maps.
       epsilon_by_from_.reserve(rules_.size());
       consume_by_from_input_.reserve(rules_.size());
@@ -814,21 +822,21 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
   bool is_backtrack_point,
   bool is_exploration
 ) const {
-  if (!opt.trace)
+  if (!opt.trace.enabled)
     return;
 
-  auto sink = opt.trace_sink ? opt.trace_sink : [](std::string_view s) {
+  auto sink = opt.trace.sink ? opt.trace.sink : [](std::string_view s) {
     std::print("{}", s);
   };
 
   std::string output;
 
   // Header with step number and exploration/backtracking indicator
-  if (opt.trace_colors) {
+  if (opt.trace.colors) {
     if (is_exploration) {
       output +=
         ansi::format(ansi::fg(config::colors::info), "\n=== Exploration Step {} ===\n", step_num);
-    } else if (is_backtrack_point && opt.show_backtracking) {
+    } else if (is_backtrack_point && opt.trace.show_backtracking) {
       output += ansi::format(ansi::fg(config::colors::warning), "\n=== Step {} {}(BACKTRACK) ===\n", step_num, config::symbols::warning);
     } else {
       output +=
@@ -837,7 +845,7 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
   } else {
     if (is_exploration) {
       output += std::format("\n=== Exploration Step {} ===\n", step_num);
-    } else if (is_backtrack_point && opt.show_backtracking) {
+    } else if (is_backtrack_point && opt.trace.show_backtracking) {
       output += std::format("\n=== Step {} (BACKTRACK) ===\n", step_num);
     } else {
       output += std::format("\n=== Step {} ===\n", step_num);
@@ -845,7 +853,7 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
   }
 
   // Current state
-  if (opt.trace_colors) {
+  if (opt.trace.colors) {
     output += ansi::format(ansi::fg(config::colors::info), "State: ");
     output += ansi::format(ansi::fg(config::colors::success), "{}\n", std::format("{}", node.s));
   } else {
@@ -856,7 +864,7 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
   output += "Input: ";
   for (std::size_t i = 0; i < input.size(); ++i) {
     if (i == node.pos) {
-      if (opt.trace_colors) {
+      if (opt.trace.colors) {
         output +=
           ansi::format(ansi::fg(config::colors::warning), "[{}]", std::format("{}", input[i]));
       } else {
@@ -867,7 +875,7 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
     }
   }
   if (node.pos >= input.size()) {
-    if (opt.trace_colors) {
+    if (opt.trace.colors) {
       output += ansi::format(ansi::fg(config::colors::success), " [END]");
     } else {
       output += " [END]";
@@ -884,7 +892,7 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
     for (std::size_t i = 0; i < node.stack.size(); ++i) {
       std::size_t stack_idx = node.stack.size() - 1 - i;  // top first
       if (i == 0) {
-        if (opt.trace_colors) {
+        if (opt.trace.colors) {
           output += ansi::format(ansi::fg(config::colors::warning), "[{}]", std::format("{}", node.stack[stack_idx]));
         } else {
           output += std::format("[{}]", std::format("{}", node.stack[stack_idx]));
@@ -896,7 +904,7 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
     output += "\n";
 
     // Visual stack representation
-    if (!opt.trace_compact) {
+    if (!opt.trace.compact) {
       output += "       ";
       for (std::size_t i = 0; i < node.stack.size(); ++i) {
         if (node.stack.size() == 1) {
@@ -917,7 +925,7 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
       for (std::size_t i = 0; i < node.stack.size(); ++i) {
         std::size_t stack_idx = node.stack.size() - 1 - i;
         if (i == 0) {
-          if (opt.trace_colors) {
+          if (opt.trace.colors) {
             output += ansi::format(ansi::fg(config::colors::warning), "│ {} │", std::format("{}", node.stack[stack_idx]));
           } else {
             output += std::format("│ {} │", std::format("{}", node.stack[stack_idx]));
@@ -949,7 +957,7 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
   // Rule information
   if (rule.has_value()) {
     const auto& r = rule.value();
-    if (opt.trace_colors) {
+    if (opt.trace.colors) {
       output += ansi::format(ansi::fg(config::colors::info), "Rule: ");
     } else {
       output += "Rule: ";
@@ -987,16 +995,16 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
       rule_str += ")";
     }
 
-    if (opt.trace_colors) {
+    if (opt.trace.colors) {
       output += ansi::format(ansi::fg(config::colors::example), "{}\n", rule_str);
     } else {
       output += std::format("{}\n", rule_str);
     }
 
     // Add natural language explanation if enabled
-    if (opt.trace_explanations) {
+    if (opt.trace.explanations) {
       std::string explanation = npda::explain_rule(r);
-      if (opt.trace_colors) {
+      if (opt.trace.colors) {
         output += ansi::format(ansi::fg(config::colors::info), "{}\n", explanation);
       } else {
         output += std::format("{}\n", explanation);
@@ -1036,16 +1044,16 @@ std::expected<RunResult, Error> NPDA<State, Input, StackSym>::build_result(
   std::reverse(path.begin(), path.end());
 
   // Replay the trace if tracing is enabled
-  if (opt.trace) {
+  if (opt.trace.enabled) {
     replay_trace_path(nodes, idx, input, opt);
 
     // Show exploration summary if enabled
-    if (opt.show_backtracking && exploration_detected) {
-      auto sink = opt.trace_sink ? opt.trace_sink : [](std::string_view s) {
+    if (opt.trace.show_backtracking && exploration_detected) {
+      auto sink = opt.trace.sink ? opt.trace.sink : [](std::string_view s) {
         std::print("{}", s);
       };
 
-      if (opt.trace_colors) {
+      if (opt.trace.colors) {
         sink(ansi::format(ansi::fg(config::colors::info), "\n{} Exploration summary: {} nodes explored, {} dead-ends found\n", config::symbols::info, explored_nodes.size(), deadend_nodes.size()));
       } else {
         sink(std::format(
@@ -1058,7 +1066,7 @@ std::expected<RunResult, Error> NPDA<State, Input, StackSym>::build_result(
   }
 
   // Show exploration tree if enabled
-  if (opt.trace && opt.show_full_trace && !explored_nodes.empty()) {
+  if (opt.trace.enabled && opt.trace.show_full_trace && !explored_nodes.empty()) {
     show_exploration_tree(nodes, explored_nodes, input, opt, std::vector<std::size_t>{});
   }
 
@@ -1073,7 +1081,7 @@ void NPDA<State, Input, StackSym>::replay_trace_path(
   const std::vector<Input>& input,
   const RunOptions& opt
 ) const {
-  if (!opt.trace || !opt.track_witness)
+  if (!opt.trace.enabled || !opt.track_witness)
     return;
 
   // Reconstruct node and rule paths from root to final
@@ -1093,11 +1101,11 @@ void NPDA<State, Input, StackSym>::replay_trace_path(
   std::vector<std::size_t> node_path(node_path_rev.rbegin(), node_path_rev.rend());
   std::vector<std::size_t> rule_path(rule_path_rev.rbegin(), rule_path_rev.rend());
 
-  auto sink = opt.trace_sink ? opt.trace_sink : [](std::string_view s) {
+  auto sink = opt.trace.sink ? opt.trace.sink : [](std::string_view s) {
     std::print("{}", s);
   };
 
-  if (opt.trace_colors) {
+  if (opt.trace.colors) {
     sink(ansi::format(ansi::fg(config::colors::banner_text), "\n{} Accepting path found! Replaying {} steps...\n", config::symbols::info, rule_path.size()));
   } else {
     sink(std::format("\nAccepting path found! Replaying {} steps...\n", rule_path.size()));
@@ -1128,7 +1136,7 @@ void NPDA<State, Input, StackSym>::replay_trace_path(
     ++step_num;
   }
 
-  if (opt.trace_colors) {
+  if (opt.trace.colors) {
     sink(ansi::format(ansi::fg(config::colors::success), "\n{} Input accepted!\n", config::symbols::success));
   } else {
     sink("\nInput accepted!\n");
@@ -1144,14 +1152,14 @@ void NPDA<State, Input, StackSym>::show_rejection_trace(
   const RunOptions& opt,
   std::size_t expansions
 ) const {
-  if (!opt.trace || !opt.track_witness)
+  if (!opt.trace.enabled || !opt.track_witness)
     return;
 
-  auto sink = opt.trace_sink ? opt.trace_sink : [](std::string_view s) {
+  auto sink = opt.trace.sink ? opt.trace.sink : [](std::string_view s) {
     std::print("{}", s);
   };
 
-  if (opt.trace_colors) {
+  if (opt.trace.colors) {
     sink(ansi::format(ansi::fg(config::colors::banner_text), "\n{} Input rejected! Showing furthest path explored ({} "
       "expansions)...\n", config::symbols::error, expansions));
   } else {
@@ -1181,7 +1189,7 @@ void NPDA<State, Input, StackSym>::show_rejection_trace(
   const auto& best_node = nodes[best_idx];
   std::size_t remaining_input = input.size() - best_node.pos;
 
-  if (opt.trace_colors) {
+  if (opt.trace.colors) {
     sink(ansi::format(ansi::fg(config::colors::info), "Furthest position: {} / {} ({} characters remaining)\n", best_node.pos, input.size(), remaining_input));
   } else {
     sink(std::format(
@@ -1216,7 +1224,7 @@ void NPDA<State, Input, StackSym>::show_rejection_trace(
     emit_trace_step(nodes[best_idx], input, step_num + 1, std::nullopt, opt, false);
   }
 
-  if (opt.trace_colors) {
+  if (opt.trace.colors) {
     sink(ansi::format(ansi::fg(config::colors::error), "\n{} Input rejected at this point!\n", config::symbols::error));
   } else {
     sink("\nInput rejected at this point!\n");
@@ -1231,14 +1239,14 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
   [[maybe_unused]] const std::vector<Input>& input,
   const RunOptions& opt
 ) const {
-  if (!opt.trace || explored_nodes.empty())
+  if (!opt.trace.enabled || explored_nodes.empty())
     return;
 
-  auto sink = opt.trace_sink ? opt.trace_sink : [](std::string_view s) {
+  auto sink = opt.trace.sink ? opt.trace.sink : [](std::string_view s) {
     std::print("{}", s);
   };
 
-  if (opt.trace_colors) {
+  if (opt.trace.colors) {
     sink(ansi::format(ansi::fg(config::colors::banner_text), "\n{} Exploration Tree Structure:\n", config::symbols::info));
   } else {
     sink("\nExploration Tree Structure:\n");
@@ -1302,7 +1310,7 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
 
     // Show enhanced node info with colors
     std::string node_info;
-    if (opt.trace_colors) {
+    if (opt.trace.colors) {
       node_info = std::format(
         "[{}] pos:{} {} state:{} {} ({})",
         node_idx,
@@ -1324,7 +1332,7 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
       );
     }
 
-    if (opt.trace_colors) {
+    if (opt.trace.colors) {
       // Colorize tree connectors using config colors
       ansi::rgb connector_color = config::colors::progress;  // Subtle gray from config
       std::string connector = is_last ? "└── " : "├── ";
@@ -1341,7 +1349,7 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
       for (std::size_t i = 0; i < child_nodes.size(); ++i) {
         bool last_child = (i == child_nodes.size() - 1);
         std::string child_prefix;
-        if (opt.trace_colors) {
+        if (opt.trace.colors) {
           // Colorize the tree connectors in the prefix
           std::string vertical_connector =
             is_last ? "    " : ansi::format(ansi::fg(config::colors::progress), "│   ");
@@ -1382,14 +1390,14 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
   // Convert accepting_path to a set for fast lookup
   std::unordered_set<std::size_t> accepting_nodes(accepting_path.begin(), accepting_path.end());
 
-  if (!opt.trace || explored_nodes.empty())
+  if (!opt.trace.enabled || explored_nodes.empty())
     return;
 
-  auto sink = opt.trace_sink ? opt.trace_sink : [](std::string_view s) {
+  auto sink = opt.trace.sink ? opt.trace.sink : [](std::string_view s) {
     std::print("{}", s);
   };
 
-  if (opt.trace_colors) {
+  if (opt.trace.colors) {
     sink(ansi::format(ansi::fg(config::colors::banner_text), "\n{} Exploration Tree Structure:\n", config::symbols::info));
   } else {
     sink("\nExploration Tree Structure:\n");
@@ -1460,7 +1468,7 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
 
     // Show enhanced node info with colors
     std::string node_info;
-    if (opt.trace_colors) {
+    if (opt.trace.colors) {
       node_info = std::format(
         "[{}] pos:{} {} state:{} {} ({}) {}",
         node_idx,
@@ -1484,7 +1492,7 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
       );
     }
 
-    if (opt.trace_colors) {
+    if (opt.trace.colors) {
       // Colorize tree connectors using config colors
       ansi::rgb connector_color = config::colors::progress;  // Subtle gray from config
       std::string connector = is_last ? "└── " : "├── ";
@@ -1501,7 +1509,7 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
       for (std::size_t i = 0; i < child_nodes.size(); ++i) {
         bool last_child = (i == child_nodes.size() - 1);
         std::string child_prefix;
-        if (opt.trace_colors) {
+        if (opt.trace.colors) {
           // Colorize the tree connectors in the prefix
           std::string vertical_connector =
             is_last ? "    " : ansi::format(ansi::fg(config::colors::progress), "│   ");

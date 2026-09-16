@@ -44,16 +44,6 @@ struct ConfigParseResult {
   bool has_errors = false;
 };
 
-// TOML token types for better error reporting
-enum class TomlTokenType { Key, Equals, Value, String, Number, Boolean, Invalid };
-
-struct TomlToken {
-  TomlTokenType type;
-  std::string_view text;
-  diag::Span span;
-  std::string expected_type;
-};
-
 // ---------- Helpers for config parsing ----------
 
 // trim ASCII spaces and tabs only (config grammar uses them)
