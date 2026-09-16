@@ -47,30 +47,22 @@ int RunHandler::operator()(const CommandContext&) {
       // Colorize the result line
       std::string result_line;
       if (r->accepted) {
-        result_line = ansi::paint(std::format(
-          "{} -> accepted=true expansions={}",
-          input_display,
-          r->expansions
-        ), ansi::term::green);
+        result_line = ansi::format(ansi::fg(ansi::terminal_color::green), "{} -> accepted=true expansions={}", input_display, r->expansions);
       } else {
-        result_line = ansi::paint(std::format(
-          "{} -> accepted=false expansions={}",
-          input_display,
-          r->expansions
-        ), ansi::term::red);
+        result_line = ansi::format(ansi::fg(ansi::terminal_color::red), "{} -> accepted=false expansions={}", input_display, r->expansions);
       }
 
       std::cout << result_line;
 
       if (r->witness) {
-        std::cout << ansi::paint(std::format( " witness_rules=["), ansi::term::cyan);
+        std::cout << ansi::format(ansi::fg(ansi::terminal_color::cyan), " witness_rules=[");
         for (std::size_t i = 0; i < r->witness->size(); ++i) {
-          std::cout << ansi::paint(std::format( "{}", (*r->witness)[i]), ansi::term::yellow);
+          std::cout << ansi::format(ansi::fg(ansi::terminal_color::yellow), "{}", (*r->witness)[i]);
           if (i + 1 < r->witness->size()) {
-            std::cout << ansi::paint(std::format( ","), ansi::term::cyan);
+            std::cout << ansi::format(ansi::fg(ansi::terminal_color::cyan), ",");
           }
         }
-        std::cout << ansi::paint(std::format( "]"), ansi::term::cyan);
+        std::cout << ansi::format(ansi::fg(ansi::terminal_color::cyan), "]");
       }
       std::cout << "\n";
     };
@@ -78,9 +70,9 @@ int RunHandler::operator()(const CommandContext&) {
     for (const auto& input_string : input_strings) {
       std::cout << "---------------------------------------------------"
                 << "\nShowing \""
-                << ansi::paint(std::format( "{}", input_string), ansi::term::cyan)
+                << ansi::format(ansi::fg(ansi::terminal_color::cyan), "{}", input_string)
                 << "\" execution in "
-                << ansi::paint(std::format( "{}", file_path.c_str()), ansi::term::yellow)
+                << ansi::format(ansi::fg(ansi::terminal_color::yellow), "{}", file_path.c_str())
                 << "\n";
       run(input_string, this->trace_enabled);
     }

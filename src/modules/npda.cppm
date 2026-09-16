@@ -188,66 +188,66 @@ std::string explain_rule(const Rule<State, Input, StackSym>& r) {
 
   // Build colored explanation parts
   std::string header =
-    ansi::paint(std::format( "Explanation: Transition: "), config::colors::section_heading);
+    ansi::format(ansi::fg(config::colors::section_heading), "Explanation: Transition: ");
   explanation += header;
 
   // From state (colored as command name)
   std::string from_state_colored =
-    ansi::paint(std::format( "'{}'", r.from), config::colors::command_name);
+    ansi::format(ansi::fg(config::colors::command_name), "'{}'", r.from);
   explanation += std::format("From state {} ", from_state_colored);
 
   // Input condition
   if (r.input.has_value()) {
     std::string input_colored =
-      ansi::paint(std::format( "'{}'", r.input.value()), config::colors::warning);
+      ansi::format(ansi::fg(config::colors::warning), "'{}'", r.input.value());
     explanation += std::format("when reading {} ", input_colored);
   } else {
     explanation +=
-      ansi::paint(std::format( "without consuming input (ε-transition) "), config::colors::info);
+      ansi::format(ansi::fg(config::colors::info), "without consuming input (ε-transition) ");
   }
 
   // Stack condition
   if (r.stack_top.has_value()) {
     std::string stack_colored =
-      ansi::paint(std::format( "'{}'", r.stack_top.value()), config::colors::warning);
+      ansi::format(ansi::fg(config::colors::warning), "'{}'", r.stack_top.value());
     explanation += std::format("with {} on top of stack ", stack_colored);
   } else {
-    explanation += ansi::paint(std::format( "regardless of stack contents "), config::colors::info);
+    explanation += ansi::format(ansi::fg(config::colors::info), "regardless of stack contents ");
   }
 
   // Action and destination (arrow colored as example, state as command)
-  std::string to_state_colored = ansi::paint(std::format( "'{}'", r.to), config::colors::command_name);
-  std::string arrow_colored = ansi::paint(std::format( "→"), config::colors::example);
+  std::string to_state_colored = ansi::format(ansi::fg(config::colors::command_name), "'{}'", r.to);
+  std::string arrow_colored = ansi::format(ansi::fg(config::colors::example), "→");
   explanation += arrow_colored;
   explanation += std::format(" move to state {} ", to_state_colored);
 
   // Stack operation with colorized symbols
   if (r.stack_top.has_value() && !r.push.empty()) {
     std::string stack_top_colored =
-      ansi::paint(std::format( "'{}'", r.stack_top.value()), config::colors::warning);
+      ansi::format(ansi::fg(config::colors::warning), "'{}'", r.stack_top.value());
     explanation += std::format(" and replace {} with ", stack_top_colored);
     for (std::size_t i = 0; i < r.push.size(); ++i) {
       std::string push_sym_colored =
-        ansi::paint(std::format( "'{}'", r.push[i]), config::colors::warning);
+        ansi::format(ansi::fg(config::colors::warning), "'{}'", r.push[i]);
       explanation += push_sym_colored;
       if (i + 1 < r.push.size())
         explanation += ", ";
     }
   } else if (r.stack_top.has_value()) {
     std::string stack_top_colored =
-      ansi::paint(std::format( "'{}'", r.stack_top.value()), config::colors::warning);
+      ansi::format(ansi::fg(config::colors::warning), "'{}'", r.stack_top.value());
     explanation += std::format(" and pop {} from stack", stack_top_colored);
   } else if (!r.push.empty()) {
     explanation += " and push ";
     if (r.push.size() == 1) {
       std::string push_sym_colored =
-        ansi::paint(std::format( "'{}'", r.push[0]), config::colors::warning);
+        ansi::format(ansi::fg(config::colors::warning), "'{}'", r.push[0]);
       explanation += std::format("{} onto stack", push_sym_colored);
     } else {
       explanation += "'";
       for (std::size_t i = 0; i < r.push.size(); ++i) {
         std::string push_sym_colored =
-          ansi::paint(std::format( "'{}'", r.push[i]), config::colors::warning);
+          ansi::format(ansi::fg(config::colors::warning), "'{}'", r.push[i]);
         explanation += push_sym_colored;
         if (i + 1 < r.push.size())
           explanation += ", ";
@@ -255,7 +255,7 @@ std::string explain_rule(const Rule<State, Input, StackSym>& r) {
       explanation += "' onto stack";
     }
   } else {
-    explanation += ansi::paint(std::format( " without changing stack"), config::colors::info);
+    explanation += ansi::format(ansi::fg(config::colors::info), " without changing stack");
   }
 
   explanation += ".";
@@ -551,13 +551,8 @@ class NPDA {
             std::print("{}", s);
           };
           if (opt.trace_colors) {
-            sink(ansi::paint(std::format(
-              "\n{} Exploration: dead-end at position {} (state {}), "
-              "no applicable transitions\n",
-              config::symbols::info,
-              current.pos,
-              std::format("{}", current.s)
-            ), config::colors::info));
+            sink(ansi::format(ansi::fg(config::colors::info), "\n{} Exploration: dead-end at position {} (state {}), "
+              "no applicable transitions\n", config::symbols::info, current.pos, std::format("{}", current.s)));
           } else {
             sink(std::format(
               "\nExploration: dead-end at position {} (state {}), "
@@ -750,16 +745,12 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
   if (opt.trace_colors) {
     if (is_exploration) {
       output +=
-        ansi::paint(std::format( "\n=== Exploration Step {} ===\n", step_num), config::colors::info);
+        ansi::format(ansi::fg(config::colors::info), "\n=== Exploration Step {} ===\n", step_num);
     } else if (is_backtrack_point && opt.show_backtracking) {
-      output += ansi::paint(std::format(
-        "\n=== Step {} {}(BACKTRACK) ===\n",
-        step_num,
-        config::symbols::warning
-      ), config::colors::warning);
+      output += ansi::format(ansi::fg(config::colors::warning), "\n=== Step {} {}(BACKTRACK) ===\n", step_num, config::symbols::warning);
     } else {
       output +=
-        ansi::paint(std::format( "\n=== Step {} ===\n", step_num), config::colors::section_heading);
+        ansi::format(ansi::fg(config::colors::section_heading), "\n=== Step {} ===\n", step_num);
     }
   } else {
     if (is_exploration) {
@@ -773,8 +764,8 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
 
   // Current state
   if (opt.trace_colors) {
-    output += ansi::paint(std::format( "State: "), config::colors::info);
-    output += ansi::paint(std::format( "{}\n", std::format("{}", node.s)), config::colors::success);
+    output += ansi::format(ansi::fg(config::colors::info), "State: ");
+    output += ansi::format(ansi::fg(config::colors::success), "{}\n", std::format("{}", node.s));
   } else {
     output += std::format("State: {}\n", std::format("{}", node.s));
   }
@@ -785,7 +776,7 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
     if (i == node.pos) {
       if (opt.trace_colors) {
         output +=
-          ansi::paint(std::format( "[{}]", std::format("{}", input[i])), config::colors::warning);
+          ansi::format(ansi::fg(config::colors::warning), "[{}]", std::format("{}", input[i]));
       } else {
         output += std::format("[{}]", std::format("{}", input[i]));
       }
@@ -795,7 +786,7 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
   }
   if (node.pos >= input.size()) {
     if (opt.trace_colors) {
-      output += ansi::paint(std::format( " [END]"), config::colors::success);
+      output += ansi::format(ansi::fg(config::colors::success), " [END]");
     } else {
       output += " [END]";
     }
@@ -812,8 +803,7 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
       std::size_t stack_idx = node.stack.size() - 1 - i;  // top first
       if (i == 0) {
         if (opt.trace_colors) {
-          output += ansi::paint(std::format( "[{}]", std::format("{}", node.stack[stack_idx])
-          ), config::colors::warning);
+          output += ansi::format(ansi::fg(config::colors::warning), "[{}]", std::format("{}", node.stack[stack_idx]));
         } else {
           output += std::format("[{}]", std::format("{}", node.stack[stack_idx]));
         }
@@ -846,8 +836,7 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
         std::size_t stack_idx = node.stack.size() - 1 - i;
         if (i == 0) {
           if (opt.trace_colors) {
-            output += ansi::paint(std::format( "│ {} │", std::format("{}", node.stack[stack_idx])
-            ), config::colors::warning);
+            output += ansi::format(ansi::fg(config::colors::warning), "│ {} │", std::format("{}", node.stack[stack_idx]));
           } else {
             output += std::format("│ {} │", std::format("{}", node.stack[stack_idx]));
           }
@@ -879,7 +868,7 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
   if (rule.has_value()) {
     const auto& r = rule.value();
     if (opt.trace_colors) {
-      output += ansi::paint(std::format( "Rule: "), config::colors::info);
+      output += ansi::format(ansi::fg(config::colors::info), "Rule: ");
     } else {
       output += "Rule: ";
     }
@@ -917,7 +906,7 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
     }
 
     if (opt.trace_colors) {
-      output += ansi::paint(std::format( "{}\n", rule_str), config::colors::example);
+      output += ansi::format(ansi::fg(config::colors::example), "{}\n", rule_str);
     } else {
       output += std::format("{}\n", rule_str);
     }
@@ -926,7 +915,7 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
     if (opt.trace_explanations) {
       std::string explanation = npda::explain_rule(r);
       if (opt.trace_colors) {
-        output += ansi::paint(std::format( "{}\n", explanation), config::colors::info);
+        output += ansi::format(ansi::fg(config::colors::info), "{}\n", explanation);
       } else {
         output += std::format("{}\n", explanation);
       }
@@ -975,12 +964,7 @@ std::expected<RunResult, Error> NPDA<State, Input, StackSym>::build_result(
       };
 
       if (opt.trace_colors) {
-        sink(ansi::paint(std::format(
-          "\n{} Exploration summary: {} nodes explored, {} dead-ends found\n",
-          config::symbols::info,
-          explored_nodes.size(),
-          deadend_nodes.size()
-        ), config::colors::info));
+        sink(ansi::format(ansi::fg(config::colors::info), "\n{} Exploration summary: {} nodes explored, {} dead-ends found\n", config::symbols::info, explored_nodes.size(), deadend_nodes.size()));
       } else {
         sink(std::format(
           "\nExploration summary: {} nodes explored, {} dead-ends found\n",
@@ -1032,11 +1016,7 @@ void NPDA<State, Input, StackSym>::replay_trace_path(
   };
 
   if (opt.trace_colors) {
-    sink(ansi::paint(std::format(
-      "\n{} Accepting path found! Replaying {} steps...\n",
-      config::symbols::info,
-      rule_path.size()
-    ), config::colors::banner_text));
+    sink(ansi::format(ansi::fg(config::colors::banner_text), "\n{} Accepting path found! Replaying {} steps...\n", config::symbols::info, rule_path.size()));
   } else {
     sink(std::format("\nAccepting path found! Replaying {} steps...\n", rule_path.size()));
   }
@@ -1067,8 +1047,7 @@ void NPDA<State, Input, StackSym>::replay_trace_path(
   }
 
   if (opt.trace_colors) {
-    sink(ansi::paint(std::format( "\n{} Input accepted!\n", config::symbols::success
-    ), config::colors::success));
+    sink(ansi::format(ansi::fg(config::colors::success), "\n{} Input accepted!\n", config::symbols::success));
   } else {
     sink("\nInput accepted!\n");
   }
@@ -1091,12 +1070,8 @@ void NPDA<State, Input, StackSym>::show_rejection_trace(
   };
 
   if (opt.trace_colors) {
-    sink(ansi::paint(std::format(
-      "\n{} Input rejected! Showing furthest path explored ({} "
-      "expansions)...\n",
-      config::symbols::error,
-      expansions
-    ), config::colors::banner_text));
+    sink(ansi::format(ansi::fg(config::colors::banner_text), "\n{} Input rejected! Showing furthest path explored ({} "
+      "expansions)...\n", config::symbols::error, expansions));
   } else {
     sink(std::format(
       "\nInput rejected! Showing furthest path explored ({} expansions)...\n", expansions
@@ -1125,12 +1100,7 @@ void NPDA<State, Input, StackSym>::show_rejection_trace(
   std::size_t remaining_input = input.size() - best_node.pos;
 
   if (opt.trace_colors) {
-    sink(ansi::paint(std::format(
-      "Furthest position: {} / {} ({} characters remaining)\n",
-      best_node.pos,
-      input.size(),
-      remaining_input
-    ), config::colors::info));
+    sink(ansi::format(ansi::fg(config::colors::info), "Furthest position: {} / {} ({} characters remaining)\n", best_node.pos, input.size(), remaining_input));
   } else {
     sink(std::format(
       "Furthest position: {} / {} ({} characters remaining)\n",
@@ -1165,8 +1135,7 @@ void NPDA<State, Input, StackSym>::show_rejection_trace(
   }
 
   if (opt.trace_colors) {
-    sink(ansi::paint(std::format( "\n{} Input rejected at this point!\n", config::symbols::error
-    ), config::colors::error));
+    sink(ansi::format(ansi::fg(config::colors::error), "\n{} Input rejected at this point!\n", config::symbols::error));
   } else {
     sink("\nInput rejected at this point!\n");
   }
@@ -1188,10 +1157,7 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
   };
 
   if (opt.trace_colors) {
-    sink(ansi::paint(std::format(
-      "\n{} Exploration Tree Structure:\n",
-      config::symbols::info
-    ), config::colors::banner_text));
+    sink(ansi::format(ansi::fg(config::colors::banner_text), "\n{} Exploration Tree Structure:\n", config::symbols::info));
   } else {
     sink("\nExploration Tree Structure:\n");
   }
@@ -1259,9 +1225,9 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
         "[{}] pos:{} {} state:{} {} ({})",
         node_idx,
         node.pos,
-        ansi::paint(std::format( "{}", input_sym), input_color),
-        ansi::paint(std::format( "{}", node.s), state_color),
-        ansi::paint(std::format( "{}", stack_repr), stack_color),
+        ansi::format(ansi::fg(input_color), "{}", input_sym),
+        ansi::format(ansi::fg(state_color), "{}", node.s),
+        ansi::format(ansi::fg(stack_color), "{}", stack_repr),
         node.stack.size()
       );
     } else {
@@ -1281,7 +1247,7 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
       ansi::rgb connector_color = config::colors::progress;  // Subtle gray from config
       std::string connector = is_last ? "└── " : "├── ";
       sink(std::format(
-        "{}{} {}\n", prefix, ansi::paint(std::format( "{}", connector), connector_color), node_info
+        "{}{} {}\n", prefix, ansi::format(ansi::fg(connector_color), "{}", connector), node_info
       ));
     } else {
       sink(std::format("{}{} {}\n", prefix, is_last ? "└── " : "├── ", node_info));
@@ -1296,7 +1262,7 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
         if (opt.trace_colors) {
           // Colorize the tree connectors in the prefix
           std::string vertical_connector =
-            is_last ? "    " : ansi::paint(std::format( "│   "), config::colors::progress);
+            is_last ? "    " : ansi::format(ansi::fg(config::colors::progress), "│   ");
           child_prefix = prefix + vertical_connector;
         } else {
           child_prefix = prefix + (is_last ? "    " : "│   ");
@@ -1342,10 +1308,7 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
   };
 
   if (opt.trace_colors) {
-    sink(ansi::paint(std::format(
-      "\n{} Exploration Tree Structure:\n",
-      config::symbols::info
-    ), config::colors::banner_text));
+    sink(ansi::format(ansi::fg(config::colors::banner_text), "\n{} Exploration Tree Structure:\n", config::symbols::info));
   } else {
     sink("\nExploration Tree Structure:\n");
   }
@@ -1410,7 +1373,7 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
     bool is_in_accepting_path = accepting_nodes.find(node_idx) != accepting_nodes.end();
     std::string accepting_marker =
       is_in_accepting_path
-        ? ansi::paint(std::format( "{}", config::symbols::success), config::colors::success)
+        ? ansi::format(ansi::fg(config::colors::success), "{}", config::symbols::success)
         : "";
 
     // Show enhanced node info with colors
@@ -1420,9 +1383,9 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
         "[{}] pos:{} {} state:{} {} ({}) {}",
         node_idx,
         node.pos,
-        ansi::paint(std::format( "{}", input_sym), input_color),
-        ansi::paint(std::format( "{}", node.s), state_color),
-        ansi::paint(std::format( "{}", stack_repr), stack_color),
+        ansi::format(ansi::fg(input_color), "{}", input_sym),
+        ansi::format(ansi::fg(state_color), "{}", node.s),
+        ansi::format(ansi::fg(stack_color), "{}", stack_repr),
         node.stack.size(),
         accepting_marker
       );
@@ -1444,7 +1407,7 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
       ansi::rgb connector_color = config::colors::progress;  // Subtle gray from config
       std::string connector = is_last ? "└── " : "├── ";
       sink(std::format(
-        "{}{} {}\n", prefix, ansi::paint(std::format( "{}", connector), connector_color), node_info
+        "{}{} {}\n", prefix, ansi::format(ansi::fg(connector_color), "{}", connector), node_info
       ));
     } else {
       sink(std::format("{}{} {}\n", prefix, is_last ? "└── " : "├── ", node_info));
@@ -1459,7 +1422,7 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
         if (opt.trace_colors) {
           // Colorize the tree connectors in the prefix
           std::string vertical_connector =
-            is_last ? "    " : ansi::paint(std::format( "│   "), config::colors::progress);
+            is_last ? "    " : ansi::format(ansi::fg(config::colors::progress), "│   ");
           child_prefix = prefix + vertical_connector;
         } else {
           child_prefix = prefix + (is_last ? "    " : "│   ");

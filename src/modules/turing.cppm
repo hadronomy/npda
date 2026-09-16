@@ -325,15 +325,7 @@ class TuringMachine {
   static constexpr std::size_t npos = static_cast<std::size_t>(-1);
 
   [[nodiscard]] static std::string join_symbols(const std::vector<TapeSym>& symbols) {
-    std::string out;
-    bool first = true;
-    for (const auto& sym : symbols) {
-      if (!first)
-        out += ",";
-      first = false;
-      out += std::format("{}", sym);
-    }
-    return out;
+    return std::format("{}", ansi::join(symbols, ","));
   }
 
   [[nodiscard]] static std::string join_directions(const std::vector<Direction>& directions) {
@@ -545,12 +537,7 @@ class TuringMachine {
       return;
     auto sink = sink_of(opt);
     if (opt.trace_colors) {
-      sink(ansi::paint(std::format(
-        "\n{} No transition available for state '{}' and symbols ({})\n",
-        npda::config::symbols::error,
-        std::format("{}", node.s),
-        join_symbols(symbols)
-      ), npda::config::colors::error));
+      sink(ansi::format(ansi::fg(npda::config::colors::error), "\n{} No transition available for state '{}' and symbols ({})\n", npda::config::symbols::error, std::format("{}", node.s), join_symbols(symbols)));
       return;
     }
     sink(std::format(
@@ -578,14 +565,14 @@ void TuringMachine<State, TapeSym>::emit_trace_step(
 
   if (opt.trace_colors) {
     out +=
-      ansi::paint(std::format( "\n=== Step {} ===\n", step_num), npda::config::colors::section_heading);
+      ansi::format(ansi::fg(npda::config::colors::section_heading), "\n=== Step {} ===\n", step_num);
   } else {
     out += std::format("\n=== Step {} ===\n", step_num);
   }
 
   if (opt.trace_colors) {
-    out += ansi::paint(std::format( "State: "), npda::config::colors::info);
-    out += ansi::paint(std::format( "{}\n", std::format("{}", node.s)), npda::config::colors::success);
+    out += ansi::format(ansi::fg(npda::config::colors::info), "State: ");
+    out += ansi::format(ansi::fg(npda::config::colors::success), "{}\n", std::format("{}", node.s));
   } else {
     out += std::format("State: {}\n", std::format("{}", node.s));
   }
@@ -600,7 +587,7 @@ void TuringMachine<State, TapeSym>::emit_trace_step(
       if (i == head_pos) {
         if (opt.trace_colors) {
           out +=
-            ansi::paint(std::format( "[{}]", std::format("{}", tape[i])), npda::config::colors::warning);
+            ansi::format(ansi::fg(npda::config::colors::warning), "[{}]", std::format("{}", tape[i]));
         } else {
           out += std::format("[{}]", std::format("{}", tape[i]));
         }
@@ -612,7 +599,7 @@ void TuringMachine<State, TapeSym>::emit_trace_step(
     if (head_pos >= tape.size()) {
       if (opt.trace_colors) {
         out +=
-          ansi::paint(std::format( " [{}]", std::format("{}", blank_)), npda::config::colors::success);
+          ansi::format(ansi::fg(npda::config::colors::success), " [{}]", std::format("{}", blank_));
       } else {
         out += std::format(" [{}]", std::format("{}", blank_));
       }
@@ -633,7 +620,7 @@ void TuringMachine<State, TapeSym>::emit_trace_step(
 
   if (rule.has_value()) {
     if (opt.trace_colors) {
-      out += ansi::paint(std::format( "Rule: "), npda::config::colors::info);
+      out += ansi::format(ansi::fg(npda::config::colors::info), "Rule: ");
     } else {
       out += "Rule: ";
     }
@@ -649,7 +636,7 @@ void TuringMachine<State, TapeSym>::emit_trace_step(
     );
 
     if (opt.trace_colors) {
-      out += ansi::paint(std::format( "{}\n", rule_str), npda::config::colors::example);
+      out += ansi::format(ansi::fg(npda::config::colors::example), "{}\n", rule_str);
     } else {
       out += std::format("{}\n", rule_str);
     }
@@ -666,7 +653,7 @@ void TuringMachine<State, TapeSym>::emit_trace_step(
       );
 
       if (opt.trace_colors) {
-        out += ansi::paint(std::format( "{}\n", explanation), npda::config::colors::info);
+        out += ansi::format(ansi::fg(npda::config::colors::info), "{}\n", explanation);
       } else {
         out += std::format("{}\n", explanation);
       }
@@ -684,18 +671,15 @@ void TuringMachine<State, TapeSym>::show_configuration(const RunOptions& opt) co
   auto sink = sink_of(opt);
 
   if (opt.trace_colors) {
-    sink(ansi::paint(std::format(
-      "\n{} Turing Machine Configuration:\n",
-      npda::config::symbols::info
-    ), npda::config::colors::banner_text));
+    sink(ansi::format(ansi::fg(npda::config::colors::banner_text), "\n{} Turing Machine Configuration:\n", npda::config::symbols::info));
   } else {
     sink("\nTuring Machine Configuration:\n");
   }
 
   auto print_config = [&](std::string_view key, std::string_view value) {
     if (opt.trace_colors) {
-      sink(ansi::paint(std::format( "  {}: ", key), npda::config::colors::info));
-      sink(ansi::paint(std::format( "{}\n", value), npda::config::colors::success));
+      sink(ansi::format(ansi::fg(npda::config::colors::info), "  {}: ", key));
+      sink(ansi::format(ansi::fg(npda::config::colors::success), "{}\n", value));
       return;
     }
     sink(std::format("  {}: {}\n", key, value));
@@ -788,11 +772,7 @@ void TuringMachine<State, TapeSym>::replay_trace_path(
   auto sink = sink_of(opt);
 
   if (opt.trace_colors) {
-    sink(ansi::paint(std::format(
-      "\n{} Accepting configuration found! Replaying {} steps...\n",
-      npda::config::symbols::info,
-      rule_path.size()
-    ), npda::config::colors::banner_text));
+    sink(ansi::format(ansi::fg(npda::config::colors::banner_text), "\n{} Accepting configuration found! Replaying {} steps...\n", npda::config::symbols::info, rule_path.size()));
   } else {
     sink(std::format("\nAccepting configuration found! Replaying {} steps...\n", rule_path.size()));
   }
@@ -811,10 +791,7 @@ void TuringMachine<State, TapeSym>::replay_trace_path(
   }
 
   if (opt.trace_colors) {
-    sink(ansi::paint(std::format(
-      "\n{} Input accepted!\n",
-      npda::config::symbols::success
-    ), npda::config::colors::success));
+    sink(ansi::format(ansi::fg(npda::config::colors::success), "\n{} Input accepted!\n", npda::config::symbols::success));
   } else {
     sink("\nInput accepted!\n");
   }

@@ -10,20 +10,14 @@ export namespace ui {
 [[maybe_unused]] inline void error(std::string_view message) {
   std::print(
     "{}",
-    ansi::paint_bold(
-      std::format("{} Error: {}\n", npda::config::symbols::error, message),
-      npda::config::colors::error
-    )
+    ansi::format(ansi::fg(npda::config::colors::error) | ansi::emphasis::bold, "{} Error: {}\n", npda::config::symbols::error, message)
   );
 }
 
 [[maybe_unused]] inline void info(std::string_view message) {
   std::print(
     "{}",
-    ansi::paint_bold(
-      std::format("{} {}\n", npda::config::symbols::info, message),
-      npda::config::colors::info
-    )
+    ansi::format(ansi::fg(npda::config::colors::info) | ansi::emphasis::bold, "{} {}\n", npda::config::symbols::info, message)
   );
 }
 
