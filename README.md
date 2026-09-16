@@ -132,26 +132,15 @@ q1 _ _ qf _ S _ S
 The automata is implemented to work with, empty stack finalization and with final state finalization.
 
 > [!IMPORTANT] Location of the compiled binary
-> The compiled binary lives in `./zig-out/bin`
+> The build writes the binary under `./build/<platform>/<arch>/<mode>/cc`. Run `find build -name cc -type f` to locate the file.
 
 ## Requirements
 
-This project uses [mise](https://github.com/jdx/mise) for dependency management. Mise provides a unified interface to manage runtime versions and project-specific tools.
+This project builds with xmake and LLVM Clang 23. The code uses C++23 modules and `import std`. Apple Clang and older LLVM releases do not work.
 
-To set up the development environment:
+Install the toolchain first. On macOS, run `brew install llvm xmake`. On Ubuntu 24.04, install `clang-23` and `libc++-23-dev` from apt.llvm.org. Then install xmake.
 
-1. Install mise following the [official instructions](https://mise.jdx.dev/getting-started.html)
-2. Run `mise install` in the project root to automatically install all dependencies defined in `mise.toml`
-
-The project dependencies will be automatically installed and configured according to the project specifications.
-
-After installing the requirements, you can run `just` without arguments to see a list of available tasks:
-
-```bash
-just
-```
-
-This will display all available commands defined in the justfile that you can use to build, test, and run the project.
+Then install the remaining tools. Run `mise install` in the project root. This command provides `just`, the task runner.
 
 ## Build
 
@@ -159,11 +148,15 @@ This will display all available commands defined in the justfile that you can us
 just build
 ```
 
+The command runs `xmake build`. To pass options to xmake, add them after the command.
+
 ## Usage
 
 ```bash
 just run --help
 ```
+
+If the sources changed, the command rebuilds the binary. Then it runs the binary with the given arguments.
 
 ### Available Commands
 
@@ -171,6 +164,8 @@ just run --help
 - `npda <file_path> <strings...>` - See if the given automata accepts the given string
 
 ### Examples
+
+The examples below call the binary as `cc`. Replace `cc` with `just run` or with the full path.
 
 ```bash
 cc turing ./examples/turing/count-replace.turing "aabb"
@@ -200,6 +195,18 @@ This will execute `pow(2, 3)` and show the trace.
 # Benchmark greedy CV generator algorithm
 cc npda ./examples/APf-1 "aabb"
 ```
+
+### Behavior proof
+
+```bash
+just verify
+```
+
+The command runs the six behavior cases plus the full example corpus. When output changes, the command fails. Run it before you push.
+
+## Modules
+
+The source is split into C++20 modules. Each domain area owns one module file under `src/modules/`. Third-party code stays in global fragments, except CLI11, which ships its own module file under `third_party/cli11/`. The build uses one flag set for every module step. Different flags break BMI loads.
 
 ## License
 
