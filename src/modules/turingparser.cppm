@@ -8,14 +8,23 @@ module;
 export module turing.parser;
 import std;
 import diag;
+import lex;
 import turing;
 // C++23. Turing Machine parser with rustc-style diagnostics and error recovery.
 // Supports single and multi-tape configurations with all variants
 
-
-
-
 export namespace turing::parse {
+
+// Shared lexer entities (defined in the lex module).
+using lex::Token;
+using lex::Line;
+using lex::SpecTokens;
+using lex::read_all;
+using lex::add_simple_error;
+using lex::add_symbol_error;
+using lex::line_has_tokens;
+using lex::next_nonempty;
+using lex::to_set;
 
 using TM = turing::TuringMachine<std::string, std::string>;
 using Rule = turing::Rule<std::string, std::string>;
@@ -26,129 +35,6 @@ struct ParseResult {
   TMConfig config;                // Parsed configuration options
   diag::Diagnostics diagnostics;  // Always include diagnostics (warnings, etc.)
 };
-
-struct Token {
-  std::string text;
-  diag::Span span;
-};
-
-struct Line {
-  std::size_t num_1 = 1;      // 1-based
-  std::vector<Token> tokens;  // tokens before '#'
-  diag::Span line_span;       // entire line (without '\n')
-};
-
-struct SpecTokens {
-  std::vector<Line> lines;  // all lines with tokens
-};
-
-// Read entire stream
-[[nodiscard]] inline std::string read_all(std::istream& is) {
-  std::ostringstream oss;
-  oss << is.rdbuf();
-  return oss.str();
-}
-
-[[nodiscard]] inline SpecTokens lex(const diag::SourceFile& src) {
-  SpecTokens st;
-  st.lines.reserve(src.line_count());
-
-  for (std::size_t li = 1; li <= src.line_count(); ++li) {
-    const std::string_view sv = src.line_view(li);
-    const std::size_t line_start = src.line_starts[li - 1];
-    const std::size_t line_end = line_start + sv.size();
-
-    Line L;
-    L.num_1 = li;
-    L.line_span = diag::Span{line_start, line_end};
-
-    // Cut comments
-    const std::size_t cut = sv.find('#');
-    const std::size_t upto = (cut == std::string_view::npos) ? sv.size() : cut;
-
-    // Tokenize (whitespace-separated)
-    std::size_t i = 0;
-    const auto is_space = [](char c) noexcept {
-      return std::isspace(static_cast<unsigned char>(c)) != 0;
-    };
-
-    while (i < upto) {
-      while (i < upto && is_space(sv[i]))
-        ++i;
-      if (i >= upto)
-        break;
-
-      std::size_t j = i;
-      while (j < upto && !is_space(sv[j]))
-        ++j;
-
-      const std::size_t tok_lo = line_start + i;
-      const std::size_t tok_hi = line_start + j;
-      L.tokens.push_back(Token{
-        std::string(sv.substr(i, j - i)),
-        diag::Span{tok_lo, tok_hi},
-      });
-
-      i = j;
-    }
-
-    st.lines.push_back(std::move(L));
-  }
-
-  return st;
-}
-
-inline void add_simple_error(
-  diag::Diagnostics& dx,
-  std::string code,
-  std::string msg,
-  diag::Span where,
-  std::string label_msg
-) {
-  diag::Diagnostic d;
-  d.severity = diag::Severity::Error;
-  d.code = std::move(code);
-  d.message = std::move(msg);
-  d.labels.push_back(diag::Label{
-    .span = where,
-    .primary = true,
-    .message = std::move(label_msg),
-  });
-  dx.items.push_back(std::move(d));
-}
-
-inline void add_symbol_error(
-  diag::Diagnostics& dx,
-  std::string code,
-  std::string msg,
-  const Token& t,
-  std::string label_msg
-) {
-  add_simple_error(dx, std::move(code), std::move(msg), t.span, std::move(label_msg));
-}
-
-[[nodiscard]] inline bool line_has_tokens(const Line& L) {
-  return !L.tokens.empty();
-}
-
-// Next non-empty line >= i
-[[nodiscard]] inline std::optional<std::size_t> next_nonempty(const SpecTokens& st, std::size_t i) {
-  const std::size_t n = st.lines.size();
-  for (std::size_t k = i; k < n; ++k) {
-    if (line_has_tokens(st.lines[k]))
-      return k;
-  }
-  return std::nullopt;
-}
-
-// Turn tokens to set of strings
-[[nodiscard]] inline std::unordered_set<std::string> to_set(const std::vector<Token>& toks) {
-  std::unordered_set<std::string> s;
-  s.reserve(toks.size());
-  for (const auto& t : toks)
-    s.insert(t.text);
-  return s;
-}
 
 // Configuration parsing diagnostics and validation
 struct ConfigParseResult {
@@ -725,30 +611,10 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
 [[nodiscard]] inline ParseResult parse_with_diagnostics(std::istream& is, std::string filename) {
   ParseResult out;
   out.source = diag::SourceFile::from(filename, read_all(is));
-  const auto st = lex(out.source);
+  const auto st = lex::lex(out.source);
+  const diag::Span eof = lex::eof_span(out.source);
 
   diag::Diagnostics dx;
-
-  const auto eof_span = [&]() -> diag::Span {
-    if (out.source.text.empty())
-      return {0, 0};
-    const std::size_t n = out.source.text.size();
-    return {n ? n - 1 : 0, n};
-  };
-
-  const auto need_line = [&](std::optional<std::size_t> idx, std::string name) {
-    if (!idx.has_value()) {
-      add_simple_error(
-        dx,
-        "E0001",
-        "missing required section: " + name,
-        eof_span(),
-        "file ends before section '" + name + "'"
-      );
-      return false;
-    }
-    return true;
-  };
 
   std::size_t i = 0;
   TMConfig config;
@@ -765,7 +631,7 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
   // 1) Q (states)
   std::vector<Token> QToks;
   const std::optional<std::size_t> iQ = next_nonempty(st, i);
-  if (!need_line(iQ, "Q")) {
+  if (!lex::require_line(dx, iQ, "Q", eof)) {
     QToks = {};
   } else {
     QToks = st.lines[*iQ].tokens;
@@ -780,7 +646,7 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
   // 2) Σ (input alphabet)
   std::vector<Token> SToks;
   const std::optional<std::size_t> iS = next_nonempty(st, i);
-  if (!need_line(iS, "Σ")) {
+  if (!lex::require_line(dx, iS, "Σ", eof)) {
     SToks = {};
   } else {
     SToks = st.lines[*iS].tokens;
@@ -795,7 +661,7 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
   // 3) Γ (tape alphabet)
   std::vector<Token> GToks;
   const std::optional<std::size_t> iG = next_nonempty(st, i);
-  if (!need_line(iG, "Γ")) {
+  if (!lex::require_line(dx, iG, "Γ", eof)) {
     GToks = {};
   } else {
     GToks = st.lines[*iG].tokens;
@@ -813,9 +679,9 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
   const auto Gset = to_set(GToks);
 
   // 4) q0 (start state)
-  Token q0Tok{"<q0?>", eof_span()};
+  Token q0Tok{"<q0?>", eof};
   const std::optional<std::size_t> iq0 = next_nonempty(st, i);
-  if (!need_line(iq0, "q0")) {
+  if (!lex::require_line(dx, iq0, "q0", eof)) {
     // keep default placeholder
   } else {
     const Line& Lq0 = st.lines[*iq0];
@@ -839,9 +705,9 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
   }
 
   // 5) b (blank symbol)
-  Token bTok{"<b?>", eof_span()};
+  Token bTok{"<b?>", eof};
   const std::optional<std::size_t> ib = next_nonempty(st, i);
-  if (!need_line(ib, "b")) {
+  if (!lex::require_line(dx, ib, "b", eof)) {
     // keep default
   } else {
     const Line& Lb = st.lines[*ib];
@@ -1090,7 +956,7 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
       dx,
       "E0017",
       "failed to build Turing Machine",
-      st.lines.empty() ? eof_span() : st.lines.back().line_span,
+      st.lines.empty() ? eof : st.lines.back().line_span,
       built.error().message
     );
   }
