@@ -3,7 +3,9 @@
 #include <CLI/CLI.hpp>
 
 #include "../prf.h"
-#include "cli.h"
+
+// Import the CLI module. Keep this import after all includes.
+import cli;
 
 class PRFHandler final : public CommandHandler {
  public:

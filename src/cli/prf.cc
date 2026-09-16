@@ -1,6 +1,7 @@
 #include "cli/prf.h"
 
-// Import the PRF module. Keep this import after all includes.
+// Import the modules. Keep these imports after all includes.
+import cli;
 import prf;
 
 int PRFHandler::operator()(const CommandContext&) {

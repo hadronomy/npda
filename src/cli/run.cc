@@ -9,7 +9,8 @@
 
 #include "cli/npda.h"
 
-// Import the NPDA module. Keep this import after all includes.
+// Import the modules. Keep these imports after all includes.
+import cli;
 import npda;
 
 static std::vector<std::string> to_symbols(std::string_view s) {

@@ -7,7 +7,7 @@
 
 namespace ui {
 
-[[maybe_unused]] static void error(std::string_view message) {
+[[maybe_unused]] inline void error(std::string_view message) {
   fmt::print(
     fg(npda::config::colors::error) | fmt::emphasis::bold,
     "{} Error: {}\n",
@@ -16,7 +16,7 @@ namespace ui {
   );
 }
 
-[[maybe_unused]] static void info(std::string_view message) {
+[[maybe_unused]] inline void info(std::string_view message) {
   fmt::print(
     fg(npda::config::colors::info) | fmt::emphasis::bold,
     "{} {}\n",

@@ -4,8 +4,10 @@
 
 #include <CLI/CLI.hpp>
 
-#include "cli.h"
 #include "turing/rule.h"
+
+// Import the CLI module. Keep this import after all includes.
+import cli;
 
 class TuringHandler final : public CommandHandler {
  public:

@@ -12,7 +12,8 @@
 #include "diag.h"
 #include "ui.h"
 
-// Import the Turing module. Keep this import after all includes.
+// Import the modules. Keep these imports after all includes.
+import cli;
 import turing;
 
 static std::vector<std::string> to_symbols(std::string_view s) {

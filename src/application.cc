@@ -1,10 +1,11 @@
 #include "application.h"
 
-#include "cli.h"
 #include "cli/npda.h"
 #include "cli/prf.h"
 #include "cli/turing.h"
-#include "ui.h"
+
+// Import the CLI module. Keep this import after all includes.
+import cli;
 
 int Application::run(int argc, char** argv) const {
   CommandRegistry registry(

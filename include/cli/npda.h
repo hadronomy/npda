@@ -4,7 +4,8 @@
 
 #include <CLI/CLI.hpp>
 
-#include "cli.h"
+// Import the CLI module. Keep this import after all includes.
+import cli;
 
 class RunHandler final : public CommandHandler {
  public:
