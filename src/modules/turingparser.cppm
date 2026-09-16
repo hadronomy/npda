@@ -1,29 +1,21 @@
+// Own the Turing machine text format parser.
+// C headers stay in the global fragment above the module line.
+// Import modules below it. Never place a C include below the imports.
+module;
+#include <cctype>
+#include <cstdio>
+
+export module turing.parser;
+import std;
+import diag;
+import turing;
 // C++23. Turing Machine parser with rustc-style diagnostics and error recovery.
 // Supports single and multi-tape configurations with all variants
 
-#pragma once
 
-#include <algorithm>
-#include <cctype>
-#include <charconv>
-#include <cstdio>
-#include <expected>
-#include <functional>
-#include <istream>
-#include <limits>
-#include <optional>
-#include <sstream>
-#include <string>
-#include <string_view>
-#include <unordered_set>
-#include <utility>
-#include <vector>
 
-#include "diag.h"
-#include "turing/rule.h"
-#include "turing/turing.h"
 
-namespace turing::parse {
+export namespace turing::parse {
 
 using TM = turing::TuringMachine<std::string, std::string>;
 using Rule = turing::Rule<std::string, std::string>;

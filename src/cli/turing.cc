@@ -8,12 +8,13 @@
 #include <fmt/ranges.h>
 
 #include "cli/turing.h"
-#include "diag.h"
 
 // Import the modules. Keep these imports after all includes.
 import cli11;
 import cli;
+import diag;
 import turing;
+import turing.parser;
 
 static std::vector<std::string> to_symbols(std::string_view s) {
   std::vector<std::string> v;

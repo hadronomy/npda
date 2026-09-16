@@ -1,23 +1,20 @@
-// C++23. Parser with rustc-style diagnostics and error recovery.
-
-#pragma once
-
+// Own the NPDA text format parser.
+// C headers stay in the global fragment above the module line.
+// Import modules below it. Never place a C include below the imports.
+module;
 #include <cctype>
 #include <cstdio>
-#include <expected>
-#include <istream>
-#include <optional>
-#include <sstream>
-#include <string>
-#include <string_view>
-#include <unordered_set>
-#include <utility>
-#include <vector>
 
-#include "diag.h"
-#include "npda.h"
+export module npda.parser;
+import std;
+import diag;
+import npda;
+// C++23. Parser with rustc-style diagnostics and error recovery.
 
-namespace npda::parse {
+
+
+
+export namespace npda::parse {
 
 using PDA = npda::NPDA<std::string, std::string, std::string>;
 using Rule = npda::Rule<std::string, std::string, std::string>;

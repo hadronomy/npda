@@ -1,17 +1,12 @@
+// Own the rustc-style diagnostics. STL-only.
+// Import the standard library below. Change this file, not a header.
+export module diag;
+import std;
 // C++23. Minimal rustc-style diagnostics: spans, labels, rendering.
 
-#pragma once
 
-#include <algorithm>
-#include <cstddef>
-#include <map>
-#include <ostream>
-#include <string>
-#include <string_view>
-#include <utility>
-#include <vector>
 
-namespace diag {
+export namespace diag {
 
 struct Span {
   std::size_t lo = 0;  // inclusive
@@ -377,3 +372,4 @@ inline void render(
 }
 
 }  // namespace diag
+

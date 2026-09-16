@@ -3,7 +3,6 @@
 #include <iostream>
 #include <string_view>
 
-#include "diag.h"
 #include "fmt/color.h"
 
 #include "cli/npda.h"
@@ -11,7 +10,9 @@
 // Import the modules. Keep these imports after all includes.
 import cli11;
 import cli;
+import diag;
 import npda;
+import npda.parser;
 
 static std::vector<std::string> to_symbols(std::string_view s) {
   std::vector<std::string> v;
