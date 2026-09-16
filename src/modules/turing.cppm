@@ -43,36 +43,25 @@ enum class OperationMode {
   Independent    // Write first, then move (or vice versa)
 };
 
+// One tape of a rule: what to read, write, and where to move.
+// Bundled so arity mismatch across sides is unrepresentable.
+template <typename TapeSym>
+struct PerTape {
+  TapeSym read{};
+  TapeSym write{};
+  Direction move{};
+};
+
 template <Hashable State, Hashable TapeSym>
 struct MultiTapeRule {
   State from{};
-  std::vector<TapeSym> read{};  // symbols to read from each tape
+  std::vector<PerTape<TapeSym>> tapes{};  // one entry per tape
   State to{};
-  std::vector<TapeSym> write{};   // symbols to write to each tape
-  std::vector<Direction> move{};  // movement for each tape head
 };
 
 // Rule is always multi; arity-1 = "single tape"
 template <Hashable State, Hashable TapeSym>
 using Rule = MultiTapeRule<State, TapeSym>;
-
-// Helper to conveniently create an arity-1 rule (single tape)
-template <Hashable State, Hashable TapeSym>
-[[nodiscard]] constexpr Rule<State, TapeSym> make_single_rule(
-  const State& from,
-  const TapeSym& read,
-  const State& to,
-  const TapeSym& write,
-  Direction move
-) {
-  return Rule<State, TapeSym>{
-    .from = from,
-    .read = {read},
-    .to = to,
-    .write = {write},
-    .move = {move},
-  };
-}
 
 }  // namespace turing
 export namespace turing {
@@ -154,19 +143,7 @@ template <Hashable State, Hashable TapeSym>
 class TuringMachine {
  public:
   using rule_type = Rule<State, TapeSym>;  // always multi
-  using MultiKey = std::pair<State, std::vector<TapeSym>>;
-
-  struct MultiKeyHash {
-    std::size_t operator()(const MultiKey& k) const noexcept {
-      std::size_t h = std::hash<State>{}(k.first);
-      constexpr std::size_t seed = 0x9e3779b97f4a7c15ULL;
-      for (const auto& sym : k.second) {
-        std::size_t v = std::hash<TapeSym>{}(sym);
-        h ^= v + seed + (h << 6) + (h >> 2);
-      }
-      return h;
-    }
-  };
+  using PerTape = turing::PerTape<TapeSym>;
 
   class Builder {
    public:
@@ -267,11 +244,11 @@ class TuringMachine {
         accepting_set_(std::move(o.accepting_set_)),
         blank_(std::move(o.blank_)),
         rules_(std::move(o.rules_)),
-        multi_transitions_(std::move(o.multi_transitions_)),
+        transitions_from_(std::move(o.transitions_from_)),
         indices_built_(o.indices_built_),
         indices_once_(std::make_unique<std::once_flag>()),
         indices_error_(std::move(o.indices_error_)) {
-    o.multi_transitions_.clear();
+    o.transitions_from_.clear();
     o.accepting_set_.clear();
     o.indices_built_ = false;
     o.indices_once_ = std::make_unique<std::once_flag>();
@@ -285,11 +262,11 @@ class TuringMachine {
       accepting_set_ = std::move(o.accepting_set_);
       blank_ = std::move(o.blank_);
       rules_ = std::move(o.rules_);
-      multi_transitions_ = std::move(o.multi_transitions_);
+      transitions_from_ = std::move(o.transitions_from_);
       indices_built_ = o.indices_built_;
       indices_once_ = std::make_unique<std::once_flag>();
       indices_error_ = std::move(o.indices_error_);
-      o.multi_transitions_.clear();
+      o.transitions_from_.clear();
       o.accepting_set_.clear();
       o.indices_built_ = false;
       o.indices_once_ = std::make_unique<std::once_flag>();
@@ -366,27 +343,29 @@ class TuringMachine {
   TapeSym blank_{};
   std::vector<rule_type> rules_{};
 
-  mutable std::unordered_map<MultiKey, std::size_t, MultiKeyHash> multi_transitions_;
+  mutable std::unordered_map<State, std::vector<std::size_t>> transitions_from_;
   mutable bool indices_built_ = false;
   mutable std::unique_ptr<std::once_flag> indices_once_;
   mutable std::optional<Error> indices_error_{};
 
   static constexpr std::size_t npos = static_cast<std::size_t>(-1);
 
-  [[nodiscard]] static std::string join_symbols(const std::vector<TapeSym>& symbols) {
-    return std::format("{}", ansi::join(symbols, ","));
+  // Join one side of every tape triple with ",".
+  template <typename Proj>
+  [[nodiscard]] static std::string join_tapes(const std::vector<PerTape>& tapes, Proj proj) {
+    return std::format("{}", ansi::join(tapes | std::views::transform(proj), ","));
   }
 
-  [[nodiscard]] static std::string join_directions(const std::vector<Direction>& directions) {
-    std::string out;
-    bool first = true;
-    for (auto d : directions) {
-      if (!first)
-        out += ",";
-      first = false;
-      out += static_cast<char>(d);
-    }
-    return out;
+  [[nodiscard]] static std::string join_reads(const std::vector<PerTape>& tapes) {
+    return join_tapes(tapes, &PerTape::read);
+  }
+
+  [[nodiscard]] static std::string join_writes(const std::vector<PerTape>& tapes) {
+    return join_tapes(tapes, &PerTape::write);
+  }
+
+  [[nodiscard]] static std::string join_moves(const std::vector<PerTape>& tapes) {
+    return join_tapes(tapes, [](const PerTape& t) { return static_cast<char>(t.move); });
   }
 
   // Escape string for Graphviz quoted labels/IDs
@@ -422,10 +401,10 @@ class TuringMachine {
         auto& pos = node.head_positions[i];
         if (pos >= tape.size())
           tape.resize(pos + 1, blank_);
-        tape[pos] = rule.write[i];
+        tape[pos] = rule.tapes[i].write;
       }
       for (std::size_t i = 0; i < num_tapes; ++i) {
-        move_multi_head(node, i, rule.move[i]);
+        move_multi_head(node, i, rule.tapes[i].move);
       }
       node.s = rule.to;
       return;
@@ -436,8 +415,8 @@ class TuringMachine {
       auto& pos = node.head_positions[i];
       if (pos >= tape.size())
         tape.resize(pos + 1, blank_);
-      tape[pos] = rule.write[i];
-      move_multi_head(node, i, rule.move[i]);
+      tape[pos] = rule.tapes[i].write;
+      move_multi_head(node, i, rule.tapes[i].move);
     }
     node.s = rule.to;
   }
@@ -465,9 +444,9 @@ class TuringMachine {
 
   void build_indices() const {
     std::call_once(*indices_once_, [this]() {
-      // One entry per rule at most.
-      multi_transitions_.reserve(rules_.size());
-      multi_transitions_.clear();
+      // One entry per state that owns rules.
+      transitions_from_.reserve(rules_.size());
+      transitions_from_.clear();
       indices_error_.reset();
 
       if (accepting_set_.empty() && !accepting_.empty()) {
@@ -487,9 +466,7 @@ class TuringMachine {
       for (std::size_t i = 0; i < rules_.size(); ++i) {
         const auto& r = rules_[i];
 
-        const bool arity_ok =
-          r.read.size() == num_tapes && r.write.size() == num_tapes && r.move.size() == num_tapes;
-        if (!arity_ok) {
+        if (r.tapes.size() != num_tapes) {
           set_error(std::format(
             "rule #{} arity mismatch: expected {} entries in read/write/move", i, num_tapes
           ));
@@ -497,28 +474,34 @@ class TuringMachine {
         }
 
         if (stay_disallowed) {
-          if (std::ranges::any_of(r.move, [](auto d) { return d == Direction::Stay; })) {
+          if (std::ranges::any_of(r.tapes, [](const PerTape& t) {
+                return t.move == Direction::Stay;
+              })) {
             set_error(std::format("rule #{} uses Stay while allow_stay=false", i));
             return;
           }
         }
         if (left_disallowed) {
-          if (std::ranges::any_of(r.move, [](auto d) { return d == Direction::Left; })) {
+          if (std::ranges::any_of(r.tapes, [](const PerTape& t) {
+                return t.move == Direction::Left;
+              })) {
             set_error(std::format("rule #{} uses Left while TapeDirection is Right-only", i));
             return;
           }
         }
 
-        MultiKey key = std::make_pair(r.from, r.read);
-        auto [it, ok] = multi_transitions_.emplace(std::move(key), i);
-        if (!ok) {
-          set_error(std::format(
-            "duplicate multi-tape transition for state '{}' and symbols ({})",
-            std::format("{}", r.from),
-            join_symbols(r.read)
-          ));
-          return;
+        auto& bucket = transitions_from_[r.from];
+        for (std::size_t ri : bucket) {
+          if (std::ranges::equal(rules_[ri].tapes, r.tapes, {}, &PerTape::read, &PerTape::read)) {
+            set_error(std::format(
+              "duplicate multi-tape transition for state '{}' and symbols ({})",
+              std::format("{}", r.from),
+              join_reads(r.tapes)
+            ));
+            return;
+          }
         }
+        bucket.push_back(i);
       }
 
       indices_built_ = true;
@@ -546,17 +529,15 @@ class TuringMachine {
     return node;
   }
 
-  [[nodiscard]] std::vector<TapeSym> current_symbols_of(const NodeType& n) const {
-    std::vector<TapeSym> symbols;
-    symbols.reserve(config_.num_tapes);
+  void current_symbols_of(const NodeType& n, std::vector<TapeSym>& out) const {
+    out.clear();
     for (std::size_t i = 0; i < config_.num_tapes; ++i) {
       if (n.head_positions[i] < n.tapes[i].size()) {
-        symbols.push_back(n.tapes[i][n.head_positions[i]]);
+        out.push_back(n.tapes[i][n.head_positions[i]]);
       } else {
-        symbols.push_back(blank_);
+        out.push_back(blank_);
       }
     }
-    return symbols;
   }
 
   void apply_rule_indexed(NodeType& node, std::size_t rule_idx) const {
@@ -565,10 +546,14 @@ class TuringMachine {
 
   [[nodiscard]] std::optional<std::size_t>
     find_transition_index(const State& s, const std::vector<TapeSym>& symbols) const {
-    auto it = multi_transitions_.find(std::make_pair(s, symbols));
-    if (it == multi_transitions_.end())
+    const auto it = transitions_from_.find(s);
+    if (it == transitions_from_.end())
       return std::nullopt;
-    return it->second;
+    for (std::size_t ri : it->second) {
+      if (std::ranges::equal(rules_[ri].tapes, symbols, {}, &PerTape::read, std::identity{}))
+        return ri;
+    }
+    return std::nullopt;
   }
 
   [[nodiscard]] static std::function<void(std::string_view)> sink_of(const RunOptions& opt) {
@@ -588,13 +573,13 @@ class TuringMachine {
       return;
     auto sink = sink_of(opt);
     if (opt.trace.colors) {
-      sink(ansi::format(ansi::fg(npda::config::colors::error), "\n{} No transition available for state '{}' and symbols ({})\n", npda::config::symbols::error, std::format("{}", node.s), join_symbols(symbols)));
+      sink(ansi::format(ansi::fg(npda::config::colors::error), "\n{} No transition available for state '{}' and symbols ({})\n", npda::config::symbols::error, std::format("{}", node.s), std::format("{}", ansi::join(symbols, ","))));
       return;
     }
     sink(std::format(
       "\nNo transition available for state '{}' and symbols ({})\n",
       std::format("{}", node.s),
-      join_symbols(symbols)
+      std::format("{}", ansi::join(symbols, ","))
     ));
   }
 };
@@ -680,10 +665,10 @@ void TuringMachine<State, TapeSym>::emit_trace_step(
     const std::string rule_str = std::format(
       "({}, {}) → ({}, {}, {})",
       std::format("{}", r.from),
-      join_symbols(r.read),
+      join_reads(r.tapes),
       std::format("{}", r.to),
-      join_symbols(r.write),
-      join_directions(r.move)
+      join_writes(r.tapes),
+      join_moves(r.tapes)
     );
 
     if (opt.trace.colors) {
@@ -697,9 +682,9 @@ void TuringMachine<State, TapeSym>::emit_trace_step(
         "In state {}, read ({}), write ({}), move heads ({}), and go to "
         "state {}",
         std::format("{}", r.from),
-        join_symbols(r.read),
-        join_symbols(r.write),
-        join_directions(r.move),
+        join_reads(r.tapes),
+        join_writes(r.tapes),
+        join_moves(r.tapes),
         std::format("{}", r.to)
       );
 
@@ -860,6 +845,8 @@ std::expected<RunResult, Error> TuringMachine<State, TapeSym>::run_multi_tape(
   if (!opt.track_witness) {
     NodeType current = make_root(input);
     std::size_t steps = 0;
+    std::vector<TapeSym> symbols;
+    symbols.reserve(config_.num_tapes);
 
     for (;;) {
       if (opt.trace.enabled)
@@ -887,7 +874,7 @@ std::expected<RunResult, Error> TuringMachine<State, TapeSym>::run_multi_tape(
       if (steps >= opt.max_steps)
         return std::unexpected(Error{"max_steps reached"});
 
-      auto symbols = current_symbols_of(current);
+      current_symbols_of(current, symbols);
       auto idx_opt = find_transition_index(current.s, symbols);
       if (!idx_opt) {
         no_transition_trace(current, symbols, opt);
@@ -909,6 +896,8 @@ std::expected<RunResult, Error> TuringMachine<State, TapeSym>::run_multi_tape(
   work.push_back(0);
 
   std::size_t steps = 0;
+  std::vector<TapeSym> symbols;
+  symbols.reserve(config_.num_tapes);
 
   while (!work.empty()) {
     const std::size_t idx = work.front();
@@ -922,7 +911,7 @@ std::expected<RunResult, Error> TuringMachine<State, TapeSym>::run_multi_tape(
     if (steps >= opt.max_steps)
       return std::unexpected(Error{"max_steps reached"});
 
-    auto symbols = current_symbols_of(current);
+    current_symbols_of(current, symbols);
     auto idx_opt = find_transition_index(current.s, symbols);
     if (!idx_opt) {
       no_transition_trace(current, symbols, opt);
@@ -968,9 +957,9 @@ std::string TuringMachine<State, TapeSym>::to_graphviz_dot(const GraphvizOptions
   };
 
   auto rule_text = [&](const rule_type& r) {
-    const auto reads = join_symbols(r.read);
-    const auto writes = join_symbols(r.write);
-    const auto moves = join_directions(r.move);
+    const auto reads = join_reads(r.tapes);
+    const auto writes = join_writes(r.tapes);
+    const auto moves = join_moves(r.tapes);
 
     if (opt.compact_labels) {
       // Compact, readable item

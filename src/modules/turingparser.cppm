@@ -849,9 +849,7 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
       Rule rule;
       rule.from = from.text;
       rule.to = to.text;
-      rule.read = {read.text};
-      rule.write = {write.text};
-      rule.move = {dir};
+      rule.tapes = {{read.text, write.text, dir}};
 
       rules.push_back(std::move(rule));
     } else {
@@ -884,9 +882,8 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
       Rule rule;
       rule.from = from.text;
       rule.to = to.text;
-      rule.read.resize(config.num_tapes);
-      rule.write.resize(config.num_tapes);
-      rule.move.resize(config.num_tapes);
+      rule.tapes.reserve(config.num_tapes);
+      std::vector<Symbol> reads(config.num_tapes);
 
       bool valid = true;
 
@@ -902,7 +899,7 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
           add_symbol_error(dx, "E0012", "unknown read symbol", read, "symbol not in Γ");
           valid = false;
         } else {
-          rule.read[tape_idx] = read.text;
+          reads[tape_idx] = read.text;
         }
       }
 
@@ -917,25 +914,24 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
         const Token& move = T[pair_base + 1];
         const std::string_view move_text = lex::name(move.text);
 
+        Symbol write_sym{};
         if (Gset.count(write.text) == 0) {
           add_symbol_error(dx, "E0015", "unknown write symbol", write, "symbol not in Γ");
           valid = false;
         } else {
-          rule.write[tape_idx] = write.text;
+          write_sym = write.text;
         }
 
+        Direction dir = Direction::Stay;
         if (move_text != "L" && move_text != "R" && move_text != "S") {
           add_symbol_error(dx, "E0016", "invalid move direction", move, "must be L, R, or S");
           valid = false;
-        } else {
-          if (move_text == "L") {
-            rule.move[tape_idx] = Direction::Left;
-          } else if (move_text == "R") {
-            rule.move[tape_idx] = Direction::Right;
-          } else {
-            rule.move[tape_idx] = Direction::Stay;
-          }
+        } else if (move_text == "L") {
+          dir = Direction::Left;
+        } else if (move_text == "R") {
+          dir = Direction::Right;
         }
+        rule.tapes.push_back({reads[tape_idx], write_sym, dir});
       }
 
       if (valid) {
