@@ -102,7 +102,7 @@ enum class ColorMode { Auto, Always, Never };
 
 struct RenderOptions {
   ColorMode color = ColorMode::Auto;
-  std::size_t context_lines = 0;
+  std::size_t context_lines = 1;
 };
 
 // Detect color support: off with NO_COLOR set or dumb terminal,
@@ -345,9 +345,6 @@ inline void render_snippet(
 
   bool header_printed = false;
   for (const auto& [line, marks] : per_line) {
-    const std::size_t lead = line > opt.context_lines ? line - opt.context_lines : 1;
-    for (std::size_t l = std::max(printed_upto + 1, lead); l < line; ++l)
-      print_plain(l);
     if (!header_printed) {
       const Label* first = nullptr;
       if (!marks.primary.empty())
@@ -360,6 +357,9 @@ inline void render_snippet(
          << ":" << c << '\n';
       header_printed = true;
     }
+    const std::size_t lead = line > opt.context_lines ? line - opt.context_lines : 1;
+    for (std::size_t l = std::max(printed_upto + 1, lead); l < line; ++l)
+      print_plain(l);
 
     auto line_sv = src.line_view(line);
 
