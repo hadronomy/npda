@@ -474,6 +474,7 @@ class Activity {
     const Terminal& t = probe_terminal();
     if (!t.tty || !t.utf8)
       return;
+    enabled_ = true;
     worker_ = std::jthread([this] { run(); });
   }
 
@@ -488,7 +489,11 @@ class Activity {
     message_ = std::move(message);
   }
 
-  void dismiss() {
+  void dismiss() { suspend(); }
+
+  // Stop frames and clear the line. The worker restarts on resume().
+  // Use around stdout blocks so frames never interleave with output.
+  void suspend() {
     stop_requested_.store(true);
     cv_.notify_all();
     if (worker_.joinable()) {
@@ -498,14 +503,29 @@ class Activity {
     clear();
   }
 
+  void resume() {
+    if (!enabled_ || worker_.joinable())
+      return;
+    stop_requested_.store(false);
+    worker_ = std::jthread([this] { run(); });
+  }
+
   void finish(const std::string& done) {
-    const bool had_worker = worker_.joinable();
     dismiss();
     // Silent unless a frame painted: fast and piped runs stay clean.
-    if (finished_ || !had_worker || !painted_)
+    if (finished_ || !painted_)
       return;
     finished_ = true;
     os_ << ansi::green(color_) << "✓" << ansi::reset(color_) << " " << done << "\n" << std::flush;
+  }
+
+  // Error twin of finish(). Prints a red cross instead of the check.
+  void fail(const std::string& msg) {
+    dismiss();
+    if (finished_ || !painted_)
+      return;
+    finished_ = true;
+    os_ << ansi::red(color_) << "✗" << ansi::reset(color_) << " " << msg << "\n" << std::flush;
   }
 
  private:
@@ -559,6 +579,7 @@ class Activity {
   std::mutex mutex_;
   std::condition_variable_any cv_;
   std::atomic<bool> stop_requested_{false};
+  bool enabled_ = false;
   bool active_ = false;
   bool painted_ = false;
   bool finished_ = false;

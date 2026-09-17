@@ -20,6 +20,7 @@ int RunHandler::operator()(const CommandContext& ctx) {
 
   auto result = npda::parse::parse_with_diagnostics(file, filepath.filename());
   if (auto dpa = result.value; result.value.has_value()) {
+    bool failed = false;
     auto run = [&](std::string_view s, bool trace = false) {
       auto r = dpa->run(
         to_symbols(s),
@@ -35,8 +36,17 @@ int RunHandler::operator()(const CommandContext& ctx) {
              .show_full_trace = true},
         }
       );
+      act.suspend();
+      std::cout << "---------------------------------------------------"
+                << "\nShowing \""
+                << ansi::format(ansi::fg(ansi::terminal_color::cyan), "{}", ui::truncate_middle(s))
+                << "\" execution in "
+                << ansi::format(ansi::fg(ansi::terminal_color::yellow), "{}", file_path.c_str())
+                << "\n";
       if (!r) {
         std::cout << ui::truncate_middle(s) << " -> error: " << r.error().message << "\n";
+        failed = true;
+        act.resume();
         return;
       }
 
@@ -64,18 +74,16 @@ int RunHandler::operator()(const CommandContext& ctx) {
         std::cout << ansi::format(ansi::fg(ansi::terminal_color::cyan), "]");
       }
       std::cout << "\n";
+      act.resume();
     };
 
     for (const auto& input_string : input_strings) {
-      std::cout << "---------------------------------------------------"
-                << "\nShowing \""
-                << ansi::format(ansi::fg(ansi::terminal_color::cyan), "{}", ui::truncate_middle(input_string))
-                << "\" execution in "
-                << ansi::format(ansi::fg(ansi::terminal_color::yellow), "{}", file_path.c_str())
-                << "\n";
       run(input_string, this->trace_enabled);
     }
-    act.finish(std::string("Finished ") + filepath.filename().string());
+    if (failed)
+      act.fail(std::string("Failed ") + filepath.filename().string());
+    else
+      act.finish(std::string("Finished ") + filepath.filename().string());
     return 0;
   }
   if (!result.value) {
