@@ -21,4 +21,14 @@ export namespace ui {
   );
 }
 
+// Shorten long text to a max width. Keeps the head and the tail.
+[[nodiscard]] inline std::string truncate_middle(std::string_view s, std::size_t max_width = 60) {
+  if (s.size() <= max_width || max_width <= 4)
+    return std::string(s);
+  const std::size_t keep = max_width - 3;
+  const std::size_t head = (keep + 1) / 2;
+  const std::size_t tail = keep - head;
+  return std::string(s.substr(0, head)) + "..." + std::string(s.substr(s.size() - tail));
+}
+
 }  // namespace ui

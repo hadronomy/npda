@@ -8,6 +8,7 @@ import diag;
 import lex;
 import npda;
 import npda.parser;
+import ui;
 
 int RunHandler::operator()(const CommandContext& ctx) {
   std::filesystem::path filepath = this->file_path;
@@ -35,12 +36,12 @@ int RunHandler::operator()(const CommandContext& ctx) {
         }
       );
       if (!r) {
-        std::cout << s << " -> error: " << r.error().message << "\n";
+        std::cout << ui::truncate_middle(s) << " -> error: " << r.error().message << "\n";
         return;
       }
 
       // Format input display - show empty string as "λ" (lambda) for clarity
-      std::string input_display = s.empty() ? "λ" : std::string(s);
+      std::string input_display = s.empty() ? "λ" : ui::truncate_middle(s);
 
       // Colorize the result line
       std::string result_line;
@@ -68,7 +69,7 @@ int RunHandler::operator()(const CommandContext& ctx) {
     for (const auto& input_string : input_strings) {
       std::cout << "---------------------------------------------------"
                 << "\nShowing \""
-                << ansi::format(ansi::fg(ansi::terminal_color::cyan), "{}", input_string)
+                << ansi::format(ansi::fg(ansi::terminal_color::cyan), "{}", ui::truncate_middle(input_string))
                 << "\" execution in "
                 << ansi::format(ansi::fg(ansi::terminal_color::yellow), "{}", file_path.c_str())
                 << "\n";
