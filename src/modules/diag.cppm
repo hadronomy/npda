@@ -14,6 +14,7 @@ export namespace diag {
 struct Span {
   std::size_t lo = 0;  // inclusive
   std::size_t hi = 0;  // exclusive
+  std::string file{};  // empty means the source under render
   [[nodiscard]] bool empty() const { return lo >= hi; }
 };
 
@@ -77,6 +78,7 @@ struct Label {
   Span span{};
   bool primary = true;
   std::string message;
+  int order = 0;  // paint sequence when labels share a line
 };
 
 struct Diagnostic {
@@ -85,15 +87,49 @@ struct Diagnostic {
   std::string message;
   std::vector<Label> labels;
   std::vector<std::string> notes;
+  // File key for multi-source renders. Empty means the source under render.
+  [[nodiscard]] std::string_view file() const {
+    for (const auto& lab : labels)
+      if (!lab.span.file.empty())
+        return lab.span.file;
+    return {};
+  }
 };
+
+class DiagnosticBuilder;
 
 struct Diagnostics {
   std::vector<Diagnostic> items;
-
   [[nodiscard]] bool has_errors() const {
     return std::any_of(items.begin(), items.end(), [](const Diagnostic& d) {
       return d.severity == Severity::Error;
     });
+  }
+
+  // Zero-friction emit: dx.emit(diag::error("E1", "bad").label(span, "here")).
+  void emit(DiagnosticBuilder builder);
+};
+
+// Owns named sources for multi-file renders. Memoizes parsed files.
+// Heterogeneous lookup takes string_view keys with no allocation.
+struct TransparentHash {
+  using is_transparent = void;
+  [[nodiscard]] std::size_t operator()(std::string_view s) const noexcept {
+    return std::hash<std::string_view>{}(s);
+  }
+};
+
+struct SourceCache {
+  std::unordered_map<std::string, SourceFile, TransparentHash, std::equal_to<>> files;
+
+  const SourceFile* find(std::string_view name) const {
+    const auto it = files.find(name);
+    return it == files.end() ? nullptr : &it->second;
+  }
+
+  const SourceFile& insert(SourceFile sf) {
+    const auto [it, _] = files.insert_or_assign(sf.filename, std::move(sf));
+    return it->second;
   }
 };
 
@@ -129,13 +165,18 @@ struct RenderOptions {
 // Builds one diagnostic step by step. Emits nothing until emit().
 class DiagnosticBuilder {
  public:
+  friend struct Diagnostics;
   DiagnosticBuilder(std::string code, std::string message, Severity severity = Severity::Error) {
     d_.severity = severity;
     d_.code = std::move(code);
     d_.message = std::move(message);
   }
-  DiagnosticBuilder& label(Span span, std::string message, bool primary = true) {
-    d_.labels.push_back(Label{.span = span, .primary = primary, .message = std::move(message)});
+  DiagnosticBuilder& label(
+    Span span, std::string message, bool primary = true, int order = 0
+  ) {
+    d_.labels.push_back(
+      Label{.span = std::move(span), .primary = primary, .message = std::move(message), .order = order}
+    );
     return *this;
   }
   DiagnosticBuilder& note(std::string note) {
@@ -154,6 +195,10 @@ class DiagnosticBuilder {
 
 [[nodiscard]] inline DiagnosticBuilder warning(std::string code, std::string message) {
   return DiagnosticBuilder(std::move(code), std::move(message), Severity::Warning);
+}
+
+inline void Diagnostics::emit(DiagnosticBuilder builder) {
+  items.push_back(std::move(builder.d_));
 }
 
 // One entry of the error code index. Powers `cc explain CODE`.
@@ -288,13 +333,23 @@ inline void render_snippet(
   };
   std::map<std::size_t, LineMarks> per_line;
 
-  for (const auto& lab : d.labels) {
+  // Paint order decides ties when labels share a line. Stable sort keeps
+  // emission order for equal values.
+  std::vector<const Label*> ordered;
+  ordered.reserve(d.labels.size());
+  for (const auto& lab : d.labels)
+    ordered.push_back(&lab);
+  std::stable_sort(ordered.begin(), ordered.end(), [](const Label* a, const Label* b) {
+    return a->order < b->order;
+  });
+
+  for (const auto* lab : ordered) {
     // Spans never cross lines: the lexer splits tokens at newlines.
     // Each label belongs to exactly the line where it starts.
-    const auto [start_line, unused_col] = src.line_col(lab.span.lo);
+    const auto [start_line, unused_col] = src.line_col(lab->span.lo);
     (void)unused_col;
-    auto& bucket = lab.primary ? per_line[start_line].primary : per_line[start_line].secondary;
-    bucket.push_back(&lab);
+    auto& bucket = lab->primary ? per_line[start_line].primary : per_line[start_line].secondary;
+    bucket.push_back(lab);
   }
 
   std::size_t max_line_num_width = 2;
