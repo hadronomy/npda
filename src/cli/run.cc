@@ -9,9 +9,13 @@ import lex;
 import npda;
 import npda.parser;
 
-int RunHandler::operator()(const CommandContext&) {
+int RunHandler::operator()(const CommandContext& ctx) {
   std::filesystem::path filepath = this->file_path;
   std::ifstream file(filepath);
+
+  diag::RenderOptions opt;
+  opt.verbose = ctx.verbose;
+  diag::Activity act(std::string("Checking ") + filepath.filename().string());
 
   auto result = npda::parse::parse_with_diagnostics(file, filepath.filename());
   if (auto dpa = result.value; result.value.has_value()) {
@@ -70,16 +74,19 @@ int RunHandler::operator()(const CommandContext&) {
                 << "\n";
       run(input_string, this->trace_enabled);
     }
+    act.finish(std::string("Finished ") + filepath.filename().string());
     return 0;
   }
   if (!result.value) {
+    act.dismiss();
     diag::render(
       std::cerr,
       result.source,
       result.value.error(),
-      diag::RenderOptions{}
+      opt
     );
     return 1;
   }
+  act.dismiss();
   return 0;
 }

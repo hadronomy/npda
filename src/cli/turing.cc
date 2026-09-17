@@ -10,19 +10,24 @@ import turing;
 import turing.parser;
 import ui;
 
-int TuringHandler::operator()(const CommandContext&) {
+int TuringHandler::operator()(const CommandContext& ctx) {
   std::filesystem::path filepath = this->file_path;
   std::ifstream file(filepath);
+
+  diag::RenderOptions opt;
+  opt.verbose = ctx.verbose;
+  diag::Activity act(std::string("Checking ") + filepath.filename().string());
 
   auto result = turing::parse::parse_with_diagnostics(file, filepath.filename());
 
   // Show warnings/errors if any
   if (!result.diagnostics.items.empty()) {
+    act.dismiss();
     diag::render(
       std::cerr,
       result.source,
       result.diagnostics,
-      diag::RenderOptions{}
+      opt
     );
     // Terminate if there are any errors
     if (result.diagnostics.has_errors()) {
@@ -32,17 +37,19 @@ int TuringHandler::operator()(const CommandContext&) {
 
   // Check for parsing errors (this should be redundant now but kept for safety)
   if (!result.value.has_value()) {
+    act.dismiss();
     diag::render(
       std::cerr,
       result.source,
       result.value.error(),
-      diag::RenderOptions{}
+      opt
     );
     return 1;
   }
 
   if (auto& tm = result.value; result.value.has_value()) {
     if (this->graphviz) {
+      act.dismiss();
       auto new_path = this->file_path.filename().stem().replace_extension("png");
       ui::info(std::format("Writting graphviz image in {}", new_path.c_str()));
       auto exe = this->graphviz_exe;
@@ -147,16 +154,19 @@ int TuringHandler::operator()(const CommandContext&) {
                 << "\n";
       run(input_string, this->trace_enabled);
     }
+    act.finish(std::string("Finished ") + filepath.filename().string());
     return 0;
   }
   if (!result.value) {
+    act.dismiss();
     diag::render(
       std::cerr,
       result.source,
       result.value.error(),
-      diag::RenderOptions{}
+      opt
     );
     return 1;
   }
+  act.dismiss();
   return 0;
 }

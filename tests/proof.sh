@@ -30,6 +30,8 @@ expect "npda-trace" 0 "Accepting path found" "$BIN" npda ./examples/APf/APf-1.tx
 expect "turing-anbm" 0 "accepted=" "$BIN" turing ./examples/turing/anbm.turing aabb abb
 expect "prf-run" 0 "pow(2, 3) = 8" "$BIN" prf 2 3
 expect "prf-help" 0 "Trace mode" "$BIN" prf --help
+expect "explain" 0 "Name a state from the Q line" "$BIN" explain E0007
+expect "explain-unknown" 1 "unknown error code" "$BIN" explain BOGUS
 
 # Corpus: every example file must run to an exit code of 0 or 1
 # and must print non-empty output. This catches crashes and hangs.

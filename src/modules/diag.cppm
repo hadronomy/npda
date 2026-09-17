@@ -173,14 +173,15 @@ struct Glyphs {
   const char* mhead;     // ▶ >
   const char* rail;      // █ !
   const char* ellipsis;  // … ...
+  const char* ddash;     // ── --
 };
 
 [[nodiscard]] inline const Glyphs& glyphs_for(bool unicode) {
   static constexpr Glyphs uni{
-    "│", "-->", U'∿', U'↑', U'-', "╭", "├", "╰", "▶", "█", "…"
+    "│", "-->", U'∿', U'↑', U'-', "╭", "├", "╰", "▶", "█", "…", "──"
   };
   static constexpr Glyphs asc{
-    "|", "-->", U'^', U'^', U'-', "`", "|", "`", ">", "!", "..."
+    "|", "-->", U'^', U'^', U'-', "`", "|", "`", ">", "!", "...", "--"
   };
   return unicode ? uni : asc;
 }
@@ -288,8 +289,7 @@ struct Resolved {
 }
 
 // Wrap a location in an OSC 8 hyperlink. Falls back to plain text.
-[[nodiscard]] inline std::string link_location(
-  std::string_view filename, std::size_t line, std::size_t col, bool active
+[[nodiscard]] inline std::string link_location(  std::string_view filename, std::size_t line, std::size_t col, bool active
 ) {
   const std::string text =
     std::string(filename) + ":" + std::to_string(line) + ":" + std::to_string(col);
@@ -462,6 +462,108 @@ namespace ansi {
   }
   return reset(true);
 }
+
+// Ephemeral status line for long runs. Prints nothing when piped,
+// when the locale is not UTF-8, or when the work finishes fast.
+// Stop it with dismiss() before printing diagnostics, or finish()
+// with a final static line. Destructor stops silently.
+class Activity {
+ public:
+  explicit Activity(std::string message, std::ostream& os = std::cerr)
+      : os_(os), message_(std::move(message)) {
+    const Terminal& t = probe_terminal();
+    if (!t.tty || !t.utf8)
+      return;
+    worker_ = std::jthread([this] { run(); });
+  }
+
+  ~Activity() { dismiss(); }
+  Activity(const Activity&) = delete;
+  Activity& operator=(const Activity&) = delete;
+  Activity(Activity&&) = delete;
+  Activity& operator=(Activity&&) = delete;
+
+  void set_message(std::string message) {
+    std::lock_guard lock(mutex_);
+    message_ = std::move(message);
+  }
+
+  void dismiss() {
+    stop_requested_.store(true);
+    cv_.notify_all();
+    if (worker_.joinable()) {
+      worker_.request_stop();
+      worker_.join();
+    }
+    clear();
+  }
+
+  void finish(const std::string& done) {
+    const bool had_worker = worker_.joinable();
+    dismiss();
+    // Silent unless a frame painted: fast and piped runs stay clean.
+    if (finished_ || !had_worker || !painted_)
+      return;
+    finished_ = true;
+    os_ << ansi::green(color_) << "✓" << ansi::reset(color_) << " " << done << "\n" << std::flush;
+  }
+
+ private:
+  void clear() {
+    std::lock_guard lock(mutex_);
+    if (!active_)
+      return;
+    active_ = false;
+    os_ << "\r\x1b[2K\x1b[?25h" << std::flush;
+  }
+
+  void run() {
+    // Grace period: fast work prints nothing at all.
+    {
+      std::unique_lock lock(mutex_);
+      if (cv_.wait_for(lock, std::chrono::milliseconds(150), [&] {
+            return stop_requested_.load();
+          }))
+        return;
+    }
+    {
+      std::lock_guard lock(mutex_);
+      active_ = true;
+      painted_ = true;
+      os_ << "\x1b[?25l" << std::flush;
+    }
+    static constexpr const char* kFrames[] = {
+      "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"
+    };
+    std::size_t frame = 0;
+    while (true) {
+      std::string msg;
+      {
+        std::lock_guard lock(mutex_);
+        msg = message_;
+      }
+      os_ << "\x1b[?2026h\r\x1b[2K" << ansi::dim(color_) << kFrames[frame % 10]
+          << ansi::reset(color_) << " " << msg << "\x1b[?2026l" << std::flush;
+      frame++;
+      std::unique_lock lock(mutex_);
+      if (cv_.wait_for(lock, std::chrono::milliseconds(80), [&] {
+            return stop_requested_.load();
+          }))
+        return;
+    }
+  }
+
+  std::ostream& os_;
+  std::string message_;
+  const bool color_ = color_enabled();
+  std::mutex mutex_;
+  std::condition_variable_any cv_;
+  std::atomic<bool> stop_requested_{false};
+  bool active_ = false;
+  bool painted_ = false;
+  bool finished_ = false;
+  std::jthread worker_;
+};
 
 inline void render_snippet(
   std::ostream& os,
@@ -784,9 +886,67 @@ inline void render_core(
 ) {
   using namespace ansi;
   const Resolved r = resolve_opt(opt);
+  const Glyphs& g = *r.g;
 
-  for (const auto& [src, group] : groups)
-    render_group(os, *src, group, opt, r);
+  // Collapse same-code runs on one file. Verbose mode expands them.
+  struct Collapse {
+    std::string key;
+    std::vector<const Diagnostic*> members;
+  };
+  for (const auto& [src, group] : groups) {
+    std::vector<Collapse> collapses;
+    std::unordered_map<std::string, std::size_t, TransparentHash, std::equal_to<>> index;
+    for (const auto* dp : group) {
+      const std::string key = std::string(sev_str(dp->severity)) + '\0' + dp->code + '\0'
+                            + std::string(dp->file());
+      const auto it = index.find(key);
+      if (it == index.end()) {
+        index.emplace(key, collapses.size());
+        collapses.push_back({key, {dp}});
+      } else {
+        collapses[it->second].members.push_back(dp);
+      }
+    }
+    // Emit in first-appearance order. Runs of one stay full renders.
+    for (auto& c : collapses) {
+      if (c.members.size() < 2 || opt.verbose || c.members.front()->labels.empty()) {
+        render_group(os, *src, c.members, opt, r);
+        continue;
+      }
+      const Diagnostic& first = *c.members.front();
+      const std::string file =
+        std::string(first.file().empty() ? std::string_view(src->filename) : first.file());
+      os << sev_color(first.severity, r.color) << g.rail << reset(r.color) << " "
+         << sev_color(first.severity, r.color) << sev_str(first.severity) << reset(r.color);
+      if (!first.code.empty())
+        os << "[" << first.code << "]";
+      os << ": " << first.message << " (" << c.members.size() << " occurrences) " << g.ddash
+         << " " << file << '\n';
+      const std::size_t shown_n = std::min<std::size_t>(c.members.size(), 3);
+      for (std::size_t i = 0; i < shown_n; ++i) {
+        const Diagnostic& m = *c.members[i];
+        const Label* pick = nullptr;
+        for (const auto& lab : m.labels)
+          if (lab.primary) {
+            pick = &lab;
+            break;
+          }
+        if (pick == nullptr)
+          pick = &m.labels.front();
+        const auto [l, co] = src->line_col(pick->span.lo);
+        const bool last = (i + 1 == shown_n) && c.members.size() <= 3;
+        os << "  " << (last ? g.mbot : g.mmid) << g.ddash << " "
+           << link_location(file, l, co, r.links);
+        if (!pick->message.empty())
+          os << ": " << pick->message;
+        os << '\n';
+      }
+      if (c.members.size() > 3)
+        os << "  " << g.mbot << g.ddash << " " << g.ellipsis << "(+" << c.members.size() - 3
+           << " more, --verbose shows all)\n";
+      os << '\n';
+    }
+  }
 
   std::size_t errors = 0;
   for (const auto& [src, group] : groups)
