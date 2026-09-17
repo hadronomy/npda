@@ -168,31 +168,104 @@ export namespace npda {
 }  // namespace npda
 export namespace npda {
 
-// Text wrapping utility
-[[nodiscard]] inline std::string wrap_text(const std::string& text, std::size_t width = 35) {
-  std::string result;
-  std::size_t start = 0;
+// Code-point count. Display math uses this, never byte length.
+[[nodiscard]] inline std::size_t cpsize(std::string_view s) {
+  std::size_t n = 0;
+  for (unsigned char c : s)
+    if ((c & 0xC0) != 0x80)
+      ++n;
+  return n;
+}
 
-  while (start < text.length()) {
-    std::size_t end = start + width;
-    if (end >= text.length()) {
-      result += text.substr(start);
-      break;
-    }
-
-    // Find the last space before the width limit
-    std::size_t last_space = text.rfind(' ', end);
-    if (last_space == std::string::npos || last_space <= start) {
-      // No space found, break at width
-      result += std::format("{}\n", text.substr(start, width));
-      start += width;
-    } else {
-      // Break at the last space
-      result += std::format("{}\n", text.substr(start, last_space - start));
-      start = last_space + 1;
-    }
+// Cut to N code points. Never splits UTF-8.
+[[nodiscard]] inline std::string cpcut(std::string_view s, std::size_t n) {
+  std::size_t i = 0;
+  std::size_t count = 0;
+  while (i < s.size() && count < n) {
+    unsigned char c = static_cast<unsigned char>(s[i]);
+    std::size_t len = 1;
+    if ((c & 0xE0) == 0xC0)
+      len = 2;
+    else if ((c & 0xF0) == 0xE0)
+      len = 3;
+    else if ((c & 0xF8) == 0xF0)
+      len = 4;
+    i += len;
+    ++count;
   }
+  return std::string(s.substr(0, std::min(i, s.size())));
+}
 
+// Visible width: code points outside escape sequences.
+[[nodiscard]] inline std::size_t visible_width(std::string_view s) {
+  std::size_t w = 0;
+  for (std::size_t i = 0; i < s.size();) {
+    if (s[i] == '\x1b' && i + 1 < s.size() && s[i + 1] == '[') {
+      std::size_t j = i + 2;
+      while (j < s.size() && s[j] != 'm')
+        ++j;
+      i = (j < s.size()) ? j + 1 : s.size();
+      continue;
+    }
+    unsigned char c = static_cast<unsigned char>(s[i]);
+    std::size_t len = 1;
+    if ((c & 0xE0) == 0xC0)
+      len = 2;
+    else if ((c & 0xF0) == 0xE0)
+      len = 3;
+    else if ((c & 0xF8) == 0xF0)
+      len = 4;
+    i += len;
+    ++w;
+  }
+  return w;
+}
+
+// Text wrapping utility
+// Wraps on visible width. Escapes ride along and never split.
+[[nodiscard]] inline std::string wrap_text(const std::string& text, std::size_t width = 35) {
+  // Greedy word pack on visible width. Words keep their escapes.
+  std::string result;
+  std::size_t vis = 0;
+  std::size_t i = 0;
+  const auto take_word = [&](std::size_t from) {
+    std::size_t j = from;
+    while (j < text.size() && text[j] != ' ' && text[j] != '\n') {
+      if (text[j] == '\x1b' && j + 1 < text.size() && text[j + 1] == '[') {
+        std::size_t k = j + 2;
+        while (k < text.size() && text[k] != 'm')
+          ++k;
+        j = (k < text.size()) ? k + 1 : text.size();
+      } else {
+        ++j;
+      }
+    }
+    return text.substr(from, j - from);
+  };
+  while (i < text.size()) {
+    if (text[i] == '\n') {
+      result += '\n';
+      vis = 0;
+      ++i;
+      continue;
+    }
+    if (text[i] == ' ') {
+      ++i;
+      continue;
+    }
+    const std::string word = take_word(i);
+    i += word.size();
+    const std::size_t w = visible_width(word);
+    if (vis > 0 && vis + 1 + w > width) {
+      result += '\n';
+      vis = 0;
+    } else if (vis > 0) {
+      result += ' ';
+      ++vis;
+    }
+    result += word;
+    vis += w;
+  }
   return result;
 }
 
@@ -312,6 +385,10 @@ struct TraceOptions {
   // Backtracking visualization options
   bool show_backtracking = true;  // Enable backtracking detection and visualization
   bool show_full_trace = true;    // Show complete execution trace including backtracks
+
+  // Output cap. Live steps, replay steps, and tree rows each stop here
+  // with a hidden count. Bounds trace bytes regardless of max_expansions.
+  std::size_t step_limit = 200;
 };
 
 struct RunOptions {
@@ -529,6 +606,7 @@ class NPDA {
     std::size_t best_trace_idx = 0;       // Track the most advanced node for trace
     std::size_t max_pos = 0;              // Track the furthest input position
     std::size_t exploration_counter = 0;  // Counter for exploration steps
+    bool cap_noticed = false;             // Step cap notice prints once
 
     while (!work.empty()) {
       std::size_t idx = opt.bfs ? work.front() : work.back();
@@ -538,18 +616,31 @@ class NPDA {
         work.pop_back();
       const NodeType& current = nodes[idx];  // ref; re-fetch as nodes[idx] after pushes below
 
-      // Track that we're exploring this node and show full detailed trace
-      if (opt.trace.enabled && opt.trace.show_full_trace) {
+      // Track every dequeued node so counts stay honest when emission caps.
+      if (opt.trace.enabled)
         explored_nodes.push_back(idx);
 
-        // Show full detailed trace for this exploration step
-        // Find the rule that led to this node (if any)
-        std::optional<rule_type> exploration_rule = std::nullopt;
-        if (current.rule_idx.has_value() && *current.rule_idx < rules_.size()) {
-          exploration_rule = rules_[*current.rule_idx];
-        }
+      // Track that we're exploring this node and show full detailed trace
+      if (opt.trace.enabled && opt.trace.show_full_trace) {
+        if (exploration_counter < opt.trace.step_limit) {
+          // Show full detailed trace for this exploration step
+          // Find the rule that led to this node (if any)
+          std::optional<rule_type> exploration_rule = std::nullopt;
+          if (current.rule_idx.has_value() && *current.rule_idx < rules_.size()) {
+            exploration_rule = rules_[*current.rule_idx];
+          }
 
-        emit_trace_step(current, input, exploration_counter++, exploration_rule, opt, false, true);
+          emit_trace_step(current, input, exploration_counter++, exploration_rule, opt, false, true);
+        } else if (!cap_noticed) {
+          cap_noticed = true;
+          auto sink = opt.trace.sink ? opt.trace.sink : [](std::string_view s) {
+            std::print("{}", s);
+          };
+          sink(std::format(
+            "… (live trace stops at {} steps, raise --trace-limit to expand)\n",
+            opt.trace.step_limit
+          ));
+        }
       }
 
       if (is_accepting(current, input)) {
@@ -857,18 +948,26 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
     output += std::format("State: {}\n", std::format("{}", node.s));
   }
 
-  // Input tape with pointer
+  // Input window around the head. Full tapes flood; windows do not.
+  // Cells cap at 6 code points so fixed-stride math below holds.
+  constexpr std::size_t kWindow = 8;
+  const std::string kEllipsis = ansi::unicode_enabled() ? "… " : "... ";
   output += "Input: ";
-  for (std::size_t i = 0; i < input.size(); ++i) {
+  const std::size_t ilo = (node.pos > kWindow) ? node.pos - kWindow : 0;
+  const std::size_t ihi = std::min(input.size(), node.pos + kWindow + 1);
+  if (ilo > 0)
+    output += kEllipsis;
+  for (std::size_t i = ilo; i < ihi; ++i) {
+    const std::string cell = cpcut(std::format("{}", input[i]), 6);
     if (i == node.pos) {
       if (opt.trace.colors) {
         output +=
-          ansi::format(ansi::fg(config::colors::warning), "[{}]", std::format("{}", input[i]));
+          ansi::format(ansi::fg(config::colors::warning), "[{}]", cell);
       } else {
-        output += std::format("[{}]", std::format("{}", input[i]));
+        output += std::format("[{}]", cell);
       }
     } else {
-      output += std::format(" {} ", std::format("{}", input[i]));
+      output += std::format(" {} ", cell);
     }
   }
   if (node.pos >= input.size()) {
@@ -877,75 +976,98 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
     } else {
       output += " [END]";
     }
+  } else if (ihi < input.size()) {
+    output += kEllipsis;
   }
   output += "\n";
 
-  // Stack visualization
+  // Stack visualization. Shows the top cells only, plus a count.
+  constexpr std::size_t kStack = 9;
   output += "Stack: ";
   if (node.stack.empty()) {
     output += "(empty)\n";
   } else {
+    const std::size_t shown = std::min(node.stack.size(), kStack);
+    auto cell3 = [](std::string s) {
+      s = cpcut(s, 3);
+      while (cpsize(s) < 3)
+        s += ' ';
+      return s;
+    };
     // Show stack top on the right (conventional)
-    for (std::size_t i = 0; i < node.stack.size(); ++i) {
+    for (std::size_t i = 0; i < shown; ++i) {
       std::size_t stack_idx = node.stack.size() - 1 - i;  // top first
+      const std::string cell = cell3(std::format("{}", node.stack[stack_idx]));
       if (i == 0) {
         if (opt.trace.colors) {
-          output += ansi::format(ansi::fg(config::colors::warning), "[{}]", std::format("{}", node.stack[stack_idx]));
+          output += ansi::format(ansi::fg(config::colors::warning), "[{}]", cell);
         } else {
-          output += std::format("[{}]", std::format("{}", node.stack[stack_idx]));
+          output += std::format("[{}]", cell);
         }
       } else {
-        output += std::format(" {} ", std::format("{}", node.stack[stack_idx]));
+        output += std::format(" {} ", cell);
       }
     }
+    if (shown < node.stack.size())
+      output += std::format("(+{} more)", node.stack.size() - shown);
     output += "\n";
 
     // Visual stack representation
     if (!opt.trace.compact) {
+      const bool uni = ansi::unicode_enabled();
+      const std::string h3 = uni ? "───" : "---";
+      const std::string tl = uni ? "┌" : "+";
+      const std::string tj = uni ? "┬" : "+";
+      const std::string tr = uni ? "┐" : "+";
+      const std::string bl = uni ? "└" : "+";
+      const std::string bj = uni ? "┴" : "+";
+      const std::string br = uni ? "┘" : "+";
+      const std::string vv = uni ? "│" : "|";
       output += "       ";
-      for (std::size_t i = 0; i < node.stack.size(); ++i) {
-        if (node.stack.size() == 1) {
-          output += "┌───┐";
+      for (std::size_t i = 0; i < shown; ++i) {
+        if (shown == 1) {
+          output += tl + h3 + tr;
           break;
         }
         if (i == 0) {
-          output += "┌───┬";
+          output += tl + h3 + tj;
           continue;
         }
-        if (i != node.stack.size() - 1) {
-          output += "───┬";
+        if (i != shown - 1) {
+          output += h3 + tj;
           continue;
         }
-        output += "───┐";
+        output += h3 + tr;
       }
       output += "\n       ";
-      for (std::size_t i = 0; i < node.stack.size(); ++i) {
+      for (std::size_t i = 0; i < shown; ++i) {
         std::size_t stack_idx = node.stack.size() - 1 - i;
+        const std::string cell = cell3(std::format("{}", node.stack[stack_idx]));
         if (i == 0) {
           if (opt.trace.colors) {
-            output += ansi::format(ansi::fg(config::colors::warning), "│ {} │", std::format("{}", node.stack[stack_idx]));
+            output += ansi::format(ansi::fg(config::colors::warning), "{} {} {}", vv, cell, vv);
           } else {
-            output += std::format("│ {} │", std::format("{}", node.stack[stack_idx]));
+            output += std::format("{} {} {}", vv, cell, vv);
           }
         } else {
-          output += std::format(" {} │", std::format("{}", node.stack[stack_idx]));
+          output += std::format(" {} {}", cell, vv);
         }
       }
       output += "\n       ";
-      for (std::size_t i = 0; i < node.stack.size(); ++i) {
-        if (node.stack.size() == 1) {
-          output += "└───┘";
+      for (std::size_t i = 0; i < shown; ++i) {
+        if (shown == 1) {
+          output += bl + h3 + br;
           break;
         }
         if (i == 0) {
-          output += "└───┴";
+          output += bl + h3 + bj;
           continue;
         }
-        if (i != node.stack.size() - 1) {
-          output += "───┴";
+        if (i != shown - 1) {
+          output += h3 + bj;
           continue;
         }
-        output += "───┘";
+        output += h3 + br;
       }
       output += "\n";
     }
@@ -1108,29 +1230,39 @@ void NPDA<State, Input, StackSym>::replay_trace_path(
     sink(std::format("\nAccepting path found! Replaying {} steps...\n", rule_path.size()));
   }
 
-  // Emit each step showing the state after applying the rule
-  std::size_t step_num = 0;
+  // Live search already showed every path node with its rule.
+  // Print steps only when live emission stayed off.
+  if (!opt.trace.show_full_trace) {
+    // Slice long paths: head, hidden count, tail. The node after a gap
+    // prints without a rule since its parent stays hidden.
+    std::vector<std::size_t> show;
+    if (node_path.size() > opt.trace.step_limit + 1 && opt.trace.step_limit > 1) {
+      const std::size_t head = opt.trace.step_limit / 2;
+      const std::size_t tail = opt.trace.step_limit - head;
+      for (std::size_t i = 0; i < head; ++i)
+        show.push_back(i);
+      for (std::size_t i = node_path.size() - tail; i < node_path.size(); ++i)
+        show.push_back(i);
+    } else {
+      for (std::size_t i = 0; i < node_path.size(); ++i)
+        show.push_back(i);
+    }
 
-  // First, show the initial state (Step 0) with no rule applied
-  if (!node_path.empty()) {
-    emit_trace_step(nodes[node_path[0]], input, step_num, std::nullopt, opt, false);
-  }
-
-  // Then show the transitions starting from Step 1
-  for (std::size_t i = 1; i < node_path.size(); ++i) {
-    ++step_num;
-    const std::size_t node_idx = node_path[i];
-    const std::size_t rule_idx = rule_path[i - 1];
-
-    // Check if this is a backtrack point by comparing positions
-    bool is_backtrack = (i > 1 && nodes[node_idx].pos < nodes[node_path[i - 1]].pos);
-    emit_trace_step(nodes[node_idx], input, step_num, rules_[rule_idx], opt, is_backtrack);
-  }
-
-  // Show final accepting state (if not already shown)
-  if (node_path.empty() || node_path.back() != final_idx) {
-    emit_trace_step(nodes[final_idx], input, step_num + 1, std::nullopt, opt, false);
-    ++step_num;
+    std::size_t step_num = 0;
+    for (std::size_t k = 0; k < show.size(); ++k) {
+      const std::size_t i = show[k];
+      if (k > 0 && i != show[k - 1] + 1) {
+        sink(std::format(
+          "… ({} steps hidden, raise --trace-limit to expand)\n", i - show[k - 1] - 1
+        ));
+      }
+      std::optional<rule_type> rr = std::nullopt;
+      if (i > 0 && k > 0 && i == show[k - 1] + 1)
+        rr = rules_[rule_path[i - 1]];
+      const std::size_t node_idx = node_path[i];
+      const bool is_backtrack = (k > 0 && nodes[node_idx].pos < nodes[node_path[show[k - 1]]].pos);
+      emit_trace_step(nodes[node_idx], input, step_num++, rr, opt, is_backtrack);
+    }
   }
 
   if (opt.trace.colors) {
@@ -1197,28 +1329,35 @@ void NPDA<State, Input, StackSym>::show_rejection_trace(
     ));
   }
 
-  // Emit each step showing the state after applying the rule
+  // Emit the path with the same slicing as the accept replay.
+  // The stuck node is the path end, so no extra final emission.
+  std::vector<std::size_t> show;
+  if (node_path.size() > opt.trace.step_limit + 1 && opt.trace.step_limit > 1) {
+    const std::size_t head = opt.trace.step_limit / 2;
+    const std::size_t tail = opt.trace.step_limit - head;
+    for (std::size_t i = 0; i < head; ++i)
+      show.push_back(i);
+    for (std::size_t i = node_path.size() - tail; i < node_path.size(); ++i)
+      show.push_back(i);
+  } else {
+    for (std::size_t i = 0; i < node_path.size(); ++i)
+      show.push_back(i);
+  }
+
   std::size_t step_num = 0;
-
-  // First, show the initial state (Step 0) with no rule applied
-  if (!node_path.empty()) {
-    emit_trace_step(nodes[node_path[0]], input, step_num, std::nullopt, opt, false);
-  }
-
-  // Then show the transitions starting from Step 1
-  for (std::size_t i = 1; i < node_path.size(); ++i) {
-    ++step_num;
+  for (std::size_t k = 0; k < show.size(); ++k) {
+    const std::size_t i = show[k];
+    if (k > 0 && i != show[k - 1] + 1) {
+      sink(std::format(
+        "… ({} steps hidden, raise --trace-limit to expand)\n", i - show[k - 1] - 1
+      ));
+    }
+    std::optional<rule_type> rr = std::nullopt;
+    if (i > 0 && k > 0 && i == show[k - 1] + 1)
+      rr = rules_[rule_path[i - 1]];
     const std::size_t node_idx = node_path[i];
-    const std::size_t rule_idx = rule_path[i - 1];
-
-    // Check if this is a backtrack point by comparing positions
-    bool is_backtrack = (i > 1 && nodes[node_idx].pos < nodes[node_path[i - 1]].pos);
-    emit_trace_step(nodes[node_idx], input, step_num, rules_[rule_idx], opt, is_backtrack);
-  }
-
-  // Show the final state where we got stuck
-  if (!node_path.empty()) {
-    emit_trace_step(nodes[best_idx], input, step_num + 1, std::nullopt, opt, false);
+    const bool is_backtrack = (k > 0 && nodes[node_idx].pos < nodes[node_path[show[k - 1]]].pos);
+    emit_trace_step(nodes[node_idx], input, step_num++, rr, opt, is_backtrack);
   }
 
   if (opt.trace.colors) {
@@ -1257,9 +1396,19 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
     }
   }
 
+  // Tree chrome follows the unicode probe. Same tree, two alphabets.
+  const bool tuni = ansi::unicode_enabled();
+  const std::string kLast = tuni ? "└── " : "`-- ";
+  const std::string kMid = tuni ? "├── " : "+-- ";
+  const std::string kVert = tuni ? "│   " : "|   ";
+  std::size_t printed = 0;
+
   // Recursive function to print tree with enhanced visualization
   std::function<void(std::size_t, std::string, bool)> print_tree;
   print_tree = [&](std::size_t node_idx, std::string prefix, bool is_last) {
+    if (printed >= opt.trace.step_limit)
+      return;
+    ++printed;
     const auto& node = nodes[node_idx];
 
     // Get current input symbol (if any) - use lambda for empty
@@ -1273,13 +1422,17 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
     if (node.stack.empty()) {
       stack_repr = "[]";
     } else {
-      // Show stack from bottom to top (left to right)
+      // Show stack from bottom to top (left to right), capped with a count.
+      constexpr std::size_t kTreeStack = 8;
       std::string stack_content;
-      for (std::size_t i = 0; i < node.stack.size(); ++i) {
+      const std::size_t tshown = std::min(node.stack.size(), kTreeStack);
+      for (std::size_t i = 0; i < tshown; ++i) {
         if (i > 0)
           stack_content += ",";
         stack_content += std::format("{}", node.stack[i]);
       }
+      if (tshown < node.stack.size())
+        stack_content += std::format(",(+{} more)", node.stack.size() - tshown);
       stack_repr = std::format("[{}]", stack_content);
     }
 
@@ -1333,12 +1486,12 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
     if (opt.trace.colors) {
       // Colorize tree connectors using config colors
       ansi::rgb connector_color = config::colors::progress;  // Subtle gray from config
-      std::string connector = is_last ? "└── " : "├── ";
+      std::string connector = is_last ? kLast : kMid;
       sink(std::format(
         "{}{} {}\n", prefix, ansi::format(ansi::fg(connector_color), "{}", connector), node_info
       ));
     } else {
-      sink(std::format("{}{} {}\n", prefix, is_last ? "└── " : "├── ", node_info));
+      sink(std::format("{}{} {}\n", prefix, is_last ? kLast : kMid, node_info));
     }
 
     // Print children with colorized tree connectors
@@ -1350,10 +1503,10 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
         if (opt.trace.colors) {
           // Colorize the tree connectors in the prefix
           std::string vertical_connector =
-            is_last ? "    " : ansi::format(ansi::fg(config::colors::progress), "│   ");
+            is_last ? "    " : ansi::format(ansi::fg(config::colors::progress), "{}", kVert);
           child_prefix = prefix + vertical_connector;
         } else {
-          child_prefix = prefix + (is_last ? "    " : "│   ");
+          child_prefix = prefix + (is_last ? "    " : kVert);
         }
         print_tree(child_nodes[i], child_prefix, last_child);
       }
@@ -1373,6 +1526,12 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
   // Print all trees
   for (std::size_t i = 0; i < roots.size(); ++i) {
     print_tree(roots[i], "", true);
+  }
+  if (printed < explored_nodes.size()) {
+    sink(std::format(
+      "… ({} more nodes hidden, raise --trace-limit to expand)\n",
+      explored_nodes.size() - printed
+    ));
   }
 }
 
@@ -1409,9 +1568,19 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
     }
   }
 
+  // Tree chrome follows the unicode probe. Same tree, two alphabets.
+  const bool tuni = ansi::unicode_enabled();
+  const std::string kLast = tuni ? "└── " : "`-- ";
+  const std::string kMid = tuni ? "├── " : "+-- ";
+  const std::string kVert = tuni ? "│   " : "|   ";
+  std::size_t printed = 0;
+
   // Recursive function to print tree with enhanced visualization
   std::function<void(std::size_t, std::string, bool)> print_tree;
   print_tree = [&](std::size_t node_idx, std::string prefix, bool is_last) {
+    if (printed >= opt.trace.step_limit)
+      return;
+    ++printed;
     const auto& node = nodes[node_idx];
 
     // Get current input symbol (if any) - use lambda for empty
@@ -1425,13 +1594,17 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
     if (node.stack.empty()) {
       stack_repr = "[]";
     } else {
-      // Show stack from bottom to top (left to right)
+      // Show stack from bottom to top (left to right), capped with a count.
+      constexpr std::size_t kTreeStack = 8;
       std::string stack_content;
-      for (std::size_t i = 0; i < node.stack.size(); ++i) {
+      const std::size_t tshown = std::min(node.stack.size(), kTreeStack);
+      for (std::size_t i = 0; i < tshown; ++i) {
         if (i > 0)
           stack_content += ",";
         stack_content += std::format("{}", node.stack[i]);
       }
+      if (tshown < node.stack.size())
+        stack_content += std::format(",(+{} more)", node.stack.size() - tshown);
       stack_repr = std::format("[{}]", stack_content);
     }
 
@@ -1494,12 +1667,12 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
     if (opt.trace.colors) {
       // Colorize tree connectors using config colors
       ansi::rgb connector_color = config::colors::progress;  // Subtle gray from config
-      std::string connector = is_last ? "└── " : "├── ";
+      std::string connector = is_last ? kLast : kMid;
       sink(std::format(
         "{}{} {}\n", prefix, ansi::format(ansi::fg(connector_color), "{}", connector), node_info
       ));
     } else {
-      sink(std::format("{}{} {}\n", prefix, is_last ? "└── " : "├── ", node_info));
+      sink(std::format("{}{} {}\n", prefix, is_last ? kLast : kMid, node_info));
     }
 
     // Print children with colorized tree connectors
@@ -1511,10 +1684,10 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
         if (opt.trace.colors) {
           // Colorize the tree connectors in the prefix
           std::string vertical_connector =
-            is_last ? "    " : ansi::format(ansi::fg(config::colors::progress), "│   ");
+            is_last ? "    " : ansi::format(ansi::fg(config::colors::progress), "{}", kVert);
           child_prefix = prefix + vertical_connector;
         } else {
-          child_prefix = prefix + (is_last ? "    " : "│   ");
+          child_prefix = prefix + (is_last ? "    " : kVert);
         }
         print_tree(child_nodes[i], child_prefix, last_child);
       }
@@ -1534,6 +1707,12 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
   // Print all trees
   for (std::size_t i = 0; i < roots.size(); ++i) {
     print_tree(roots[i], "", true);
+  }
+  if (printed < explored_nodes.size()) {
+    sink(std::format(
+      "… ({} more nodes hidden, raise --trace-limit to expand)\n",
+      explored_nodes.size() - printed
+    ));
   }
 }
 

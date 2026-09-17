@@ -1,10 +1,54 @@
 // Own terminal styling: colors, emphasis, and formatting.
 // Escape bytes match fmt 12.2.0 color output.
 // Change this file to change styled output.
+module;
+#include <unistd.h>
+
 export module ansi;
 import std;
 
 export namespace ansi {
+
+// Output control. Auto probes once: off with NO_COLOR set,
+// with a dumb terminal, or with piped stdout. Matches Clang behavior.
+enum class color_mode { auto_, always, never };
+
+inline color_mode global_color_mode = color_mode::auto_;
+inline void set_color_mode(color_mode m) { global_color_mode = m; }
+
+[[nodiscard]] inline bool color_enabled() {
+  if (global_color_mode == color_mode::always)
+    return true;
+  if (global_color_mode == color_mode::never)
+    return false;
+  static const bool probed = [] {
+    if (const char* v = std::getenv("NO_COLOR"); v != nullptr && v[0] != '\0')
+      return false;
+    if (const char* t = std::getenv("TERM"); t != nullptr && std::string_view(t) == "dumb")
+      return false;
+    return isatty(STDOUT_FILENO) != 0;
+  }();
+  return probed;
+}
+
+// Unicode probe for glyph selection. False under C/POSIX locales.
+[[nodiscard]] inline bool unicode_enabled() {
+  static const bool utf8 = [] {
+    std::string loc;
+    for (const char* key : {"LC_ALL", "LC_CTYPE", "LANG"}) {
+      if (const char* v = std::getenv(key); v != nullptr && v[0] != '\0') {
+        loc = v;
+        break;
+      }
+    }
+    if (loc.empty())
+      return true;
+    for (auto& c : loc)
+      c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return loc.find("utf-8") != std::string::npos || loc.find("utf8") != std::string::npos;
+  }();
+  return utf8;
+}
 
 // A 24-bit color triple.
 struct rgb {
@@ -184,10 +228,11 @@ constexpr void append_color(std::string& out, color c, bool background) {
 }
 
 // Format text with a style. Empty style gives plain text.
+// Disabled color also gives plain text, so callers never branch.
 template <typename... T>
 [[nodiscard]] std::string format(text_style s, std::format_string<T...> f, T&&... args) {
   std::string body = std::format(f, std::forward<T>(args)...);
-  if (s.empty())
+  if (s.empty() || !color_enabled())
     return body;
   return open(s) + body + std::string(close(s));
 }
@@ -257,14 +302,14 @@ struct formatter<ansi::styled<T>, Char> {
   constexpr auto parse(auto& pc) { return base_.parse(pc); }
   template <typename Ctx>
   auto format(const ansi::styled<T>& s, Ctx& ctx) const {
-    if (!s.style.empty()) {
+    if (!s.style.empty() && ansi::color_enabled()) {
       auto out = ctx.out();
       const std::string pre = ansi::open(s.style);
       out = std::copy(pre.begin(), pre.end(), out);
       ctx.advance_to(out);
     }
     base_.format(s.value, ctx);
-    if (!s.style.empty()) {
+    if (!s.style.empty() && ansi::color_enabled()) {
       auto out = ctx.out();
       static constexpr char reset[] = "\x1b[0m";
       out = std::copy_n(reset, 4, out);
