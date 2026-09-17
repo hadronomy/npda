@@ -18,7 +18,9 @@ int RunHandler::operator()(const CommandContext& ctx) {
   opt.verbose = ctx.verbose;
   diag::Activity act(std::string("Checking ") + filepath.filename().string());
 
-  auto result = npda::parse::parse_with_diagnostics(file, filepath.filename());
+  diag::SourceCache cache;
+  auto result = npda::parse::parse_with_diagnostics(file, filepath.string());
+  const diag::SourceFile& src = cache.insert(std::move(result.source));
   if (auto dpa = result.value; result.value.has_value()) {
     bool failed = false;
     auto run = [&](std::string_view s, bool trace = false) {
@@ -77,6 +79,7 @@ int RunHandler::operator()(const CommandContext& ctx) {
       act.resume();
     };
 
+    act.set_message(std::string("Running ") + filepath.filename().string());
     for (const auto& input_string : input_strings) {
       run(input_string, this->trace_enabled);
     }
@@ -90,7 +93,8 @@ int RunHandler::operator()(const CommandContext& ctx) {
     act.dismiss();
     diag::render(
       std::cerr,
-      result.source,
+      cache,
+      src.filename,
       result.value.error(),
       opt
     );

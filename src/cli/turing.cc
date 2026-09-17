@@ -18,14 +18,17 @@ int TuringHandler::operator()(const CommandContext& ctx) {
   opt.verbose = ctx.verbose;
   diag::Activity act(std::string("Checking ") + filepath.filename().string());
 
-  auto result = turing::parse::parse_with_diagnostics(file, filepath.filename());
+  diag::SourceCache cache;
+  auto result = turing::parse::parse_with_diagnostics(file, filepath.string());
+  const diag::SourceFile& src = cache.insert(std::move(result.source));
 
   // Show warnings/errors if any
   if (!result.diagnostics.items.empty()) {
     act.dismiss();
     diag::render(
       std::cerr,
-      result.source,
+      cache,
+      src.filename,
       result.diagnostics,
       opt
     );
@@ -40,7 +43,8 @@ int TuringHandler::operator()(const CommandContext& ctx) {
     act.dismiss();
     diag::render(
       std::cerr,
-      result.source,
+      cache,
+      src.filename,
       result.value.error(),
       opt
     );
@@ -129,33 +133,49 @@ int TuringHandler::operator()(const CommandContext& ctx) {
         std::cout << ansi::format(ansi::fg(ansi::terminal_color::cyan), "]");
       }
 
-      // Show final tape configuration
+      // Show final tape configuration. Huge tapes print as a summary
+      // so one run cannot flood the terminal.
       if (!r->final_tapes.empty() && !r->final_tapes[0].empty()) {
         std::cout << ansi::format(ansi::fg(ansi::terminal_color::cyan), " tape=\"");
 
         const auto& tape = r->final_tapes[0];
         std::size_t head_pos = r->final_head_positions[0];
 
-        for (std::size_t i = 0; i < tape.size(); ++i) {
-          if (i == head_pos) {
-            std::cout << ansi::format(ansi::fg(ansi::terminal_color::yellow), "[{}]", tape[i]);
-          } else {
-            std::cout << tape[i];
+        if (tape.size() > 200) {
+          std::string plain;
+          for (std::size_t i = 0; i < tape.size(); ++i) {
+            if (i == head_pos)
+              plain += "[";
+            plain += tape[i];
+            if (i == head_pos)
+              plain += "]";
           }
-        }
+          if (head_pos >= tape.size())
+            plain += "[ ]";
+          std::cout << ui::truncate_middle(plain, 80) << "\" cells=" << tape.size();
+        } else {
+          for (std::size_t i = 0; i < tape.size(); ++i) {
+            if (i == head_pos) {
+              std::cout << ansi::format(ansi::fg(ansi::terminal_color::yellow), "[{}]", tape[i]);
+            } else {
+              std::cout << tape[i];
+            }
+          }
 
-        // Show head position if it's beyond the current tape
-        if (head_pos >= tape.size()) {
-          std::cout << ansi::format(ansi::fg(ansi::terminal_color::yellow), "[ ]");
-        }
+          // Show head position if it's beyond the current tape
+          if (head_pos >= tape.size()) {
+            std::cout << ansi::format(ansi::fg(ansi::terminal_color::yellow), "[ ]");
+          }
 
-        std::cout << "\"";
+          std::cout << "\"";
+        }
       }
 
       std::cout << "\n";
       act.resume();
     };
 
+    act.set_message(std::string("Running ") + filepath.filename().string());
     for (const auto& input_string : input_strings) {
       run(input_string, this->trace_enabled);
     }
@@ -169,7 +189,8 @@ int TuringHandler::operator()(const CommandContext& ctx) {
     act.dismiss();
     diag::render(
       std::cerr,
-      result.source,
+      cache,
+      src.filename,
       result.value.error(),
       opt
     );
