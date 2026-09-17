@@ -2,19 +2,14 @@
 // Import the standard library below. Change this file, not a header.
 export module prf;
 import std;
+import ansi;
 
 export namespace prf {
 
 // -------------------- Utilities --------------------
 
 [[nodiscard]] inline std::string join_u64(const std::vector<std::uint64_t>& xs, std::string_view sep = ", ") {
-  std::ostringstream oss;
-  for (std::size_t i = 0; i < xs.size(); ++i) {
-    if (i)
-      oss << sep;
-    oss << xs[i];
-  }
-  return oss.str();
+  return std::format("{}", ansi::join(xs, sep));
 }
 
 // -------------------- Trace --------------------

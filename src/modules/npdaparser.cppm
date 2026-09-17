@@ -256,17 +256,14 @@ struct ParseResult {
       if (LF.tokens.size() < 4) {
         for (const auto& t : LF.tokens) {
           if (Qset.count(t.text) == 0) {
-            diag::Diagnostic d;
-            d.severity = diag::Severity::Error;
-            d.code = "E0009";
-            d.message = "invalid accepting states line";
-            d.labels.push_back(diag::Label{
-              .span = t.span,
-              .primary = true,
-              .message = "unknown state '" + std::string(lex::name(t.text)) + "'",
-            });
-            d.notes.push_back("F must contain only states from Q");
-            dx.items.push_back(std::move(d));
+            add_symbol_error(
+              dx,
+              "E0009",
+              "invalid accepting states line",
+              t,
+              "unknown state '" + std::string(lex::name(t.text)) + "'",
+              "F must contain only states from Q"
+            );
           }
         }
         i = *iF + 1;

@@ -189,9 +189,12 @@ inline void add_symbol_error(
   std::string code,
   std::string msg,
   const Token& t,
-  std::string label_msg
+  std::string label_msg,
+  std::string_view note = {}
 ) {
   add_simple_error(dx, std::move(code), std::move(msg), t.span, std::move(label_msg));
+  if (!note.empty())
+    dx.items.back().notes.push_back(std::string(note));
 }
 
 [[nodiscard]] inline bool line_has_tokens(const Line& L) {

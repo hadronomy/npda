@@ -737,10 +737,6 @@ class NPDA {
   // Constants and helper functions
   static constexpr std::size_t npos = static_cast<std::size_t>(-1);
 
-  [[nodiscard]] static bool contains(const std::vector<State>& v, const State& s) {
-    return std::find(v.begin(), v.end(), s) != v.end();
-  }
-
   [[nodiscard]] static bool
     stack_matches(const std::vector<StackSym>& st, const std::optional<StackSym>& need_top) {
     if (!need_top.has_value())
@@ -790,7 +786,7 @@ class NPDA {
   template <typename NodeT>
   [[nodiscard]] bool is_accepting(const NodeT& n, std::span<const Input> input) const {
     const bool at_end = (n.pos == input.size());
-    const bool by_state = contains(accepting_, n.s);
+    const bool by_state = std::ranges::contains(accepting_, n.s);
     // const bool by_stack =
     //   (n.stack.size() == 0 || (n.stack.size() == 1 && n.stack.back() == bottom_));
     const bool by_stack = n.stack.size() == 0;
@@ -1292,7 +1288,7 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
 
     // Use a hash-based approach that works with any state type
     // First check if it's an accepting state (highest priority)
-    if (contains(accepting_, node.s)) {
+    if (std::ranges::contains(accepting_, node.s)) {
       // Accepting states get a special warm color
       state_color = config::colors::success;  // Green for accepting states
     } else {
@@ -1444,7 +1440,7 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
 
     // Use a hash-based approach that works with any state type
     // First check if it's an accepting state (highest priority)
-    if (contains(accepting_, node.s)) {
+    if (std::ranges::contains(accepting_, node.s)) {
       // Accepting states get a special warm color
       state_color = config::colors::success;  // Green for accepting states
     } else {

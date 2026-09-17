@@ -407,10 +407,6 @@ class TuringMachine {
   [[nodiscard]] std::expected<RunResult, Error>
     run_multi_tape(const std::vector<TapeSym>& input, const RunOptions& opt) const;
 
-  [[nodiscard]] static bool contains(const std::vector<State>& v, const State& s) {
-    return std::ranges::find(v, s) != v.end();
-  }
-
   void apply_multi_tape_transition(MultiTapeNode<State, TapeSym>& node, const rule_type& rule)
     const {
     const std::size_t num_tapes = config_.num_tapes;
@@ -531,7 +527,7 @@ class TuringMachine {
   [[nodiscard]] bool is_accepting(const State& s) const {
     if (!accepting_set_.empty())
       return accepting_set_.find(s) != accepting_set_.end();
-    return contains(accepting_, s);
+    return std::ranges::contains(accepting_, s);
   }
 
   [[nodiscard]] NodeType make_root(const std::vector<TapeSym>& input) const {

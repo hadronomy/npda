@@ -8,6 +8,7 @@ import std;
 import ansi;
 import cli11;
 import config;
+import lex;
 import ui;
 import turing;
 import prf;
@@ -21,6 +22,15 @@ inline std::string normalize_name(std::string_view name) {
   if (l == std::string::npos)
     return {};
   return n.substr(l, r - l + 1);
+}
+
+// Split an input string into one interned symbol per char.
+inline std::vector<lex::Symbol> to_symbols(std::string_view s) {
+  std::vector<lex::Symbol> v;
+  v.reserve(s.size());
+  for (char c : s)
+    v.push_back(lex::intern(std::string_view(&c, 1)));  // "a" from 'a'
+  return v;
 }
 
 export namespace npda {
@@ -551,7 +561,7 @@ export class TuringHandler final : public CommandHandler {
   // Configuration options
   std::size_t num_tapes = 1;
   turing::TapeDirection tape_direction = turing::TapeDirection::Bidirectional;
-  turing::OperationMode operation_mode = turing::OperationMode::Simultaneous;
+  turing::OperationMode operation_mode = turing::OperationMode::Independent;
   bool allow_stay = true;
 
   int operator()(const CommandContext& ctx) override;

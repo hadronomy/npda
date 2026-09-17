@@ -104,15 +104,17 @@ struct ConfigParseResult {
 // Generic enum parser: ensures v is exactly one of allowed values
 [[nodiscard]] inline bool parse_enum_value(
   std::string_view v,
-  const std::vector<std::string>& allowed,
+  std::initializer_list<std::string_view> allowed,
   std::size_t& idx_out
 ) {
   v = trim_ws(unquote_if(v));
-  for (std::size_t i = 0; i < allowed.size(); ++i) {
-    if (v == allowed[i]) {
+  std::size_t i = 0;
+  for (std::string_view a : allowed) {
+    if (v == a) {
       idx_out = i;
       return true;
     }
+    ++i;
   }
   return false;
 }
@@ -766,17 +768,14 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
         if (LF.tokens.size() != arity) {
           for (const auto& t : LF.tokens) {
             if (Qset.count(t.text) == 0) {
-              diag::Diagnostic d;
-              d.severity = diag::Severity::Error;
-              d.code = "E0009";
-              d.message = "invalid accepting states line";
-              d.labels.push_back(diag::Label{
-                .span = t.span,
-                .primary = true,
-                .message = "unknown state '" + std::string(lex::name(t.text)) + "'",
-              });
-              d.notes.push_back("F must contain only states from Q");
-              dx.items.push_back(std::move(d));
+              add_symbol_error(
+                dx,
+                "E0009",
+                "invalid accepting states line",
+                t,
+                "unknown state '" + std::string(lex::name(t.text)) + "'",
+                "F must contain only states from Q"
+              );
             }
           }
           i = *iF + 1;
