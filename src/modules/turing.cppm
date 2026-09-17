@@ -59,9 +59,29 @@ struct MultiTapeRule {
   State to{};
 };
 
-// Rule is always multi; arity-1 = "single tape"
-template <Hashable State, Hashable TapeSym>
-using Rule = MultiTapeRule<State, TapeSym>;
+// Write direction as its file character.
+[[nodiscard]] constexpr char to_char(Direction d) noexcept {
+  switch (d) {
+    case Direction::Left:
+      return 'L';
+    case Direction::Right:
+      return 'R';
+    case Direction::Stay:
+      return 'S';
+  }
+  return 'S';  // unreachable; all enumerators covered above
+}
+
+// Read direction from its file character. Empty for anything else.
+[[nodiscard]] inline std::optional<Direction> from_char(std::string_view s) noexcept {
+  if (s == "L")
+    return Direction::Left;
+  if (s == "R")
+    return Direction::Right;
+  if (s == "S")
+    return Direction::Stay;
+  return std::nullopt;
+}
 
 }  // namespace turing
 export namespace turing {
@@ -101,7 +121,7 @@ struct RunOptions {
 
   TraceOptions trace{};
 
-  bool show_config = true;
+  bool show_config = false;
 };
 
 struct RunResult {
@@ -142,7 +162,7 @@ struct GraphvizOptions {
 template <Hashable State, Hashable TapeSym>
 class TuringMachine {
  public:
-  using rule_type = Rule<State, TapeSym>;  // always multi
+  using rule_type = MultiTapeRule<State, TapeSym>;
   using PerTape = turing::PerTape<TapeSym>;
 
   class Builder {
@@ -365,7 +385,7 @@ class TuringMachine {
   }
 
   [[nodiscard]] static std::string join_moves(const std::vector<PerTape>& tapes) {
-    return join_tapes(tapes, [](const PerTape& t) { return static_cast<char>(t.move); });
+    return join_tapes(tapes, [](const PerTape& t) { return to_char(t.move); });
   }
 
   // Escape string for Graphviz quoted labels/IDs
@@ -1149,7 +1169,9 @@ std::expected<void, Error> TuringMachine<State, TapeSym>::export_graphviz_image(
   if (ec) {
     return std::unexpected(Error{std::format("failed to get temp directory: {}", ec.message())});
   }
-  const auto tmp_dot = tmp_dir / std::format("tm_{}.dot", std::hash<const void*>{}(this));
+  const auto now = std::chrono::system_clock::now().time_since_epoch().count();
+  const auto tmp_dot =
+    tmp_dir / std::format("tm_{}_{}.dot", now, std::hash<const void*>{}(this));
 
   if (auto w = write_graphviz_dot(tmp_dot, opt); !w) {
     return std::unexpected(w.error());
@@ -1163,6 +1185,8 @@ std::expected<void, Error> TuringMachine<State, TapeSym>::export_graphviz_image(
     output_path.string()
   );
   const int rc = std::system(cmd.c_str());
+  std::error_code rm_ec;
+  std::filesystem::remove(tmp_dot, rm_ec);
   if (rc != 0) {
     return std::unexpected(Error{std::format("graphviz 'dot' failed (exit code {}): {}", rc, cmd)});
   }

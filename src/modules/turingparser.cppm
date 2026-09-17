@@ -28,7 +28,7 @@ using lex::to_set;
 using lex::Symbol;
 
 using TM = turing::TuringMachine<Symbol, Symbol>;
-using Rule = turing::Rule<Symbol, Symbol>;
+using Rule = turing::MultiTapeRule<Symbol, Symbol>;
 
 struct ParseResult {
   std::expected<TM, diag::Diagnostics> value;
@@ -838,12 +838,8 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
 
       // Build arity-1 multi rule (even for invalids to aid recovery)
       Direction dir = Direction::Stay;
-      if (move_text == "L") {
-        dir = Direction::Left;
-      } else if (move_text == "R") {
-        dir = Direction::Right;
-      } else {
-        dir = Direction::Stay;
+      if (const auto d = from_char(move_text)) {
+        dir = *d;
       }
 
       Rule rule;
@@ -923,13 +919,11 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
         }
 
         Direction dir = Direction::Stay;
-        if (move_text != "L" && move_text != "R" && move_text != "S") {
+        if (const auto d = from_char(move_text)) {
+          dir = *d;
+        } else {
           add_symbol_error(dx, "E0016", "invalid move direction", move, "must be L, R, or S");
           valid = false;
-        } else if (move_text == "L") {
-          dir = Direction::Left;
-        } else if (move_text == "R") {
-          dir = Direction::Right;
         }
         rule.tapes.push_back({reads[tape_idx], write_sym, dir});
       }
