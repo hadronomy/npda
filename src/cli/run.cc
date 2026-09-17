@@ -77,7 +77,7 @@ int RunHandler::operator()(const CommandContext&) {
       std::cerr,
       result.source,
       result.value.error(),
-      diag::RenderOptions{.color = true, .context_lines = 0}
+      diag::RenderOptions{}
     );
     return 1;
   }

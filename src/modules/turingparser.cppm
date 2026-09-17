@@ -169,14 +169,10 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
       [](std::string_view v, diag::Span span, TMConfig& cfg, diag::Diagnostics& dx) {
         std::size_t nt = 0;
         if (!parse_uint_nonzero(v, nt)) {
-          diag::Diagnostic d;
-          d.severity = diag::Severity::Error;
-          d.code = "C0007";
-          d.message = "invalid value for 'num_tapes'";
-          d.labels.push_back({.span = span, .primary = true, .message = "expected positive integer"}
-          );
-          d.notes.push_back("num_tapes must be a positive integer (e.g., 1, 2, 3)");
-          dx.items.push_back(std::move(d));
+          diag::error("C0007", "invalid value for 'num_tapes'")
+            .label(span, "expected positive integer")
+            .note("num_tapes must be a positive integer (e.g., 1, 2, 3)")
+            .emit(dx);
           return false;
         }
         cfg.num_tapes = nt;
@@ -190,13 +186,10 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
       [](std::string_view v, diag::Span span, TMConfig& cfg, diag::Diagnostics& dx) {
         std::size_t idx = std::numeric_limits<std::size_t>::max();
         if (!parse_enum_value(v, {"bidirectional", "right-only"}, idx)) {
-          diag::Diagnostic d;
-          d.severity = diag::Severity::Error;
-          d.code = "C0009";
-          d.message = "invalid value for 'tape_direction'";
-          d.labels.push_back({.span = span, .primary = true, .message = "invalid option"});
-          d.notes.push_back("Valid options are: 'bidirectional' or 'right-only'");
-          dx.items.push_back(std::move(d));
+          diag::error("C0009", "invalid value for 'tape_direction'")
+            .label(span, "invalid option")
+            .note("Valid options are: 'bidirectional' or 'right-only'")
+            .emit(dx);
           return false;
         }
         cfg.tape_direction = (idx == 0) ? TapeDirection::Bidirectional : TapeDirection::RightOnly;
@@ -210,13 +203,10 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
       [](std::string_view v, diag::Span span, TMConfig& cfg, diag::Diagnostics& dx) {
         std::size_t idx = std::numeric_limits<std::size_t>::max();
         if (!parse_enum_value(v, {"simultaneous", "independent"}, idx)) {
-          diag::Diagnostic d;
-          d.severity = diag::Severity::Error;
-          d.code = "C0010";
-          d.message = "invalid value for 'operation_mode'";
-          d.labels.push_back({.span = span, .primary = true, .message = "invalid option"});
-          d.notes.push_back("Valid options are: 'simultaneous' or 'independent'");
-          dx.items.push_back(std::move(d));
+          diag::error("C0010", "invalid value for 'operation_mode'")
+            .label(span, "invalid option")
+            .note("Valid options are: 'simultaneous' or 'independent'")
+            .emit(dx);
           return false;
         }
         cfg.operation_mode = (idx == 0) ? OperationMode::Simultaneous : OperationMode::Independent;
@@ -230,13 +220,10 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
       [](std::string_view v, diag::Span span, TMConfig& cfg, diag::Diagnostics& dx) {
         bool b = false;
         if (!parse_bool_literal(v, b)) {
-          diag::Diagnostic d;
-          d.severity = diag::Severity::Error;
-          d.code = "C0011";
-          d.message = "invalid value for 'allow_stay'";
-          d.labels.push_back({.span = span, .primary = true, .message = "invalid boolean value"});
-          d.notes.push_back("Valid options are: 'true' or 'false'");
-          dx.items.push_back(std::move(d));
+          diag::error("C0011", "invalid value for 'allow_stay'")
+            .label(span, "invalid boolean value")
+            .note("Valid options are: 'true' or 'false'")
+            .emit(dx);
           return false;
         }
         cfg.allow_stay = b;
@@ -292,16 +279,9 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
     if (trimmed.starts_with("# /// config")) {
       if (in_config_block) {
         // Nested config block - error
-        diag::Diagnostic d;
-        d.severity = diag::Severity::Error;
-        d.code = "C0001";
-        d.message = "nested configuration block";
-        d.labels.push_back(diag::Label{
-          .span = diag::Span{line_start + start, line_start + start + 14},
-          .primary = true,
-          .message = "config block already started"
-        });
-        result.diagnostics.items.push_back(std::move(d));
+        diag::error("C0001", "nested configuration block")
+          .label(diag::Span{line_start + start, line_start + start + 14}, "config block already started")
+          .emit(result.diagnostics);
         result.has_errors = true;
       } else {
         in_config_block = true;
@@ -337,17 +317,13 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
 
     if (eq_pos == std::string_view::npos) {
       // No equals sign found
-      diag::Diagnostic d;
-      d.severity = diag::Severity::Error;
-      d.code = "C0002";
-      d.message = "invalid configuration line: missing '='";
-      d.labels.push_back(diag::Label{
-        .span = diag::Span{content_offset, content_offset + content.length()},
-        .primary = true,
-        .message = "expected 'key = value' format"
-      });
-      d.notes.push_back("Configuration lines must follow the format: key = value");
-      result.diagnostics.items.push_back(std::move(d));
+      diag::error("C0002", "invalid configuration line: missing '='")
+        .label(
+          diag::Span{content_offset, content_offset + content.length()},
+          "expected 'key = value' format"
+        )
+        .note("Configuration lines must follow the format: key = value")
+        .emit(result.diagnostics);
       result.has_errors = true;
       continue;
     }
@@ -358,16 +334,9 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
 
     // Validate key
     if (key.empty()) {
-      diag::Diagnostic d;
-      d.severity = diag::Severity::Error;
-      d.code = "C0003";
-      d.message = "empty configuration key";
-      d.labels.push_back(diag::Label{
-        .span = diag::Span{content_offset, content_offset + eq_pos},
-        .primary = true,
-        .message = "expected key before '='"
-      });
-      result.diagnostics.items.push_back(std::move(d));
+      diag::error("C0003", "empty configuration key")
+        .label(diag::Span{content_offset, content_offset + eq_pos}, "expected key before '='")
+        .emit(result.diagnostics);
       result.has_errors = true;
       continue;
     }
@@ -382,20 +351,15 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
     }
 
     if (!valid_key) {
-      diag::Diagnostic d;
-      d.severity = diag::Severity::Error;
-      d.code = "C0004";
-      d.message = "invalid configuration key";
-      d.labels.push_back(diag::Label{
-        .span =
+      diag::error("C0004", "invalid configuration key")
+        .label(
           diag::Span{
             content_offset + key.find_first_not_of(" \t"),
             content_offset + key.find_last_not_of(" \t") + 1
           },
-        .primary = true,
-        .message = "keys may only contain letters, numbers, underscores, and hyphens"
-      });
-      result.diagnostics.items.push_back(std::move(d));
+          "keys may only contain letters, numbers, underscores, and hyphens"
+        )
+        .emit(result.diagnostics);
       result.has_errors = true;
       continue;
     }
@@ -403,21 +367,16 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
     // Check for duplicate keys
     std::string key_str(key);
     if (seen_keys.count(key_str)) {
-      diag::Diagnostic d;
-      d.severity = diag::Severity::Error;
-      d.code = "C0005";
-      d.message = "duplicate configuration key";
-      d.labels.push_back(diag::Label{
-        .span =
+      diag::error("C0005", "duplicate configuration key")
+        .label(
           diag::Span{
             content_offset + key.find_first_not_of(" \t"),
             content_offset + key.find_last_not_of(" \t") + 1
           },
-        .primary = true,
-        .message = "duplicate key"
-      });
-      d.notes.push_back("Configuration key '" + key_str + "' was already defined");
-      result.diagnostics.items.push_back(std::move(d));
+          "duplicate key"
+        )
+        .note("Configuration key '" + key_str + "' was already defined")
+        .emit(result.diagnostics);
       result.has_errors = true;
       continue;
     }
@@ -425,16 +384,12 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
 
     // Validate value presence
     if (value.empty()) {
-      diag::Diagnostic d;
-      d.severity = diag::Severity::Error;
-      d.code = "C0006";
-      d.message = "empty configuration value";
-      d.labels.push_back(diag::Label{
-        .span = diag::Span{content_offset + eq_pos + 1, content_offset + content.length()},
-        .primary = true,
-        .message = "expected value after '='"
-      });
-      result.diagnostics.items.push_back(std::move(d));
+      diag::error("C0006", "empty configuration value")
+        .label(
+          diag::Span{content_offset + eq_pos + 1, content_offset + content.length()},
+          "expected value after '='"
+        )
+        .emit(result.diagnostics);
       result.has_errors = true;
       continue;
     }
@@ -467,16 +422,11 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
     // Unknown key: warn and provide suggestions
     std::vector<std::string> suggestions = suggest_keys(key, schema, 3);
 
-    diag::Diagnostic d;
-    d.severity = diag::Severity::Warning;
-    d.code = "C0012";
-    d.message = "unknown configuration key";
-    d.labels.push_back(
-      {.span = diag::Span{key_span_start, key_span_end}, .primary = true, .message = "unknown key"}
-    );
+    auto warn = diag::warning("C0012", "unknown configuration key");
+    warn.label(diag::Span{key_span_start, key_span_end}, "unknown key");
     if (!suggestions.empty()) {
       if (suggestions.size() == 1) {
-        d.notes.push_back("Did you mean '" + suggestions.front() + "'?");
+        warn.note("Did you mean '" + suggestions.front() + "'?");
       } else {
         std::string note = "Did you mean one of: ";
         for (std::size_t si = 0; si < suggestions.size(); ++si) {
@@ -485,7 +435,7 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
           note += "'" + suggestions[si] + "'";
         }
         note += "?";
-        d.notes.push_back(std::move(note));
+        warn.note(std::move(note));
       }
     }
     {
@@ -495,27 +445,22 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
           known += ", ";
         known += schema[i].name;
       }
-      d.notes.push_back(std::move(known));
+      warn.note(std::move(known));
     }
-    result.diagnostics.items.push_back(std::move(d));
+    warn.emit(result.diagnostics);
   }
 
   // Check for unclosed config block
   if (in_config_block) {
-    diag::Diagnostic d;
-    d.severity = diag::Severity::Error;
-    d.code = "C0013";
-    d.message = "unclosed configuration block";
-    d.labels.push_back(diag::Label{
-      .span =
+    diag::error("C0013", "unclosed configuration block")
+      .label(
         diag::Span{
           source.line_starts[config_start_line - 1], source.line_starts[config_start_line - 1] + 14
         },
-      .primary = true,
-      .message = "config block started here"
-    });
-    d.notes.push_back("Configuration block must be closed with '# ///'");
-    result.diagnostics.items.push_back(std::move(d));
+        "config block started here"
+      )
+      .note("Configuration block must be closed with '# ///'")
+      .emit(result.diagnostics);
     result.has_errors = true;
   }
 
@@ -832,7 +777,7 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
         add_symbol_error(dx, "E0015", "unknown write symbol", write, "symbol not in Γ");
       }
       if (move_text != "L" && move_text != "R" && move_text != "S") {
-        add_symbol_error(dx, "E0016", "invalid move direction", move, "must be L, R, or S");
+        add_symbol_error(dx, "E0019", "invalid move direction", move, "must be L, R, or S");
       }
 
       // Build arity-1 multi rule (even for invalids to aid recovery)
@@ -921,7 +866,7 @@ inline const std::vector<ConfigKeySpec>& default_config_schema() {
         if (const auto d = from_char(move_text)) {
           dir = *d;
         } else {
-          add_symbol_error(dx, "E0016", "invalid move direction", move, "must be L, R, or S");
+          add_symbol_error(dx, "E0019", "invalid move direction", move, "must be L, R, or S");
           valid = false;
         }
         rule.tapes.push_back({reads[tape_idx], write_sym, dir});

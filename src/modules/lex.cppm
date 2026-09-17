@@ -172,16 +172,7 @@ inline void add_simple_error(
   diag::Span where,
   std::string label_msg
 ) {
-  diag::Diagnostic d;
-  d.severity = diag::Severity::Error;
-  d.code = std::move(code);
-  d.message = std::move(msg);
-  d.labels.push_back(diag::Label{
-    .span = where,
-    .primary = true,
-    .message = std::move(label_msg),
-  });
-  dx.items.push_back(std::move(d));
+  diag::error(std::move(code), std::move(msg)).label(where, std::move(label_msg)).emit(dx);
 }
 
 inline void add_symbol_error(

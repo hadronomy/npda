@@ -8,6 +8,7 @@ import std;
 import ansi;
 import cli11;
 import config;
+import diag;
 import lex;
 import ui;
 import turing;
@@ -610,6 +611,20 @@ export class PRFHandler final : public CommandHandler {
 
   int operator()(const CommandContext& ctx) override;
 };
+
+// Explain command handler. Prints the index entry for one error code.
+export class ExplainHandler final : public CommandHandler {
+ public:
+  std::string code;
+
+  int operator()(const CommandContext& ctx) override;
+};
+
+export [[nodiscard]] std::unique_ptr<CommandHandler> make_explain(CLI::App& sub) {
+  auto handler = std::make_unique<ExplainHandler>();
+  sub.add_option("code", handler->code, "the error code to explain (e.g. E0007)")->required();
+  return handler;
+}
 
 export [[nodiscard]] std::unique_ptr<CommandHandler> make_prf(CLI::App& sub) {
   auto handler = std::make_unique<PRFHandler>();

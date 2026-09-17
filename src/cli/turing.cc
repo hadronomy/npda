@@ -22,7 +22,7 @@ int TuringHandler::operator()(const CommandContext&) {
       std::cerr,
       result.source,
       result.diagnostics,
-      diag::RenderOptions{.color = true, .context_lines = 0}
+      diag::RenderOptions{}
     );
     // Terminate if there are any errors
     if (result.diagnostics.has_errors()) {
@@ -36,7 +36,7 @@ int TuringHandler::operator()(const CommandContext&) {
       std::cerr,
       result.source,
       result.value.error(),
-      diag::RenderOptions{.color = true, .context_lines = 0}
+      diag::RenderOptions{}
     );
     return 1;
   }
@@ -154,7 +154,7 @@ int TuringHandler::operator()(const CommandContext&) {
       std::cerr,
       result.source,
       result.value.error(),
-      diag::RenderOptions{.color = true, .context_lines = 0}
+      diag::RenderOptions{}
     );
     return 1;
   }
