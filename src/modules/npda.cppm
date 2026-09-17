@@ -989,15 +989,21 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
   } else {
     const std::size_t shown = std::min(node.stack.size(), kStack);
     auto cell3 = [](std::string s) {
+      // Center in a 3-wide field. Single symbols keep the original face.
       s = cpcut(s, 3);
-      while (cpsize(s) < 3)
-        s += ' ';
-      return s;
+      const std::size_t w = cpsize(s);
+      const std::size_t left = (3 - std::min(w, std::size_t{3})) / 2;
+      std::string out(left, ' ');
+      out += s;
+      while (cpsize(out) < 3)
+        out += ' ';
+      return out;
     };
-    // Show stack top on the right (conventional)
+    // Show stack top on the right (conventional). Linear row keeps raw
+    // symbols; the box below centers them in 3-wide cells.
     for (std::size_t i = 0; i < shown; ++i) {
       std::size_t stack_idx = node.stack.size() - 1 - i;  // top first
-      const std::string cell = cell3(std::format("{}", node.stack[stack_idx]));
+      const std::string cell = cpcut(std::format("{}", node.stack[stack_idx]), 6);
       if (i == 0) {
         if (opt.trace.colors) {
           output += ansi::format(ansi::fg(config::colors::warning), "[{}]", cell);
