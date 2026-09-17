@@ -1040,19 +1040,18 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
         output += h3 + tr;
       }
       output += "\n       ";
+      // Cells pin at 3 wide with shared bars: │AAA│BB │. No extra spaces.
       for (std::size_t i = 0; i < shown; ++i) {
         std::size_t stack_idx = node.stack.size() - 1 - i;
         const std::string cell = cell3(std::format("{}", node.stack[stack_idx]));
-        if (i == 0) {
-          if (opt.trace.colors) {
-            output += ansi::format(ansi::fg(config::colors::warning), "{} {} {}", vv, cell, vv);
-          } else {
-            output += std::format("{} {} {}", vv, cell, vv);
-          }
+        output += vv;
+        if (i == 0 && opt.trace.colors) {
+          output += ansi::format(ansi::fg(config::colors::warning), "{}", cell);
         } else {
-          output += std::format(" {} {}", cell, vv);
+          output += cell;
         }
       }
+      output += vv;
       output += "\n       ";
       for (std::size_t i = 0; i < shown; ++i) {
         if (shown == 1) {
@@ -1398,8 +1397,8 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
 
   // Tree chrome follows the unicode probe. Same tree, two alphabets.
   const bool tuni = ansi::unicode_enabled();
-  const std::string kLast = tuni ? "└── " : "`-- ";
-  const std::string kMid = tuni ? "├── " : "+-- ";
+  const std::string kLast = tuni ? "└──" : "`--";
+  const std::string kMid = tuni ? "├──" : "+--";
   const std::string kVert = tuni ? "│   " : "|   ";
   std::size_t printed = 0;
 
@@ -1570,8 +1569,8 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
 
   // Tree chrome follows the unicode probe. Same tree, two alphabets.
   const bool tuni = ansi::unicode_enabled();
-  const std::string kLast = tuni ? "└── " : "`-- ";
-  const std::string kMid = tuni ? "├── " : "+-- ";
+  const std::string kLast = tuni ? "└──" : "`--";
+  const std::string kMid = tuni ? "├──" : "+--";
   const std::string kVert = tuni ? "│   " : "|   ";
   std::size_t printed = 0;
 
@@ -1635,14 +1634,14 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
     bool is_in_accepting_path = accepting_nodes.find(node_idx) != accepting_nodes.end();
     std::string accepting_marker =
       is_in_accepting_path
-        ? ansi::format(ansi::fg(config::colors::success), "{}", config::symbols::success)
+        ? " " + ansi::format(ansi::fg(config::colors::success), "{}", config::symbols::success)
         : "";
 
     // Show enhanced node info with colors
     std::string node_info;
     if (opt.trace.colors) {
       node_info = std::format(
-        "[{}] pos:{} {} state:{} {} ({}) {}",
+        "[{}] pos:{} {} state:{} {} ({}){}",
         node_idx,
         node.pos,
         ansi::format(ansi::fg(input_color), "{}", input_sym),
@@ -1653,14 +1652,14 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
       );
     } else {
       node_info = std::format(
-        "[{}] pos:{} input:{} state:{} {} ({}) {}",
+        "[{}] pos:{} input:{} state:{} {} ({}){}",
         node_idx,
         node.pos,
         input_sym,
         std::format("{}", node.s),
         stack_repr,
         node.stack.size(),
-        is_in_accepting_path ? config::symbols::success : ""
+        is_in_accepting_path ? std::string(" ") + std::string(config::symbols::success) : ""
       );
     }
 
