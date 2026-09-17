@@ -31,4 +31,26 @@ export namespace ui {
   return std::string(s.substr(0, head)) + "..." + std::string(s.substr(s.size() - tail));
 }
 
+// Section rule with a short title. Fixed 60 columns, dim chrome.
+[[nodiscard]] inline std::string rule(std::string_view title) {
+  const bool uni = ansi::unicode_enabled();
+  const std::string bar = uni ? "─" : "-";
+  const std::string head = truncate_middle(title, 40);
+  std::string out;
+  std::size_t cols = 0;
+  for (std::size_t i = 0; i < 12; ++i) {
+    out += bar;
+    ++cols;
+  }
+  out += " " + head + " ";
+  cols += 2 + head.size();
+  while (cols < 60) {
+    out += bar;
+    ++cols;
+  }
+  ansi::text_style dim;
+  dim.em = ansi::emphasis::faint;
+  return ansi::format(dim, "{}", out);
+}
+
 }  // namespace ui

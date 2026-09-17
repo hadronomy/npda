@@ -3,7 +3,9 @@ module cli;
 
 // Import the modules below.
 import std;
+import ansi;
 import prf;
+import ui;
 
 int PRFHandler::operator()(const CommandContext&) {
   using namespace prf;
@@ -50,8 +52,18 @@ int PRFHandler::operator()(const CommandContext&) {
 
   {
     std::vector<std::uint64_t> args = this->params;
+    const auto t0 = std::chrono::steady_clock::now();
     std::uint64_t r = (*pow)(args, trace);
-    std::cout << "pow(" << prf::join_u64(args) << ") = " << r << "\n";
+    const double secs =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    std::cout << ui::rule(std::format("pow({})", prf::join_u64(args))) << "\n";
+    std::cout << ansi::format(
+      ansi::fg(ansi::terminal_color::green),
+      "PASS [{:7.3f}s] pow({}) = {}",
+      secs,
+      prf::join_u64(args),
+      r
+    ) << "\n";
     trace.print(std::cout);
     trace.clear();
     std::cout << "\n";

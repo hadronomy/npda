@@ -111,10 +111,11 @@ class Trace {
   [[nodiscard]] const std::vector<std::unique_ptr<Node>>& roots() const { return roots_; }
 
   void print(std::ostream& os) const {
+    // Full mode prints the tree only. CountsOnly prints the summary only.
     if (mode_ == Mode::Full) {
-      for (std::size_t i = 0; i < roots_.size(); ++i) {
-        print_node_(os, *roots_[i], "", i + 1 == roots_.size());
-      }
+      for (std::size_t i = 0; i < roots_.size(); ++i)
+        print_root_(os, *roots_[i]);
+      return;
     }
     // Print a summary of function call counts
     if (!counts_.empty()) {
@@ -131,8 +132,7 @@ class Trace {
         os << "  " << name << ": " << cnt << "\n";
         total += cnt;
       }
-      os << "Total"
-         << ": " << total << "\n";
+      os << "  Total: " << total << "\n";
     }
   }
 
@@ -151,17 +151,57 @@ class Trace {
     stack_.pop_back();
   }
 
-  void print_node_(std::ostream& os, const Node& node, std::string indent, bool last) const {
-    os << indent;
-    os << (last ? "└─ " : "├─ ");
-    os << node.name << "(" << join_u64(node.args) << ")";
+  // Max tree depth. Deeper calls fold into a hidden count.
+  static constexpr std::size_t kMaxDepth = 20;
+
+  static std::size_t count_descendants(const Node& node) {
+    std::size_t n = 0;
+    for (const auto& c : node.children)
+      n += 1 + count_descendants(*c);
+    return n;
+  }
+
+  // Roots print bare so the first line pastes as an expression.
+  void print_root_(std::ostream& os, const Node& node) const {
+    os << ansi::format(ansi::fg(ansi::terminal_color::cyan), "{}", node.name) << "("
+       << join_u64(node.args) << ")";
     if (node.result)
-      os << " -> " << *node.result;
+      os << ansi::format(ansi::fg(ansi::terminal_color::green), " -> {}", *node.result);
+    os << "\n";
+    for (std::size_t i = 0; i < node.children.size(); ++i)
+      print_node_(os, *node.children[i], "", i + 1 == node.children.size(), 1);
+  }
+
+  void print_node_(
+    std::ostream& os,
+    const Node& node,
+    const std::string& indent,
+    bool last,
+    std::size_t depth
+  ) const {
+    const bool uni = ansi::unicode_enabled();
+    const std::string tick = last ? (uni ? "└─ " : "`-- ") : (uni ? "├─ " : "+-- ");
+    const std::string vert = uni ? "│  " : "|  ";
+    ansi::text_style guide;
+    guide.em = ansi::emphasis::faint;
+    os << indent << ansi::format(guide, "{}", tick)
+       << ansi::format(ansi::fg(ansi::terminal_color::cyan), "{}", node.name) << "("
+       << join_u64(node.args) << ")";
+    if (node.result)
+      os << ansi::format(ansi::fg(ansi::terminal_color::green), " -> {}", *node.result);
     os << "\n";
 
-    std::string child_indent = indent + (last ? "   " : "│  ");
+    if (depth >= kMaxDepth) {
+      const std::size_t hidden = count_descendants(node);
+      if (hidden > 0) {
+        os << indent << (last ? "   " : vert) << (uni ? "…" : "...") << " (" << hidden
+           << " hidden)\n";
+      }
+      return;
+    }
+    const std::string child_indent = indent + (last ? "   " : vert);
     for (std::size_t i = 0; i < node.children.size(); ++i) {
-      print_node_(os, *node.children[i], child_indent, i + 1 == node.children.size());
+      print_node_(os, *node.children[i], child_indent, i + 1 == node.children.size(), depth + 1);
     }
   }
 

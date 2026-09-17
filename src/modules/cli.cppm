@@ -531,6 +531,7 @@ export class RunHandler final : public CommandHandler {
   std::vector<std::string> input_strings;
   bool trace_enabled;
   bool explain;
+  std::size_t trace_limit = 200;
 
   int operator()(const CommandContext& ctx) override;
 };
@@ -545,6 +546,8 @@ export [[nodiscard]] std::unique_ptr<CommandHandler> make_npda(CLI::App& sub) {
     ->required();
   sub.add_flag("--trace,!--no-trace", handler->trace_enabled, "Disable trace mode");
   sub.add_flag("--explain", handler->explain, "Enable explanations of the transitions");
+  sub.add_option("--trace-limit", handler->trace_limit, "Max trace steps and rows")
+    ->check(CLI::PositiveNumber);
   return handler;
 }
 
@@ -555,6 +558,7 @@ export class TuringHandler final : public CommandHandler {
   std::vector<std::string> input_strings;
   bool trace_enabled = false;
   bool explain = false;
+  std::size_t trace_limit = 200;
   bool graphviz = false;
   std::string graphviz_exe = "dot";
   bool dot_only = false;
@@ -578,6 +582,8 @@ export [[nodiscard]] std::unique_ptr<CommandHandler> make_turing(CLI::App& sub) 
     ->multi_option_policy(CLI::MultiOptionPolicy::TakeAll);
   sub.add_flag("--trace,!--no-trace", handler->trace_enabled, "Enable trace mode");
   sub.add_flag("--explain", handler->explain, "Enable explanations of transitions");
+  sub.add_option("--trace-limit", handler->trace_limit, "Max trace steps and rows")
+    ->check(CLI::PositiveNumber);
 
   // Configuration options
   sub.add_option("--num-tapes", handler->num_tapes, "Number of tapes (default: 1)")

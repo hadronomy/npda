@@ -23,7 +23,12 @@ int RunHandler::operator()(const CommandContext& ctx) {
   const diag::SourceFile& src = cache.insert(std::move(result.source));
   if (auto dpa = result.value; result.value.has_value()) {
     bool failed = false;
+    std::size_t n_accepted = 0;
+    std::size_t n_rejected = 0;
+    std::size_t n_errors = 0;
+    double total_secs = 0.0;
     auto run = [&](std::string_view s, bool trace = false) {
+      const auto t0 = std::chrono::steady_clock::now();
       auto r = dpa->run(
         to_symbols(s),
         npda::RunOptions{
@@ -35,18 +40,25 @@ int RunHandler::operator()(const CommandContext& ctx) {
              .colors = true,
              .compact = false,
              .explanations = this->explain,
-             .show_full_trace = true},
+             .show_full_trace = true,
+             .step_limit = this->trace_limit},
         }
       );
+      const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+      total_secs += secs;
       act.suspend();
-      std::cout << "---------------------------------------------------"
-                << "\nShowing \""
-                << ansi::format(ansi::fg(ansi::terminal_color::cyan), "{}", ui::truncate_middle(s))
-                << "\" execution in "
-                << ansi::format(ansi::fg(ansi::terminal_color::yellow), "{}", file_path.c_str())
-                << "\n";
+      std::cout << ui::rule(
+        std::string(filepath.filename().string()) + " : " + ui::truncate_middle(s)
+      ) << "\n";
       if (!r) {
-        std::cout << ui::truncate_middle(s) << " -> error: " << r.error().message << "\n";
+        std::cout << ansi::format(
+          ansi::fg(ansi::terminal_color::red),
+          "FAIL [{:7.3f}s] {} -> error: {}",
+          secs,
+          ui::truncate_middle(s),
+          ui::truncate_middle(r.error().message, 200)
+        ) << "\n";
+        ++n_errors;
         failed = true;
         act.resume();
         return;
@@ -55,15 +67,21 @@ int RunHandler::operator()(const CommandContext& ctx) {
       // Format input display - show empty string as "λ" (lambda) for clarity
       std::string input_display = s.empty() ? "λ" : ui::truncate_middle(s);
 
-      // Colorize the result line
-      std::string result_line;
-      if (r->accepted) {
-        result_line = ansi::format(ansi::fg(ansi::terminal_color::green), "{} -> accepted=true expansions={}", input_display, r->expansions);
-      } else {
-        result_line = ansi::format(ansi::fg(ansi::terminal_color::red), "{} -> accepted=false expansions={}", input_display, r->expansions);
-      }
-
-      std::cout << result_line;
+      // PASS means the run worked; the accepted word carries the verdict color.
+      const auto verdict = r->accepted ? ansi::terminal_color::green : ansi::terminal_color::red;
+      if (r->accepted)
+        ++n_accepted;
+      else
+        ++n_rejected;
+      std::cout << ansi::format(ansi::fg(ansi::terminal_color::green), "PASS [{:7.3f}s] ", secs)
+                << ansi::format(
+                     ansi::fg(verdict),
+                     "{} -> accepted={} expansions={}",
+                     input_display,
+                     r->accepted,
+                     r->expansions
+                   )
+                << "\n";
 
       if (r->witness) {
         std::cout << ansi::format(ansi::fg(ansi::terminal_color::cyan), " witness_rules=[");
@@ -83,6 +101,14 @@ int RunHandler::operator()(const CommandContext& ctx) {
     for (const auto& input_string : input_strings) {
       run(input_string, this->trace_enabled);
     }
+    std::cout << std::format(
+      "Summary: {} inputs run: {} accepted, {} rejected, {} errors in {:.3f}s\n",
+      input_strings.size(),
+      n_accepted,
+      n_rejected,
+      n_errors,
+      total_secs
+    );
     if (failed)
       act.fail(std::string("Failed ") + filepath.filename().string());
     else

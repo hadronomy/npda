@@ -107,12 +107,13 @@ struct TraceOptions {
 
   // Trace formatting options
   bool colors = true;
-  bool compact = false;
   bool explanations = false;
 
-  // Backtracking visualization options
-  bool show_backtracking = true;  // Enable backtracking detection and visualization
-  bool show_full_trace = true;    // Show complete execution trace including backtracks
+  // Live per-step emission. Off means replay-only output on accept.
+  bool show_full_trace = true;
+
+  // Output cap. Live and replay steps each stop here with a hidden count.
+  std::size_t step_limit = 200;
 };
 
 struct RunOptions {
@@ -629,45 +630,81 @@ void TuringMachine<State, TapeSym>::emit_trace_step(
     out += std::format("State: {}\n", std::format("{}", node.s));
   }
 
+  constexpr std::size_t kWindow = 8;
+  const std::string kEllipsis = ansi::unicode_enabled() ? "… " : "... ";
+  // Code-point width. Marker math uses this, never byte length.
+  const auto cpwidth = [](std::string_view s) {
+    std::size_t n = 0;
+    for (unsigned char c : s)
+      if ((c & 0xC0) != 0x80)
+        ++n;
+    return n;
+  };
+  const auto cpcut = [](std::string_view s, std::size_t n) {
+    std::size_t i = 0;
+    std::size_t count = 0;
+    while (i < s.size() && count < n) {
+      unsigned char c = static_cast<unsigned char>(s[i]);
+      std::size_t len = 1;
+      if ((c & 0xE0) == 0xC0)
+        len = 2;
+      else if ((c & 0xF0) == 0xE0)
+        len = 3;
+      else if ((c & 0xF8) == 0xF0)
+        len = 4;
+      i += len;
+      ++count;
+    }
+    return std::string(s.substr(0, std::min(i, s.size())));
+  };
+
   for (std::size_t tape_idx = 0; tape_idx < config_.num_tapes; ++tape_idx) {
-    out += std::format("Tape {}: ", tape_idx + 1);
+    const std::string tag = std::format("Tape {}: ", tape_idx + 1);
+    out += tag;
 
     const auto& tape = node.tapes[tape_idx];
     const std::size_t head_pos = node.head_positions[tape_idx];
+    // Logical cells: the tape plus one blank where the head reads past end.
+    const std::size_t logical = tape.size() + (head_pos >= tape.size() ? 1 : 0);
+    const std::size_t head_cell = head_pos;
+    const std::size_t lo = (head_cell > kWindow) ? head_cell - kWindow : 0;
+    const std::size_t hi = std::min(logical, head_cell + kWindow + 1);
 
-    for (std::size_t i = 0; i < tape.size(); ++i) {
-      if (i == head_pos) {
-        if (opt.trace.colors) {
-          out +=
-            ansi::format(ansi::fg(npda::config::colors::warning), "[{}]", std::format("{}", tape[i]));
-        } else {
-          out += std::format("[{}]", std::format("{}", tape[i]));
-        }
+    const auto cell_text = [&](std::size_t i) {
+      if (i < tape.size())
+        return cpcut(std::format("{}", tape[i]), 6);
+      return cpcut(std::format("{}", blank_), 6);
+    };
+
+    std::size_t head_col = 0;
+    std::size_t col = 0;
+    if (lo > 0) {
+      out += kEllipsis;
+      col += cpwidth(kEllipsis);
+    }
+    for (std::size_t i = lo; i < hi; ++i) {
+      const std::string piece = (i == head_cell) ? "[" + cell_text(i) + "]"
+                                                 : " " + cell_text(i) + " ";
+      if (i == head_cell)
+        head_col = col;
+      const bool is_head = (i == head_cell);
+      const bool is_blank = (i >= tape.size());
+      if (is_head && opt.trace.colors) {
+        const auto fg =
+          is_blank ? npda::config::colors::success : npda::config::colors::warning;
+        out += ansi::format(ansi::fg(fg), "{}", piece);
       } else {
-        out += std::format(" {} ", std::format("{}", tape[i]));
+        out += piece;
       }
+      col += cpwidth(piece);
     }
+    if (hi < logical)
+      out += kEllipsis;
 
-    if (head_pos >= tape.size()) {
-      if (opt.trace.colors) {
-        out +=
-          ansi::format(ansi::fg(npda::config::colors::success), " [{}]", std::format("{}", blank_));
-      } else {
-        out += std::format(" [{}]", std::format("{}", blank_));
-      }
-    }
-
-    out += "\n       ";
-
-    const std::size_t spaces = (head_pos < tape.size()) ? head_pos : tape.size();
-    for (std::size_t i = 0; i < spaces; ++i)
-      out += "    ";
-
-    if (head_pos >= tape.size()) {
-      for (std::size_t i = tape.size(); i < head_pos; ++i)
-        out += "    ";
-    }
-    out += " ^  \n";
+    out += "\n";
+    out += std::string(tag.size(), ' ');
+    out += std::string(head_col, ' ');
+    out += "^\n";
   }
 
   if (rule.has_value()) {
@@ -722,32 +759,20 @@ void TuringMachine<State, TapeSym>::show_configuration(const RunOptions& opt) co
 
   auto sink = sink_of(opt);
 
+  const std::string kv = std::format(
+    "tapes: {}, direction: {}, mode: {}, stay: {}, blank: {}",
+    config_.num_tapes,
+    config_.tape_direction == TapeDirection::Bidirectional ? "bidirectional" : "right-only",
+    config_.operation_mode == OperationMode::Simultaneous ? "simultaneous" : "independent",
+    config_.allow_stay ? "yes" : "no",
+    std::format("{}", blank_)
+  );
   if (opt.trace.colors) {
-    sink(ansi::format(ansi::fg(npda::config::colors::banner_text), "\n{} Turing Machine Configuration:\n", npda::config::symbols::info));
-  } else {
-    sink("\nTuring Machine Configuration:\n");
+    sink(ansi::format(ansi::fg(npda::config::colors::info), "{}", kv));
+    sink("\n");
+    return;
   }
-
-  auto print_config = [&](std::string_view key, std::string_view value) {
-    if (opt.trace.colors) {
-      sink(ansi::format(ansi::fg(npda::config::colors::info), "  {}: ", key));
-      sink(ansi::format(ansi::fg(npda::config::colors::success), "{}\n", value));
-      return;
-    }
-    sink(std::format("  {}: {}\n", key, value));
-  };
-
-  print_config("Number of Tapes", std::to_string(config_.num_tapes));
-  print_config(
-    "Tape Direction",
-    config_.tape_direction == TapeDirection::Bidirectional ? "Bidirectional" : "Right-only"
-  );
-  print_config(
-    "Operation Mode",
-    config_.operation_mode == OperationMode::Simultaneous ? "Simultaneous" : "Independent"
-  );
-  print_config("Allow Stay Movement", config_.allow_stay ? "Yes" : "No");
-  print_config("Blank Symbol", std::format("{}", blank_));
+  sink(kv + "\n");
 }
 
 template <Hashable State, Hashable TapeSym>
@@ -829,17 +854,33 @@ void TuringMachine<State, TapeSym>::replay_trace_path(
     sink(std::format("\nAccepting configuration found! Replaying {} steps...\n", rule_path.size()));
   }
 
-  std::size_t step_num = 0;
-  if (!node_path.empty())
-    emit_trace_step(nodes[node_path[0]], step_num, std::nullopt, opt);
+  if (!opt.trace.show_full_trace) {
+    std::vector<std::size_t> show;
+    if (node_path.size() > opt.trace.step_limit + 1 && opt.trace.step_limit > 1) {
+      const std::size_t head = opt.trace.step_limit / 2;
+      const std::size_t tail = opt.trace.step_limit - head;
+      for (std::size_t i = 0; i < head; ++i)
+        show.push_back(i);
+      for (std::size_t i = node_path.size() - tail; i < node_path.size(); ++i)
+        show.push_back(i);
+    } else {
+      for (std::size_t i = 0; i < node_path.size(); ++i)
+        show.push_back(i);
+    }
 
-  for (std::size_t i = 1; i < node_path.size(); ++i) {
-    ++step_num;
-    const std::size_t node_idx = node_path[i];
-    const std::size_t rule_idx = rule_path[i - 1];
-
-    std::optional<rule_type> rule_opt = rules_[rule_idx];
-    emit_trace_step(nodes[node_idx], step_num, rule_opt, opt);
+    std::size_t step_num = 0;
+    for (std::size_t k = 0; k < show.size(); ++k) {
+      const std::size_t i = show[k];
+      if (k > 0 && i != show[k - 1] + 1) {
+        sink(std::format(
+          "… ({} steps hidden, raise --trace-limit to expand)\n", i - show[k - 1] - 1
+        ));
+      }
+      std::optional<rule_type> rule_opt = std::nullopt;
+      if (i > 0 && k > 0 && i == show[k - 1] + 1)
+        rule_opt = rules_[rule_path[i - 1]];
+      emit_trace_step(nodes[node_path[i]], step_num++, rule_opt, opt);
+    }
   }
 
   if (opt.trace.colors) {
@@ -920,8 +961,12 @@ std::expected<RunResult, Error> TuringMachine<State, TapeSym>::run_multi_tape(
     work.pop_front();
     const NodeType& current = nodes[idx];
 
-    if (opt.trace.enabled)
-      emit_trace_step(current, steps, std::nullopt, opt);
+    if (opt.trace.enabled && opt.trace.show_full_trace) {
+      std::optional<rule_type> live_rule = std::nullopt;
+      if (current.rule_idx.has_value() && *current.rule_idx < rules_.size())
+        live_rule = rules_[*current.rule_idx];
+      emit_trace_step(current, steps, live_rule, opt);
+    }
     if (is_accepting(current.s))
       return build_result(current, nodes, idx, steps, opt);
     if (steps >= opt.max_steps)
