@@ -24,8 +24,8 @@ expect() {
     esac
 }
 
-expect "npda-apf" 0 "aabb -> accepted=true" "$BIN" npda ./examples/APf/APf-1.txt aabb aab
-expect "npda-apv" 0 "0110 -> accepted=true" "$BIN" npda ./examples/APv/APv-2.txt 0110 010
+expect "npda-apf" 0 "aabb → accepted=true" "$BIN" npda ./examples/APf/APf-1.txt aabb aab
+expect "npda-apv" 0 "0110 → accepted=true" "$BIN" npda ./examples/APv/APv-2.txt 0110 010
 expect "npda-trace" 0 "Accepting path found" "$BIN" npda ./examples/APf/APf-1.txt aabb --trace
 expect "turing-anbm" 0 "accepted=" "$BIN" turing ./examples/turing/anbm.turing aabb abb
 expect "prf-run" 0 "pow(2, 3) = 8" "$BIN" prf 2 3
@@ -47,7 +47,7 @@ fi
 if [ "$rc" != "0" ] || [ ! -s /tmp/npda_proof_trace.txt ]; then
     fail "npda-out (rc=$rc)"
 else
-    case "$(cat /tmp/npda_proof_trace.txt)" in *"=== Exploration Step 0 ==="*) pass "npda-out" ;; *) fail "npda-out (empty trace)" ;; esac
+    case "$(cat /tmp/npda_proof_trace.txt)" in *"── Step 0"*) pass "npda-out" ;; *) fail "npda-out (empty trace)" ;; esac
 fi
 
 # Corpus: every example file must run to an exit code of 0 or 1

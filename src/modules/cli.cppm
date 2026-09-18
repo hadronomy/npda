@@ -532,6 +532,8 @@ export class RunHandler final : public CommandHandler {
   bool trace_enabled;
   bool explain;
   std::size_t trace_limit = 200;
+  bool trace_box = false;
+  bool trace_tree = false;
   std::filesystem::path input_file;
   std::filesystem::path output_file;
 
@@ -550,6 +552,8 @@ export [[nodiscard]] std::unique_ptr<CommandHandler> make_npda(CLI::App& sub) {
   sub.add_option("--out", handler->output_file, "file where the trace is stored");
   sub.add_flag("--trace,!--no-trace", handler->trace_enabled, "Disable trace mode");
   sub.add_flag("--explain", handler->explain, "Enable explanations of the transitions");
+  sub.add_flag("--trace-box", handler->trace_box, "Show the stack box table in traces");
+  sub.add_flag("--trace-tree", handler->trace_tree, "Show the exploration tree on accept");
   sub.add_option("--trace-limit", handler->trace_limit, "Max trace steps and rows")
     ->check(CLI::PositiveNumber);
   return handler;

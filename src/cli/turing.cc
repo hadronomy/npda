@@ -109,9 +109,10 @@ int TuringHandler::operator()(const CommandContext& ctx) {
       if (!r) {
         std::cout << ansi::format(
           ansi::fg(ansi::terminal_color::red),
-          "FAIL [{:7.3f}s] {} -> error: {}",
+          "FAIL [{:7.3f}s] {} {} error: {}",
           secs,
           ui::truncate_middle(s),
+          ui::arrow(),
           ui::truncate_middle(r.error().message, 200)
         ) << "\n";
         ++n_errors;
@@ -133,8 +134,9 @@ int TuringHandler::operator()(const CommandContext& ctx) {
       std::cout << ansi::format(ansi::fg(ansi::terminal_color::green), "PASS [{:7.3f}s] ", secs)
                 << ansi::format(
                      ansi::fg(verdict),
-                     "{} -> accepted={} steps={}",
+                     "{} {} accepted={} steps={}",
                      input_display,
+                     ui::arrow(),
                      r->accepted,
                      r->steps
                    )
@@ -189,6 +191,27 @@ int TuringHandler::operator()(const CommandContext& ctx) {
         }
       }
 
+      std::cout << "\n";
+      // Verdict close. Counts make the run machine-readable.
+      std::cout << ui::rule(
+        std::string("result: ") + (r->accepted ? "ACCEPT" : "REJECT")
+      ) << "\n";
+      if (r->accepted) {
+        if (r->witness) {
+          std::cout << ansi::format(
+            ansi::fg(ansi::terminal_color::green), "{} accept in {} steps (witness {})\n", "✓",
+            r->steps, r->witness->size()
+          );
+        } else {
+          std::cout << ansi::format(
+            ansi::fg(ansi::terminal_color::green), "{} accept in {} steps\n", "✓", r->steps
+          );
+        }
+      } else {
+        std::cout << ansi::format(
+          ansi::fg(ansi::terminal_color::red), "{} reject after {} steps\n", "✗", r->steps
+        );
+      }
       std::cout << "\n";
       act.resume();
     };

@@ -65,6 +65,11 @@ int PRFHandler::operator()(const CommandContext&) {
       r
     ) << "\n";
     trace.print(std::cout);
+    std::cout << ui::rule("result: DONE") << "\n";
+    std::cout << ansi::format(
+      ansi::fg(ansi::terminal_color::green), "{} done in {:.3f}s ({} calls)\n", "✓", secs,
+      trace.total_calls()
+    );
     trace.clear();
     std::cout << "\n";
   }

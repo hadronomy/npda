@@ -83,6 +83,8 @@ int RunHandler::operator()(const CommandContext& ctx) {
              .compact = false,
              .explanations = this->explain,
              .show_full_trace = true,
+             .box = this->trace_box,
+             .tree = this->trace_tree,
              .step_limit = this->trace_limit},
         }
       );
@@ -92,12 +94,17 @@ int RunHandler::operator()(const CommandContext& ctx) {
       std::cout << ui::rule(
         std::string(filepath.filename().string()) + " : " + ui::truncate_middle(s)
       ) << "\n";
+      std::cout << std::format(
+        "config: accept={} start={} bottom={}\n", npda::accept_name(dpa->accept_policy()),
+        std::format("{}", dpa->start_state()), std::format("{}", dpa->stack_bottom())
+      );
       if (!r) {
         std::cout << ansi::format(
           ansi::fg(ansi::terminal_color::red),
-          "FAIL [{:7.3f}s] {} -> error: {}",
+          "FAIL [{:7.3f}s] {} {} error: {}",
           secs,
           ui::truncate_middle(s),
+          ui::arrow(),
           ui::truncate_middle(r.error().message, 200)
         ) << "\n";
         ++n_errors;
@@ -118,8 +125,9 @@ int RunHandler::operator()(const CommandContext& ctx) {
       std::cout << ansi::format(ansi::fg(ansi::terminal_color::green), "PASS [{:7.3f}s] ", secs)
                 << ansi::format(
                      ansi::fg(verdict),
-                     "{} -> accepted={} expansions={}",
+                     "{} {} accepted={} expansions={}",
                      input_display,
+                     ui::arrow(),
                      r->accepted,
                      r->expansions
                    )
@@ -134,6 +142,26 @@ int RunHandler::operator()(const CommandContext& ctx) {
           }
         }
         std::cout << ansi::format(ansi::fg(ansi::terminal_color::cyan), "]");
+      }
+      std::cout << "\n";
+      // Verdict close. Counts make the run machine-readable.
+      std::cout << ui::rule(
+        std::string("result: ") + (r->accepted ? "ACCEPT" : "REJECT")
+      ) << "\n";
+      if (r->accepted) {
+        std::cout << ansi::format(
+          ansi::fg(ansi::terminal_color::green), "{} accept in {} steps ({} expansions, witness {}, depth {})\n",
+          "✓",
+          r->witness ? r->witness->size() : 0,
+          r->expansions,
+          r->witness ? r->witness->size() : 0,
+          r->depth
+        );
+      } else {
+        std::cout << ansi::format(
+          ansi::fg(ansi::terminal_color::red), "{} reject after {} expansions\n", "✗",
+          r->expansions
+        );
       }
       std::cout << "\n";
       act.resume();
