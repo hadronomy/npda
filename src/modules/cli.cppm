@@ -532,6 +532,8 @@ export class RunHandler final : public CommandHandler {
   bool trace_enabled;
   bool explain;
   std::size_t trace_limit = 200;
+  std::filesystem::path input_file;
+  std::filesystem::path output_file;
 
   int operator()(const CommandContext& ctx) override;
 };
@@ -541,9 +543,11 @@ export [[nodiscard]] std::unique_ptr<CommandHandler> make_npda(CLI::App& sub) {
   sub.add_option("file_path", handler->file_path, "the NPDA description file path")
     ->required()
     ->check(CLI::ExistingFile);
-  sub.add_option("input_string", handler->input_strings, "the string to accept")
-    ->multi_option_policy(CLI::MultiOptionPolicy::TakeAll)
-    ->required();
+  sub.add_option("input_string", handler->input_strings, "the string to accept (omit with -in or stdin)")
+    ->multi_option_policy(CLI::MultiOptionPolicy::TakeAll);
+  sub.add_option("--in", handler->input_file, "file with input strings, one per line")
+    ->check(CLI::ExistingFile);
+  sub.add_option("--out", handler->output_file, "file where the trace is stored");
   sub.add_flag("--trace,!--no-trace", handler->trace_enabled, "Disable trace mode");
   sub.add_flag("--explain", handler->explain, "Enable explanations of the transitions");
   sub.add_option("--trace-limit", handler->trace_limit, "Max trace steps and rows")

@@ -21,6 +21,47 @@ int RunHandler::operator()(const CommandContext& ctx) {
   diag::SourceCache cache;
   auto result = npda::parse::parse_with_diagnostics(file, filepath.string());
   const diag::SourceFile& src = cache.insert(std::move(result.source));
+
+  // Input strings: CLI args, then -in file lines, then keyboard.
+  // Empty lines never count as inputs.
+  std::vector<std::string> inputs = this->input_strings;
+  if (!this->input_file.empty()) {
+    std::ifstream inf(this->input_file);
+    if (!inf) {
+      ui::error(std::format("cannot open input file '{}'", this->input_file.string()));
+      return 1;
+    }
+    std::string line;
+    while (std::getline(inf, line)) {
+      if (!line.empty() && line.back() == '\r')
+        line.pop_back();
+      if (!line.empty())
+        inputs.push_back(std::move(line));
+    }
+  }
+  if (inputs.empty()) {
+    std::string line;
+    while (std::getline(std::cin, line)) {
+      if (!line.empty() && line.back() == '\r')
+        line.pop_back();
+      if (!line.empty())
+        inputs.push_back(std::move(line));
+    }
+  }
+
+  // Trace sink: -out file when given, screen otherwise.
+  std::ofstream out;
+  if (!this->output_file.empty() && this->trace_enabled) {
+    out.open(this->output_file);
+    if (!out) {
+      ui::error(std::format("cannot open output file '{}'", this->output_file.string()));
+      return 1;
+    }
+  }
+  std::function<void(std::string_view)> sink;
+  if (out.is_open())
+    sink = [&](std::string_view s) { out << s; };
+
   if (auto dpa = result.value; result.value.has_value()) {
     bool failed = false;
     std::size_t n_accepted = 0;
@@ -37,6 +78,7 @@ int RunHandler::operator()(const CommandContext& ctx) {
           .track_witness = true,
           .trace =
             {.enabled = trace,
+             .sink = sink,
              .colors = true,
              .compact = false,
              .explanations = this->explain,
@@ -98,12 +140,12 @@ int RunHandler::operator()(const CommandContext& ctx) {
     };
 
     act.set_message(std::string("Running ") + filepath.filename().string());
-    for (const auto& input_string : input_strings) {
+    for (const auto& input_string : inputs) {
       run(input_string, this->trace_enabled);
     }
     std::cout << std::format(
       "Summary: {} inputs run: {} accepted, {} rejected, {} errors in {:.3f}s\n",
-      input_strings.size(),
+      inputs.size(),
       n_accepted,
       n_rejected,
       n_errors,

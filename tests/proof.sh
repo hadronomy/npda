@@ -33,6 +33,23 @@ expect "prf-help" 0 "Trace mode" "$BIN" prf --help
 expect "explain" 0 "Name a state from the Q line" "$BIN" explain E0007
 expect "explain-unknown" 1 "unknown error code" "$BIN" explain BOGUS
 
+# -in/-out/keyboard input paths (npda)
+printf 'aabb\naab\n' > /tmp/npda_proof_in.txt
+out=$("$BIN" npda ./examples/APf/APf-1.txt --in /tmp/npda_proof_in.txt 2>&1); rc=$?
+if [ "$rc" != "0" ]; then fail "npda-in (rc=$rc)"; else
+    case "$out" in *"1 accepted, 1 rejected"*) pass "npda-in" ;; *) fail "npda-in (bad summary)" ;; esac
+fi
+out=$(printf 'aabb\n' | "$BIN" npda ./examples/APf/APf-1.txt 2>&1); rc=$?
+if [ "$rc" != "0" ]; then fail "npda-stdin (rc=$rc)"; else
+    case "$out" in *"1 accepted, 0 rejected"*) pass "npda-stdin" ;; *) fail "npda-stdin (bad summary)" ;; esac
+fi
+"$BIN" npda ./examples/APf/APf-1.txt --in /tmp/npda_proof_in.txt --trace --out /tmp/npda_proof_trace.txt >/dev/null 2>&1; rc=$?
+if [ "$rc" != "0" ] || [ ! -s /tmp/npda_proof_trace.txt ]; then
+    fail "npda-out (rc=$rc)"
+else
+    case "$(cat /tmp/npda_proof_trace.txt)" in *"=== Exploration Step 0 ==="*) pass "npda-out" ;; *) fail "npda-out (empty trace)" ;; esac
+fi
+
 # Corpus: every example file must run to an exit code of 0 or 1
 # and must print non-empty output. This catches crashes and hangs.
 for f in examples/APf/*.txt examples/APv/*.txt; do
