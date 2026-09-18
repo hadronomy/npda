@@ -32,8 +32,7 @@ export namespace ui {
 }
 
 // Section rule with a short title. Fixed 60 columns, dim chrome.
-[[nodiscard]] inline std::string rule(std::string_view title) {
-  const bool uni = ansi::unicode_enabled();
+[[nodiscard]] inline std::string rule(std::string_view title) {  const bool uni = ansi::unicode_enabled();
   const std::string bar = uni ? "─" : "-";
   const std::string head = truncate_middle(title, 40);
   std::string out;
@@ -51,6 +50,11 @@ export namespace ui {
   ansi::text_style dim;
   dim.em = ansi::emphasis::faint;
   return ansi::format(dim, "{}", out);
+}
+
+// Direction arrow. Matches the unicode probe: → on TTY, -> in pipes.
+[[nodiscard]] inline std::string arrow() {
+  return ansi::unicode_enabled() ? "→" : "->";
 }
 
 }  // namespace ui

@@ -5,6 +5,7 @@ import std;
 import ansi;
 import config;
 import lex;
+import ui;
 
 export namespace npda {
 
@@ -290,8 +291,10 @@ template <Hashable State, Hashable Input, Hashable StackSym>
       ansi::format(ansi::fg(config::colors::warning), "'{}'", r.input.value());
     explanation += std::format("when reading {} ", input_colored);
   } else {
-    explanation +=
-      ansi::format(ansi::fg(config::colors::info), "without consuming input (ε-transition) ");
+    const std::string eps_word = ansi::unicode_enabled() ? "ε" : "eps";
+    explanation += ansi::format(
+      ansi::fg(config::colors::info), "without consuming input ({}-transition) ", eps_word
+    );
   }
 
   // Stack condition
@@ -305,7 +308,8 @@ template <Hashable State, Hashable Input, Hashable StackSym>
 
   // Action and destination (arrow colored as example, state as command)
   std::string to_state_colored = ansi::format(ansi::fg(config::colors::command_name), "'{}'", r.to);
-  std::string arrow_colored = ansi::format(ansi::fg(config::colors::example), "→");
+  std::string arrow_colored =
+    ansi::format(ansi::fg(config::colors::example), "{}", ui::arrow());
   explanation += arrow_colored;
   explanation += std::format(" move to state {} ", to_state_colored);
 
@@ -386,6 +390,12 @@ struct TraceOptions {
   bool show_backtracking = true;  // Enable backtracking detection and visualization
   bool show_full_trace = true;    // Show complete execution trace including backtracks
 
+  // Box table behind the linear stack row. Default off: chrome must
+  // never double the line count of the default view.
+  bool box = false;
+  // Exploration tree. Default off; reject paths still print it.
+  bool tree = false;
+
   // Output cap. Live steps, replay steps, and tree rows each stop here
   // with a hidden count. Bounds trace bytes regardless of max_expansions.
   std::size_t step_limit = 200;
@@ -408,7 +418,23 @@ struct RunResult {
   bool accepted = false;
   std::size_t expansions = 0;                       // expanded transitions (search work)
   std::optional<std::vector<std::size_t>> witness;  // indices into rules_
+  std::size_t depth = 0;                            // final stack depth on accept
 };
+
+// Acceptance policy name for config lines.
+[[nodiscard]] inline std::string_view accept_name(AcceptBy p) {
+  switch (p) {
+    case AcceptBy::FinalState:
+      return "final-state";
+    case AcceptBy::EmptyStack:
+      return "empty-stack";
+    case AcceptBy::Both:
+      return "both";
+    case AcceptBy::Any:
+      return "any";
+  }
+  return "final-state";
+}
 
 template <Hashable State, Hashable Input, Hashable StackSym>
 class NPDA {
@@ -485,6 +511,11 @@ class NPDA {
   };
 
   NPDA() = default;
+
+  // Config readers for status lines.
+  [[nodiscard]] const State& start_state() const { return start_; }
+  [[nodiscard]] const StackSym& stack_bottom() const { return bottom_; }
+  [[nodiscard]] AcceptBy accept_policy() const { return policy_; }
 
   // Copies share nothing mutable: each copy rebuilds indices on first run.
   NPDA(const NPDA& o)
@@ -908,7 +939,7 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
   const std::optional<rule_type>& rule,
   const RunOptions& opt,
   bool is_backtrack_point,
-  bool is_exploration
+  [[maybe_unused]] bool is_exploration
 ) const {
   if (!opt.trace.enabled)
     return;
@@ -919,71 +950,78 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
 
   std::string output;
 
-  // Header with step number and exploration/backtracking indicator
-  if (opt.trace.colors) {
-    if (is_exploration) {
-      output +=
-        ansi::format(ansi::fg(config::colors::info), "\n=== Exploration Step {} ===\n", step_num);
-    } else if (is_backtrack_point && opt.trace.show_backtracking) {
-      output += ansi::format(ansi::fg(config::colors::warning), "\n=== Step {} {}(BACKTRACK) ===\n", step_num, config::symbols::warning);
-    } else {
-      output +=
-        ansi::format(ansi::fg(config::colors::section_heading), "\n=== Step {} ===\n", step_num);
-    }
-  } else {
-    if (is_exploration) {
-      output += std::format("\n=== Exploration Step {} ===\n", step_num);
-    } else if (is_backtrack_point && opt.trace.show_backtracking) {
-      output += std::format("\n=== Step {} (BACKTRACK) ===\n", step_num);
-    } else {
-      output += std::format("\n=== Step {} ===\n", step_num);
-    }
-  }
+  // Styles honor the caller flag; ansi::format gates the rest on TTY.
+  const auto st = [&](ansi::text_style s) { return opt.trace.colors ? s : ansi::text_style{}; };
+  ansi::text_style faint;
+  faint.em = ansi::emphasis::faint;
+  ansi::text_style bold;
+  bold.em = ansi::emphasis::bold;
 
-  // Current state
-  if (opt.trace.colors) {
-    output += ansi::format(ansi::fg(config::colors::info), "State: ");
-    output += ansi::format(ansi::fg(config::colors::success), "{}\n", std::format("{}", node.s));
+  // Step card header. Title holds number plus transition only.
+  std::string title = std::format("Step {}", step_num);
+  if (rule.has_value()) {
+    const auto& r0 = rule.value();
+    title += std::format(
+      " · {} {} {}", std::format("{}", r0.from), ui::arrow(), std::format("{}", r0.to)
+    );
+  }
+  if (is_backtrack_point && opt.trace.show_backtracking)
+    title += " · backtrack";
+  output += "\n" + ui::rule(title) + "\n";
+
+  // Current state. Bold always; green only when accepting.
+  output += ansi::format(st(faint), "state: ");
+  if (std::ranges::contains(accepting_, node.s)) {
+    output += ansi::format(
+      st(ansi::fg(config::colors::success) | ansi::emphasis::bold), "{}\n",
+      std::format("{}", node.s)
+    );
   } else {
-    output += std::format("State: {}\n", std::format("{}", node.s));
+    output += ansi::format(st(bold), "{}\n", std::format("{}", node.s));
   }
 
   // Input window around the head. Full tapes flood; windows do not.
-  // Cells cap at 6 code points so fixed-stride math below holds.
+  // Cells cap at 6 code points so the caret math below holds.
   constexpr std::size_t kWindow = 8;
   const std::string kEllipsis = ansi::unicode_enabled() ? "… " : "... ";
-  output += "Input: ";
+  output += ansi::format(st(faint), "input: ");
+  std::size_t head_col = 0;
+  std::size_t col = 0;
   const std::size_t ilo = (node.pos > kWindow) ? node.pos - kWindow : 0;
   const std::size_t ihi = std::min(input.size(), node.pos + kWindow + 1);
-  if (ilo > 0)
+  if (ilo > 0) {
     output += kEllipsis;
+    col += cpsize(kEllipsis);
+  }
   for (std::size_t i = ilo; i < ihi; ++i) {
     const std::string cell = cpcut(std::format("{}", input[i]), 6);
     if (i == node.pos) {
-      if (opt.trace.colors) {
-        output +=
-          ansi::format(ansi::fg(config::colors::warning), "[{}]", cell);
-      } else {
-        output += std::format("[{}]", cell);
-      }
+      head_col = col;
+      output += ansi::format(
+        st(ansi::fg(config::colors::warning) | ansi::emphasis::bold), "[{}]", cell
+      );
+      col += cpsize(cell) + 2;
     } else {
       output += std::format(" {} ", cell);
+      col += cpsize(cell) + 2;
     }
   }
   if (node.pos >= input.size()) {
-    if (opt.trace.colors) {
-      output += ansi::format(ansi::fg(config::colors::success), " [END]");
-    } else {
-      output += " [END]";
-    }
+    head_col = col;
+    output += ansi::format(
+      st(ansi::fg(config::colors::success) | ansi::emphasis::bold), " [END]"
+    );
+    col += 6;
   } else if (ihi < input.size()) {
     output += kEllipsis;
   }
   output += "\n";
+  // Caret under the head bracket. Brackets survive pipes; the caret anchors.
+  output += std::string(7 + head_col, ' ') + "^\n";
 
   // Stack visualization. Shows the top cells only, plus a count.
   constexpr std::size_t kStack = 9;
-  output += "Stack: ";
+  output += ansi::format(st(faint), "stack: ");
   if (node.stack.empty()) {
     output += "(empty)\n";
   } else {
@@ -1005,21 +1043,22 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
       std::size_t stack_idx = node.stack.size() - 1 - i;  // top first
       const std::string cell = cpcut(std::format("{}", node.stack[stack_idx]), 6);
       if (i == 0) {
-        if (opt.trace.colors) {
-          output += ansi::format(ansi::fg(config::colors::warning), "[{}]", cell);
-        } else {
-          output += std::format("[{}]", cell);
-        }
+        output += ansi::format(
+          st(ansi::fg(config::colors::warning) | ansi::emphasis::bold), "[{}]", cell
+        );
       } else {
         output += std::format(" {} ", cell);
       }
     }
-    if (shown < node.stack.size())
-      output += std::format("(+{} more)", node.stack.size() - shown);
+    if (shown < node.stack.size()) {
+      output += std::format(
+        "(+{} more, depth {})", node.stack.size() - shown, node.stack.size()
+      );
+    }
     output += "\n";
 
-    // Visual stack representation
-    if (!opt.trace.compact) {
+    // Visual stack representation. Opt-in; the linear row is the default.
+    if (!opt.trace.compact && opt.trace.box) {
       const bool uni = ansi::unicode_enabled();
       const std::string h3 = uni ? "───" : "---";
       const std::string tl = uni ? "┌" : "+";
@@ -1051,8 +1090,10 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
         std::size_t stack_idx = node.stack.size() - 1 - i;
         const std::string cell = cell3(std::format("{}", node.stack[stack_idx]));
         output += vv;
-        if (i == 0 && opt.trace.colors) {
-          output += ansi::format(ansi::fg(config::colors::warning), "{}", cell);
+        if (i == 0) {
+          output += ansi::format(
+            st(ansi::fg(config::colors::warning) | ansi::emphasis::bold), "{}", cell
+          );
         } else {
           output += cell;
         }
@@ -1078,61 +1119,40 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
     }
   }
 
-  // Rule information
+  // Rule as one canonical tuple. Bold covers the arrow plus target.
   if (rule.has_value()) {
     const auto& r = rule.value();
-    if (opt.trace.colors) {
-      output += ansi::format(ansi::fg(config::colors::info), "Rule: ");
-    } else {
-      output += "Rule: ";
-    }
+    const std::string arr = ui::arrow();
+    const std::string eps = ansi::unicode_enabled() ? "ε" : "eps";
+    output += ansi::format(st(faint), "rule: ");
+    output += std::format(
+      "({}, {}, {}) ",
+      std::format("{}", r.from),
+      r.input.has_value() ? std::format("{}", r.input.value()) : eps,
+      r.stack_top.has_value() ? std::format("{}", r.stack_top.value()) : "-"
+    );
 
-    // Format rule nicely
-    std::string rule_str = std::format("{} → ", std::format("{}", r.from));
-
-    // Input symbol
-    if (r.input.has_value()) {
-      rule_str += std::format("{}, ", std::format("{}", r.input.value()));
-    } else {
-      rule_str += "ε, ";
-    }
-
-    // Stack operation
-    if (r.stack_top.has_value()) {
-      rule_str += std::format("pop({}) → ", std::format("{}", r.stack_top.value()));
-    } else {
-      rule_str += "nop → ";
-    }
-
-    rule_str += std::format("{}, ", std::format("{}", r.to));
-
-    // Push symbols
+    std::string push;
     if (r.push.empty()) {
-      rule_str += "push()";
+      push = "push()";
+    } else if (r.push.size() == 1) {
+      push = "push " + std::format("{}", r.push.front());
     } else {
-      rule_str += "push(";
+      push = "push(";
       for (std::size_t i = 0; i < r.push.size(); ++i) {
-        rule_str += std::format("{}", std::format("{}", r.push[i]));
+        push += std::format("{}", r.push[i]);
         if (i + 1 < r.push.size())
-          rule_str += ", ";
+          push += ", ";
       }
-      rule_str += ")";
+      push += ")";
     }
-
-    if (opt.trace.colors) {
-      output += ansi::format(ansi::fg(config::colors::example), "{}\n", rule_str);
-    } else {
-      output += std::format("{}\n", rule_str);
-    }
+    output += ansi::format(st(bold), "{} ({}, {})", arr, std::format("{}", r.to), push);
+    output += "\n";
 
     // Add natural language explanation if enabled
     if (opt.trace.explanations) {
       std::string explanation = npda::explain_rule(r);
-      if (opt.trace.colors) {
-        output += ansi::format(ansi::fg(config::colors::info), "{}\n", explanation);
-      } else {
-        output += std::format("{}\n", explanation);
-      }
+      output += ansi::format(st(faint), "{}\n", explanation);
     }
   }
 
@@ -1153,7 +1173,7 @@ std::expected<RunResult, Error> NPDA<State, Input, StackSym>::build_result(
   const std::vector<std::size_t>& deadend_nodes
 ) const {
   if (!opt.track_witness) {
-    return RunResult{true, expansions, std::nullopt};
+    return RunResult{true, expansions, std::nullopt, acc_node.stack.size()};
   }
   std::vector<std::size_t> path;
   std::size_t cur = idx;
@@ -1189,12 +1209,12 @@ std::expected<RunResult, Error> NPDA<State, Input, StackSym>::build_result(
     }
   }
 
-  // Show exploration tree if enabled
-  if (opt.trace.enabled && opt.trace.show_full_trace && !explored_nodes.empty()) {
+  // Exploration tree prints on demand only. Reject paths still print it.
+  if (opt.trace.enabled && opt.trace.tree && !explored_nodes.empty()) {
     show_exploration_tree(nodes, explored_nodes, input, opt, std::vector<std::size_t>{});
   }
 
-  return RunResult{true, expansions, std::move(path)};
+  return RunResult{true, expansions, std::move(path), acc_node.stack.size()};
 }
 
 template <Hashable State, Hashable Input, Hashable StackSym>
@@ -1257,6 +1277,13 @@ void NPDA<State, Input, StackSym>::replay_trace_path(
     for (std::size_t k = 0; k < show.size(); ++k) {
       const std::size_t i = show[k];
       if (k > 0 && i != show[k - 1] + 1) {
+        for (std::size_t j = show[k - 1] + 1; j < i; j += 50) {
+          const auto& lm = nodes[node_path[j]];
+          sink(ui::rule(std::format(
+            "… step {} · {} · pos {} · depth {}", j, std::format("{}", lm.s), lm.pos,
+            lm.stack.size()
+          )) + "\n");
+        }
         sink(std::format(
           "… ({} steps hidden, raise --trace-limit to expand)\n", i - show[k - 1] - 1
         ));
@@ -1353,6 +1380,13 @@ void NPDA<State, Input, StackSym>::show_rejection_trace(
   for (std::size_t k = 0; k < show.size(); ++k) {
     const std::size_t i = show[k];
     if (k > 0 && i != show[k - 1] + 1) {
+      for (std::size_t j = show[k - 1] + 1; j < i; j += 50) {
+        const auto& lm = nodes[node_path[j]];
+        sink(ui::rule(std::format(
+          "… step {} · {} · pos {} · depth {}", j, std::format("{}", lm.s), lm.pos,
+          lm.stack.size()
+        )) + "\n");
+      }
       sink(std::format(
         "… ({} steps hidden, raise --trace-limit to expand)\n", i - show[k - 1] - 1
       ));
@@ -1437,7 +1471,9 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
         stack_content += std::format("{}", node.stack[i]);
       }
       if (tshown < node.stack.size())
-        stack_content += std::format(",(+{} more)", node.stack.size() - tshown);
+        stack_content += std::format(
+          ",(+{} more, depth {})", node.stack.size() - tshown, node.stack.size()
+        );
       stack_repr = std::format("[{}]", stack_content);
     }
 
@@ -1534,7 +1570,7 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
   }
   if (printed < explored_nodes.size()) {
     sink(std::format(
-      "… ({} more nodes hidden, raise --trace-limit to expand)\n",
+      "… ({} hidden below, raise --trace-limit to expand)\n",
       explored_nodes.size() - printed
     ));
   }
@@ -1609,7 +1645,9 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
         stack_content += std::format("{}", node.stack[i]);
       }
       if (tshown < node.stack.size())
-        stack_content += std::format(",(+{} more)", node.stack.size() - tshown);
+        stack_content += std::format(
+          ",(+{} more, depth {})", node.stack.size() - tshown, node.stack.size()
+        );
       stack_repr = std::format("[{}]", stack_content);
     }
 
@@ -1715,7 +1753,7 @@ void NPDA<State, Input, StackSym>::show_exploration_tree(
   }
   if (printed < explored_nodes.size()) {
     sink(std::format(
-      "… ({} more nodes hidden, raise --trace-limit to expand)\n",
+      "… ({} hidden below, raise --trace-limit to expand)\n",
       explored_nodes.size() - printed
     ));
   }

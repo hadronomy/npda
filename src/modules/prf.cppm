@@ -110,9 +110,24 @@ class Trace {
 
   [[nodiscard]] const std::vector<std::unique_ptr<Node>>& roots() const { return roots_; }
 
+  // Total recorded calls across all functions. Feeds verdict lines.
+  [[nodiscard]] std::uint64_t total_calls() const {
+    std::uint64_t total = 0;
+    for (const auto& [name, cnt] : counts_)
+      total += cnt;
+    return total;
+  }
+
   void print(std::ostream& os) const {
-    // Full mode prints the tree only. CountsOnly prints the summary only.
+    // Full mode prints the tree only. The PASS line above already states
+    // the answer, so a single root folds into its children.
     if (mode_ == Mode::Full) {
+      if (roots_.size() == 1) {
+        const Node& root = *roots_.front();
+        for (std::size_t i = 0; i < root.children.size(); ++i)
+          print_node_(os, *root.children[i], "", i + 1 == root.children.size(), 1);
+        return;
+      }
       for (std::size_t i = 0; i < roots_.size(); ++i)
         print_root_(os, *roots_[i]);
       return;
@@ -163,10 +178,12 @@ class Trace {
 
   // Roots print bare so the first line pastes as an expression.
   void print_root_(std::ostream& os, const Node& node) const {
-    os << ansi::format(ansi::fg(ansi::terminal_color::cyan), "{}", node.name) << "("
-       << join_u64(node.args) << ")";
+    const std::string arr = ansi::unicode_enabled() ? "→" : "->";
+    os << ansi::format(
+      ansi::fg(ansi::terminal_color::cyan) | ansi::emphasis::bold, "{}", node.name
+    ) << "(" << join_u64(node.args) << ")";
     if (node.result)
-      os << ansi::format(ansi::fg(ansi::terminal_color::green), " -> {}", *node.result);
+      os << ansi::format(ansi::fg(ansi::terminal_color::green), " {} {}", arr, *node.result);
     os << "\n";
     for (std::size_t i = 0; i < node.children.size(); ++i)
       print_node_(os, *node.children[i], "", i + 1 == node.children.size(), 1);
@@ -180,22 +197,26 @@ class Trace {
     std::size_t depth
   ) const {
     const bool uni = ansi::unicode_enabled();
+    const std::string arr = uni ? "→" : "->";
     const std::string tick = last ? (uni ? "└─ " : "`-- ") : (uni ? "├─ " : "+-- ");
     const std::string vert = uni ? "│  " : "|  ";
     ansi::text_style guide;
     guide.em = ansi::emphasis::faint;
     os << indent << ansi::format(guide, "{}", tick)
-       << ansi::format(ansi::fg(ansi::terminal_color::cyan), "{}", node.name) << "("
-       << join_u64(node.args) << ")";
+       << ansi::format(
+            ansi::fg(ansi::terminal_color::cyan) | ansi::emphasis::bold, "{}", node.name
+          ) << "(" << join_u64(node.args) << ")";
     if (node.result)
-      os << ansi::format(ansi::fg(ansi::terminal_color::green), " -> {}", *node.result);
+      os << ansi::format(ansi::fg(ansi::terminal_color::green), " {} {}", arr, *node.result);
+    if (depth >= 4)
+      os << ansi::format(guide, " (depth {})", depth);
     os << "\n";
 
     if (depth >= kMaxDepth) {
       const std::size_t hidden = count_descendants(node);
       if (hidden > 0) {
         os << indent << (last ? "   " : vert) << (uni ? "…" : "...") << " (" << hidden
-           << " hidden)\n";
+           << " hidden below)\n";
       }
       return;
     }
