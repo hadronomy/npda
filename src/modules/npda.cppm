@@ -996,7 +996,8 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
   for (std::size_t i = ilo; i < ihi; ++i) {
     const std::string cell = cpcut(std::format("{}", input[i]), 6);
     if (i == node.pos) {
-      head_col = col;
+      // Caret centers under the symbol, not the bracket.
+      head_col = col + 1 + cpsize(cell) / 2;
       output += ansi::format(
         st(ansi::fg(config::colors::warning) | ansi::emphasis::bold), "[{}]", cell
       );
@@ -1007,7 +1008,7 @@ void NPDA<State, Input, StackSym>::emit_trace_step(
     }
   }
   if (node.pos >= input.size()) {
-    head_col = col;
+    head_col = col + 2;
     output += ansi::format(
       st(ansi::fg(config::colors::success) | ansi::emphasis::bold), " [END]"
     );

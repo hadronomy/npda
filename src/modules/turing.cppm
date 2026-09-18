@@ -701,7 +701,7 @@ void TuringMachine<State, TapeSym>::emit_trace_step(
       const std::string piece = (i == head_cell) ? "[" + cell_text(i) + "]"
                                                  : " " + cell_text(i) + " ";
       if (i == head_cell)
-        head_col = col;
+        head_col = col + 1 + cpwidth(cell_text(i)) / 2;
       const bool is_head = (i == head_cell);
       const bool is_blank = (i >= tape.size());
       if (is_head) {
