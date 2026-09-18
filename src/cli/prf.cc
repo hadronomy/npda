@@ -56,7 +56,7 @@ int PRFHandler::operator()(const CommandContext&) {
     std::uint64_t r = (*pow)(args, trace);
     const double secs =
       std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-    std::cout << ui::rule(std::format("pow({})", prf::join_u64(args)), true) << "\n";
+    std::cout << ui::rail(std::format("pow({})", prf::join_u64(args))) << "\n";
     std::cout << ansi::format(
       ansi::fg(ansi::terminal_color::green),
       "PASS [{:7.3f}s] pow({}) = {}",

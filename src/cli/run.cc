@@ -68,12 +68,15 @@ int RunHandler::operator()(const CommandContext& ctx) {
     std::size_t n_rejected = 0;
     std::size_t n_errors = 0;
     double total_secs = 0.0;
-    auto run = [&](std::string_view s, bool trace = false) {
+    auto run = [&](std::string_view s, bool trace, std::size_t num, std::size_t total) {
       const auto t0 = std::chrono::steady_clock::now();
       // Framing first so the trace below belongs to a named input.
       act.suspend();
-      std::cout << ui::rule(
-        std::string(filepath.filename().string()) + " : " + ui::truncate_middle(s), true
+      std::cout << ui::rail(
+        std::format(
+          "Input {}/{} , {} : \"{}\"", num, total, filepath.filename().string(),
+          ui::truncate_middle(s)
+        )
       ) << "\n";
       std::cout << std::format(
         "config: accept={} start={} bottom={}\n", npda::accept_name(dpa->accept_policy()),
@@ -172,8 +175,8 @@ int RunHandler::operator()(const CommandContext& ctx) {
     };
 
     act.set_message(std::string("Running ") + filepath.filename().string());
-    for (const auto& input_string : inputs) {
-      run(input_string, this->trace_enabled);
+    for (std::size_t idx = 0; idx < inputs.size(); ++idx) {
+      run(inputs[idx], this->trace_enabled, idx + 1, inputs.size());
     }
     std::cout << std::format(
       "Summary: {} inputs run: {} accepted, {} rejected, {} errors in {:.3f}s\n",

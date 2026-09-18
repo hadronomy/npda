@@ -32,11 +32,9 @@ export namespace ui {
 }
 
 // Section rule with a short title. Fixed 60 columns, dim chrome.
-// Heavy uses the double line for the top-level input frame so it reads
-// apart from step and verdict rules, which stay light.
-[[nodiscard]] inline std::string rule(std::string_view title, bool heavy = false) {
+[[nodiscard]] inline std::string rule(std::string_view title) {
   const bool uni = ansi::unicode_enabled();
-  const std::string bar = !uni ? (heavy ? "=" : "-") : (heavy ? "═" : "─");
+  const std::string bar = uni ? "─" : "-";
   const std::string head = truncate_middle(title, 40);
   std::string out;
   std::size_t cols = 0;
@@ -58,6 +56,23 @@ export namespace ui {
 // Direction arrow. Matches the unicode probe: → on TTY, -> in pipes.
 [[nodiscard]] inline std::string arrow() {
   return ansi::unicode_enabled() ? "→" : "->";
+}
+
+// Block rail opener for input blocks. █ edges mark blocks at a glance
+// in scrollback; light rules stay for steps and verdicts.
+[[nodiscard]] inline std::string rail(std::string_view title) {
+  const bool uni = ansi::unicode_enabled();
+  const std::string edge = uni ? "█" : "#";
+  const std::string head = truncate_middle(title, 44);
+  std::string out = edge + edge + edge + " " + head + " ";
+  std::size_t cols = 3 + 1 + head.size() + 1;
+  while (cols < 60) {
+    out += edge;
+    ++cols;
+  }
+  ansi::text_style bold;
+  bold.em = ansi::emphasis::bold;
+  return ansi::format(bold, "{}", out);
 }
 
 }  // namespace ui
