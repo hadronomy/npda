@@ -73,7 +73,7 @@ int RunHandler::operator()(const CommandContext& ctx) {
       // Framing first so the trace below belongs to a named input.
       act.suspend();
       std::cout << ui::rule(
-        std::string(filepath.filename().string()) + " : " + ui::truncate_middle(s)
+        std::string(filepath.filename().string()) + " : " + ui::truncate_middle(s), true
       ) << "\n";
       std::cout << std::format(
         "config: accept={} start={} bottom={}\n", npda::accept_name(dpa->accept_policy()),

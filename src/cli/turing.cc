@@ -90,7 +90,7 @@ int TuringHandler::operator()(const CommandContext& ctx) {
       // Framing first so the trace below belongs to a named input.
       act.suspend();
       std::cout << ui::rule(
-        std::string(filepath.filename().string()) + " : " + ui::truncate_middle(s)
+        std::string(filepath.filename().string()) + " : " + ui::truncate_middle(s), true
       ) << "\n";
       act.resume();
       auto r = tm->run(

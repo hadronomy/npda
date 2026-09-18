@@ -32,8 +32,11 @@ export namespace ui {
 }
 
 // Section rule with a short title. Fixed 60 columns, dim chrome.
-[[nodiscard]] inline std::string rule(std::string_view title) {  const bool uni = ansi::unicode_enabled();
-  const std::string bar = uni ? "─" : "-";
+// Heavy uses the double line for the top-level input frame so it reads
+// apart from step and verdict rules, which stay light.
+[[nodiscard]] inline std::string rule(std::string_view title, bool heavy = false) {
+  const bool uni = ansi::unicode_enabled();
+  const std::string bar = !uni ? (heavy ? "=" : "-") : (heavy ? "═" : "─");
   const std::string head = truncate_middle(title, 40);
   std::string out;
   std::size_t cols = 0;
