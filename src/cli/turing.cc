@@ -87,6 +87,12 @@ int TuringHandler::operator()(const CommandContext& ctx) {
       config.allow_stay = this->allow_stay;
 
       const auto t0 = std::chrono::steady_clock::now();
+      // Framing first so the trace below belongs to a named input.
+      act.suspend();
+      std::cout << ui::rule(
+        std::string(filepath.filename().string()) + " : " + ui::truncate_middle(s)
+      ) << "\n";
+      act.resume();
       auto r = tm->run(
         to_symbols(s),
         turing::RunOptions{
@@ -103,9 +109,6 @@ int TuringHandler::operator()(const CommandContext& ctx) {
       const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
       total_secs += secs;
       act.suspend();
-      std::cout << ui::rule(
-        std::string(filepath.filename().string()) + " : " + ui::truncate_middle(s)
-      ) << "\n";
       if (!r) {
         std::cout << ansi::format(
           ansi::fg(ansi::terminal_color::red),
@@ -115,6 +118,7 @@ int TuringHandler::operator()(const CommandContext& ctx) {
           ui::arrow(),
           ui::truncate_middle(r.error().message, 200)
         ) << "\n";
+        std::cout << "\n";
         ++n_errors;
         failed = true;
         act.resume();
@@ -212,7 +216,7 @@ int TuringHandler::operator()(const CommandContext& ctx) {
           ansi::fg(ansi::terminal_color::red), "{} reject after {} steps\n", "✗", r->steps
         );
       }
-      std::cout << "\n";
+      std::cout << "\n\n";
       act.resume();
     };
 

@@ -70,6 +70,16 @@ int RunHandler::operator()(const CommandContext& ctx) {
     double total_secs = 0.0;
     auto run = [&](std::string_view s, bool trace = false) {
       const auto t0 = std::chrono::steady_clock::now();
+      // Framing first so the trace below belongs to a named input.
+      act.suspend();
+      std::cout << ui::rule(
+        std::string(filepath.filename().string()) + " : " + ui::truncate_middle(s)
+      ) << "\n";
+      std::cout << std::format(
+        "config: accept={} start={} bottom={}\n", npda::accept_name(dpa->accept_policy()),
+        std::format("{}", dpa->start_state()), std::format("{}", dpa->stack_bottom())
+      );
+      act.resume();
       auto r = dpa->run(
         to_symbols(s),
         npda::RunOptions{
@@ -91,13 +101,6 @@ int RunHandler::operator()(const CommandContext& ctx) {
       const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
       total_secs += secs;
       act.suspend();
-      std::cout << ui::rule(
-        std::string(filepath.filename().string()) + " : " + ui::truncate_middle(s)
-      ) << "\n";
-      std::cout << std::format(
-        "config: accept={} start={} bottom={}\n", npda::accept_name(dpa->accept_policy()),
-        std::format("{}", dpa->start_state()), std::format("{}", dpa->stack_bottom())
-      );
       if (!r) {
         std::cout << ansi::format(
           ansi::fg(ansi::terminal_color::red),
@@ -107,6 +110,7 @@ int RunHandler::operator()(const CommandContext& ctx) {
           ui::arrow(),
           ui::truncate_middle(r.error().message, 200)
         ) << "\n";
+        std::cout << "\n";
         ++n_errors;
         failed = true;
         act.resume();
@@ -163,7 +167,7 @@ int RunHandler::operator()(const CommandContext& ctx) {
           r->expansions
         );
       }
-      std::cout << "\n";
+      std::cout << "\n\n";
       act.resume();
     };
 
