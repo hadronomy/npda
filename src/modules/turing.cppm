@@ -4,6 +4,7 @@ export module turing;
 import std;
 import ansi;
 import config;
+import ui;
 
 export namespace turing {
 
@@ -616,18 +617,31 @@ void TuringMachine<State, TapeSym>::emit_trace_step(
   auto sink = sink_of(opt);
   std::string out;
 
-  if (opt.trace.colors) {
-    out +=
-      ansi::format(ansi::fg(npda::config::colors::section_heading), "\n=== Step {} ===\n", step_num);
-  } else {
-    out += std::format("\n=== Step {} ===\n", step_num);
-  }
+  const auto st = [&](ansi::text_style s) { return opt.trace.colors ? s : ansi::text_style{}; };
+  ansi::text_style faint;
+  faint.em = ansi::emphasis::faint;
+  ansi::text_style bold;
+  bold.em = ansi::emphasis::bold;
 
-  if (opt.trace.colors) {
-    out += ansi::format(ansi::fg(npda::config::colors::info), "State: ");
-    out += ansi::format(ansi::fg(npda::config::colors::success), "{}\n", std::format("{}", node.s));
+  // Step card header. Title holds number plus transition only.
+  std::string title = std::format("Step {}", step_num);
+  if (rule.has_value()) {
+    const auto& r0 = rule.value();
+    title += std::format(
+      " · {} {} {}", std::format("{}", r0.from), ui::arrow(), std::format("{}", r0.to)
+    );
+  }
+  out += "\n" + ui::rule(title) + "\n";
+
+  // Current state. Bold always; green only when accepting.
+  out += ansi::format(st(faint), "state: ");
+  if (is_accepting(node.s)) {
+    out += ansi::format(
+      st(ansi::fg(npda::config::colors::success) | ansi::emphasis::bold), "{}\n",
+      std::format("{}", node.s)
+    );
   } else {
-    out += std::format("State: {}\n", std::format("{}", node.s));
+    out += ansi::format(st(bold), "{}\n", std::format("{}", node.s));
   }
 
   constexpr std::size_t kWindow = 8;
@@ -659,13 +673,14 @@ void TuringMachine<State, TapeSym>::emit_trace_step(
   };
 
   for (std::size_t tape_idx = 0; tape_idx < config_.num_tapes; ++tape_idx) {
-    const std::string tag = std::format("Tape {}: ", tape_idx + 1);
-    out += tag;
+    const std::string tag = std::format("tape{}: ", tape_idx + 1);
+    out += ansi::format(st(faint), "{}", tag);
 
     const auto& tape = node.tapes[tape_idx];
     const std::size_t head_pos = node.head_positions[tape_idx];
-    // Logical cells: the tape plus one blank where the head reads past end.
-    const std::size_t logical = tape.size() + (head_pos >= tape.size() ? 1 : 0);
+    // Logical cells: the tape plus blanks out to the head. The marker
+    // always lands on a printed cell, never in a gap.
+    const std::size_t logical = std::max(tape.size(), head_pos + 1);
     const std::size_t head_cell = head_pos;
     const std::size_t lo = (head_cell > kWindow) ? head_cell - kWindow : 0;
     const std::size_t hi = std::min(logical, head_cell + kWindow + 1);
@@ -689,10 +704,12 @@ void TuringMachine<State, TapeSym>::emit_trace_step(
         head_col = col;
       const bool is_head = (i == head_cell);
       const bool is_blank = (i >= tape.size());
-      if (is_head && opt.trace.colors) {
+      if (is_head) {
         const auto fg =
           is_blank ? npda::config::colors::success : npda::config::colors::warning;
-        out += ansi::format(ansi::fg(fg), "{}", piece);
+        out += ansi::format(st(ansi::fg(fg) | ansi::emphasis::bold), "{}", piece);
+      } else if (is_blank) {
+        out += ansi::format(st(faint), "{}", piece);
       } else {
         out += piece;
       }
@@ -708,44 +725,27 @@ void TuringMachine<State, TapeSym>::emit_trace_step(
   }
 
   if (rule.has_value()) {
-    if (opt.trace.colors) {
-      out += ansi::format(ansi::fg(npda::config::colors::info), "Rule: ");
-    } else {
-      out += "Rule: ";
-    }
-
     const auto& r = rule.value();
-    const std::string rule_str = std::format(
-      "({}, {}) → ({}, {}, {})",
-      std::format("{}", r.from),
-      join_reads(r.tapes),
-      std::format("{}", r.to),
-      join_writes(r.tapes),
+    const std::string arr = ui::arrow();
+    out += ansi::format(st(faint), "rule: ");
+    out += std::format(
+      "({}, {}) ", std::format("{}", r.from), join_reads(r.tapes)
+    );
+    out += ansi::format(
+      st(bold), "{} ({}, {}, {})", arr, std::format("{}", r.to), join_writes(r.tapes),
       join_moves(r.tapes)
     );
-
-    if (opt.trace.colors) {
-      out += ansi::format(ansi::fg(npda::config::colors::example), "{}\n", rule_str);
-    } else {
-      out += std::format("{}\n", rule_str);
-    }
+    out += "\n";
 
     if (opt.trace.explanations) {
-      const std::string explanation = std::format(
-        "In state {}, read ({}), write ({}), move heads ({}), and go to "
-        "state {}",
+      out += ansi::format(
+        st(faint), "In state {}, read ({}), write ({}), move heads ({}), and go to state {}\n",
         std::format("{}", r.from),
         join_reads(r.tapes),
         join_writes(r.tapes),
         join_moves(r.tapes),
         std::format("{}", r.to)
       );
-
-      if (opt.trace.colors) {
-        out += ansi::format(ansi::fg(npda::config::colors::info), "{}\n", explanation);
-      } else {
-        out += std::format("{}\n", explanation);
-      }
     }
   }
 
@@ -872,6 +872,11 @@ void TuringMachine<State, TapeSym>::replay_trace_path(
     for (std::size_t k = 0; k < show.size(); ++k) {
       const std::size_t i = show[k];
       if (k > 0 && i != show[k - 1] + 1) {
+        for (std::size_t j = show[k - 1] + 1; j < i; j += 50) {
+          sink(ui::rule(std::format(
+            "… step {} · {}", j, std::format("{}", nodes[node_path[j]].s)
+          )) + "\n");
+        }
         sink(std::format(
           "… ({} steps hidden, raise --trace-limit to expand)\n", i - show[k - 1] - 1
         ));
