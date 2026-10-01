@@ -225,25 +225,8 @@ just verify
 just sanitize
 ```
 
-`just format` formats all project C++ headers and sources. The configuration
-starts with Google style and sets two spacing options:
-
-```yaml
-SeparateDefinitionBlocks: Always
-WrapNamespaceBodyWithEmptyLines: Always
-```
-
-The formatter inserts blank lines between function and class definitions,
-around namespace bodies, and before a definition after a group of `using`
-declarations. `SeparateDefinitionBlocks` requires clang-format 14 or later.
-`WrapNamespaceBodyWithEmptyLines` requires clang-format 20 or later.
-`just format-check` checks formatting without changing files.
-
-To select the Homebrew formatter explicitly:
-
-```bash
-CLANG_FORMAT="$(brew --prefix llvm)/bin/clang-format" just format
-```
+`just format` formats C++ headers and sources. `just format-check` checks
+formatting without changing files.
 
 `just verify` builds the project, checks formatting and source layout, compiles
 all headers on their own, and runs the Catch2 domain and presentation tests. It also
