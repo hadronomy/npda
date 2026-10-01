@@ -1,78 +1,92 @@
-// Implement PRFHandler in the cli module.
-module cli;
+#include <chrono>
+#include <cstdint>
+#include <format>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
 
-// Import the modules below.
-import std;
-import ansi;
-import prf;
-import ui;
+#include <CLI/CLI.hpp>
 
-int PRFHandler::operator()(const CommandContext&) {
-  using namespace prf;
+#include "cli/commands.h"
+#include "prf/function.h"
+#include "prf/trace.h"
+#include "prf/trace_render.h"
+#include "terminal/ansi.h"
+#include "terminal/ui.h"
 
-  // Primitive available to the DSL.
-  auto S = succ("S");
+namespace cli {
 
-  // add with recursion over LAST argument:
-  // add(x, 0) = x
-  // add(x, y+1) = S(add(x, y))
-  // g has arity 1: g(x) = id(x)
-  // h has arity 3 with args (y, z, x): h(y, z, x) = S(z)
-  auto add = dsl::R1(
-    [](dsl::Context g) { return g.id("id"); }, [&](dsl::Context h) { return h(S, dsl::_2); }, "add"
-  );
+namespace {
 
-  // mul with recursion over LAST argument:
-  // mul(x, 0) = 0
-  // mul(x, y+1) = add(mul(x, y), x)
-  // g(x) = 0
-  // h(y, z, x) = add(z, x)
-  auto mul = dsl::R1(
-    [](dsl::Context g) { return g.Z("Z^1"); },
-    [&](dsl::Context h) { return h(add, dsl::_2, dsl::_3); },
-    "mul"
-  );
+struct PrfOptions {
+  std::vector<std::uint64_t> params;
+  prf::Trace::Mode mode = prf::Trace::Mode::kCountsOnly;
+};
 
-  // pow with recursion over LAST argument:
-  // pow(x, 0) = 1
-  // pow(x, y+1) = mul(pow(x, y), x)
-  // Build constant-1 of arity 1 as S ∘ [Z^1]
-  auto one_arity1 = [&] {
-    dsl::Context c{1};
-    return c(S, c.Z("Z^1"));
-  }();
-
-  auto pow = dsl::R1(
-    [&](dsl::Context) { return one_arity1; },
-    [&](dsl::Context h) { return h(mul, dsl::_2, dsl::_3); },
-    "pow"
-  );
-
-  prf::Trace trace(this->mode);
+int RunPrf(const PrfOptions& options, const GlobalOptions&) {
+  auto power = prf::CreatePowerFunction();
+  if (!power) {
+    ui::Error(power.error().message);
+    return 1;
+  }
+  prf::Trace trace(options.mode);
 
   {
-    std::vector<std::uint64_t> args = this->params;
+    std::vector<std::uint64_t> args = options.params;
     const auto t0 = std::chrono::steady_clock::now();
-    std::uint64_t r = (*pow)(args, trace);
+    auto result = (*power)->Evaluate(args, trace);
+    if (!result) {
+      ui::Error(result.error().message);
+      return 1;
+    }
+    const auto r = *result;
     const double secs =
-      std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-    std::cout << ui::rail(std::format("pow({})", prf::join_u64(args))) << "\n";
-    std::cout << ansi::format(
-      ansi::fg(ansi::terminal_color::green),
-      "PASS [{:7.3f}s] pow({}) = {}",
-      secs,
-      prf::join_u64(args),
-      r
-    ) << "\n";
-    trace.print(std::cout);
-    std::cout << ui::rule("result: DONE") << "\n";
-    std::cout << ansi::format(
-      ansi::fg(ansi::terminal_color::green), "{} done in {:.3f}s ({} calls)\n", "✓", secs,
-      trace.total_calls()
-    );
-    trace.clear();
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - t0)
+            .count();
+    std::cout << ui::Rail(std::format("pow({})", prf::JoinArguments(args)))
+              << "\n";
+    std::cout << ansi::Format(ansi::Fg(ansi::TerminalColor::kGreen),
+                              "PASS [{:7.3f}s] pow({}) = {}", secs,
+                              prf::JoinArguments(args), r)
+              << "\n";
+    prf::RenderTrace(trace, std::cout);
+    std::cout << ui::Rule("result: DONE") << "\n";
+    std::cout << ansi::Format(ansi::Fg(ansi::TerminalColor::kGreen),
+                              "{} done in {:.3f}s ({} calls)\n", "✓", secs,
+                              trace.TotalCalls());
     std::cout << "\n";
   }
 
   return 0;
 }
+
+}  // namespace
+
+void RegisterPrf(CLI::App& app, const GlobalOptions& options, int& exit_code) {
+  auto& sub =
+      *app.add_subcommand("prf", "execute primitive recursive functions");
+  sub.fallthrough(false);
+  sub.allow_extras(false);
+
+  auto command_options = std::make_shared<PrfOptions>();
+  sub.add_option("params", command_options->params,
+                 "the prf parameters for execution")
+      ->expected(2, 2)
+      ->required();
+  const std::map<std::string, prf::Trace::Mode> mode_map{
+      {"off", prf::Trace::Mode::kOff},
+      {"full", prf::Trace::Mode::kFull},
+      {"counts-only", prf::Trace::Mode::kCountsOnly},
+  };
+
+  sub.add_option("--mode", command_options->mode, "Trace mode")
+      ->transform(CLI::CheckedTransformer(mode_map, CLI::ignore_case)
+                      .description("off|full|counts-only"));
+  sub.callback([command_options, &options, &exit_code] {
+    exit_code = RunPrf(*command_options, options);
+  });
+}
+
+}  // namespace cli

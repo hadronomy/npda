@@ -1,0 +1,75 @@
+exit=0
+███ Input 1/1 , APf-1.txt : "aab" ██████████████████████████
+config: accept=final-state start=q1 bottom=S
+
+──────────── Step 0 ────────────────────────────────────────
+state: q1
+input: [a] a  b 
+        ^
+stack: [S]
+
+──────────── Step 1 · q1 → q1 ───────────────────────────
+state: q1
+input:  a [a] b 
+           ^
+stack: [A] S 
+rule: (q1, a, S) → (q1, push(A, S))
+
+──────────── Step 2 · q1 → q1 ───────────────────────────
+state: q1
+input:  a  a [b]
+              ^
+stack: [A] A  S 
+rule: (q1, a, A) → (q1, push(A, A))
+
+──────────── Step 3 · q1 → q2 ───────────────────────────
+state: q2
+input:  a  a  b  [END]
+                  ^
+stack: [A] S 
+rule: (q1, b, A) → (q2, push())
+
+✗ Input rejected! Showing furthest path explored (3 expansions)...
+Furthest position: 3 / 3 (0 characters remaining)
+
+──────────── Step 0 ────────────────────────────────────────
+state: q1
+input: [a] a  b 
+        ^
+stack: [S]
+
+──────────── Step 1 · q1 → q1 ───────────────────────────
+state: q1
+input:  a [a] b 
+           ^
+stack: [A] S 
+rule: (q1, a, S) → (q1, push(A, S))
+
+──────────── Step 2 · q1 → q1 ───────────────────────────
+state: q1
+input:  a  a [b]
+              ^
+stack: [A] A  S 
+rule: (q1, a, A) → (q1, push(A, A))
+
+──────────── Step 3 · q1 → q2 ───────────────────────────
+state: q2
+input:  a  a  b  [END]
+                  ^
+stack: [A] S 
+rule: (q1, b, A) → (q2, push())
+
+✗ Input rejected at this point!
+
+ℹ Exploration Tree Structure:
+└── [0] pos:0 a state:q1 [S] (1)
+    └── [1] pos:1 a state:q1 [S,A] (2)
+        └── [2] pos:2 b state:q1 [S,A,A] (3)
+            └── [3] pos:3 λ state:q2 [S,A] (2)
+PASS [TIME] aab → accepted=false expansions=3
+
+──────────── result: REJECT ────────────────────────────────
+✗ reject after 3 expansions
+
+
+Summary: 1 inputs run: 0 accepted, 1 rejected, 0 errors in TIME

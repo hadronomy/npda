@@ -1,0 +1,18 @@
+exit=0
+███ Input 1/2 , APv-2.txt : "0110" █████████████████████████
+config: accept=empty-stack start=p bottom=S
+PASS [TIME] 0110 → accepted=true expansions=13
+ witness_rules=[0,4,8,10,9,11]
+──────────── result: ACCEPT ────────────────────────────────
+✓ accept in 6 steps (13 expansions, witness 6, depth 0)
+
+
+███ Input 2/2 , APv-2.txt : "010" ██████████████████████████
+config: accept=empty-stack start=p bottom=S
+PASS [TIME] 010 → accepted=false expansions=8
+
+──────────── result: REJECT ────────────────────────────────
+✗ reject after 8 expansions
+
+
+Summary: 2 inputs run: 1 accepted, 1 rejected, 0 errors in TIME

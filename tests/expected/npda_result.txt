@@ -1,0 +1,18 @@
+exit=0
+███ Input 1/2 , APf-1.txt : "aabb" █████████████████████████
+config: accept=final-state start=q1 bottom=S
+PASS [TIME] aabb → accepted=true expansions=5
+ witness_rules=[0,1,2,3,4]
+──────────── result: ACCEPT ────────────────────────────────
+✓ accept in 5 steps (5 expansions, witness 5, depth 1)
+
+
+███ Input 2/2 , APf-1.txt : "aab" ██████████████████████████
+config: accept=final-state start=q1 bottom=S
+PASS [TIME] aab → accepted=false expansions=3
+
+──────────── result: REJECT ────────────────────────────────
+✗ reject after 3 expansions
+
+
+Summary: 2 inputs run: 1 accepted, 1 rejected, 0 errors in TIME

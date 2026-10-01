@@ -1,0 +1,185 @@
+exit=0
+tapes: 1, direction: bidirectional, mode: independent, stay: yes, blank: _
+███ Input 1/1 , anbm.turing : "aabb" ███████████████████████
+
+──────────── Step 0 ────────────────────────────────────────
+state: q0
+tape1: [a] a  b  b 
+        ^
+
+──────────── Step 1 · q0 → qScanA ───────────────────────
+state: qScanA
+tape1:  a [a] b  b 
+           ^
+rule: (q0, a) → (qScanA, a, R)
+
+──────────── Step 2 · qScanA → qScanA ───────────────────
+state: qScanA
+tape1:  a  a [b] b 
+              ^
+rule: (qScanA, a) → (qScanA, a, R)
+
+──────────── Step 3 · qScanA → qScanB ───────────────────
+state: qScanB
+tape1:  a  a  b [b]
+                 ^
+rule: (qScanA, b) → (qScanB, b, R)
+
+──────────── Step 4 · qScanB → qScanB ───────────────────
+state: qScanB
+tape1:  a  a  b  b [_]
+                    ^
+rule: (qScanB, b) → (qScanB, b, R)
+
+──────────── Step 5 · qScanB → qRewind ──────────────────
+state: qRewind
+tape1:  a  a  b [b] _ 
+                 ^
+rule: (qScanB, _) → (qRewind, _, L)
+
+──────────── Step 6 · qRewind → qRewind ─────────────────
+state: qRewind
+tape1:  a  a [b] b  _ 
+              ^
+rule: (qRewind, b) → (qRewind, b, L)
+
+──────────── Step 7 · qRewind → qRewind ─────────────────
+state: qRewind
+tape1:  a [a] b  b  _ 
+           ^
+rule: (qRewind, b) → (qRewind, b, L)
+
+──────────── Step 8 · qRewind → qRewind ─────────────────
+state: qRewind
+tape1: [a] a  b  b  _ 
+        ^
+rule: (qRewind, a) → (qRewind, a, L)
+
+──────────── Step 9 · qRewind → qRewind ─────────────────
+state: qRewind
+tape1: [_] a  a  b  b  _ 
+        ^
+rule: (qRewind, a) → (qRewind, a, L)
+
+──────────── Step 10 · qRewind → qFindA ─────────────────
+state: qFindA
+tape1:  _ [a] a  b  b  _ 
+           ^
+rule: (qRewind, _) → (qFindA, _, R)
+
+──────────── Step 11 · qFindA → qFindB ──────────────────
+state: qFindB
+tape1:  _  X [a] b  b  _ 
+              ^
+rule: (qFindA, a) → (qFindB, X, R)
+
+──────────── Step 12 · qFindB → qFindB ──────────────────
+state: qFindB
+tape1:  _  X  a [b] b  _ 
+                 ^
+rule: (qFindB, a) → (qFindB, a, R)
+
+──────────── Step 13 · qFindB → qBackLeft ───────────────
+state: qBackLeft
+tape1:  _  X [a] Y  b  _ 
+              ^
+rule: (qFindB, b) → (qBackLeft, Y, L)
+
+──────────── Step 14 · qBackLeft → qBackLeft ────────────
+state: qBackLeft
+tape1:  _ [X] a  Y  b  _ 
+           ^
+rule: (qBackLeft, a) → (qBackLeft, a, L)
+
+──────────── Step 15 · qBackLeft → qBackLeft ────────────
+state: qBackLeft
+tape1: [_] X  a  Y  b  _ 
+        ^
+rule: (qBackLeft, X) → (qBackLeft, X, L)
+
+──────────── Step 16 · qBackLeft → qFindA ───────────────
+state: qFindA
+tape1:  _ [X] a  Y  b  _ 
+           ^
+rule: (qBackLeft, _) → (qFindA, _, R)
+
+──────────── Step 17 · qFindA → qFindA ──────────────────
+state: qFindA
+tape1:  _  X [a] Y  b  _ 
+              ^
+rule: (qFindA, X) → (qFindA, X, R)
+
+──────────── Step 18 · qFindA → qFindB ──────────────────
+state: qFindB
+tape1:  _  X  X [Y] b  _ 
+                 ^
+rule: (qFindA, a) → (qFindB, X, R)
+
+──────────── Step 19 · qFindB → qFindB ──────────────────
+state: qFindB
+tape1:  _  X  X  Y [b] _ 
+                    ^
+rule: (qFindB, Y) → (qFindB, Y, R)
+
+──────────── Step 20 · qFindB → qBackLeft ───────────────
+state: qBackLeft
+tape1:  _  X  X [Y] Y  _ 
+                 ^
+rule: (qFindB, b) → (qBackLeft, Y, L)
+
+──────────── Step 21 · qBackLeft → qBackLeft ────────────
+state: qBackLeft
+tape1:  _  X [X] Y  Y  _ 
+              ^
+rule: (qBackLeft, Y) → (qBackLeft, Y, L)
+
+──────────── Step 22 · qBackLeft → qBackLeft ────────────
+state: qBackLeft
+tape1:  _ [X] X  Y  Y  _ 
+           ^
+rule: (qBackLeft, X) → (qBackLeft, X, L)
+
+──────────── Step 23 · qBackLeft → qBackLeft ────────────
+state: qBackLeft
+tape1: [_] X  X  Y  Y  _ 
+        ^
+rule: (qBackLeft, X) → (qBackLeft, X, L)
+
+──────────── Step 24 · qBackLeft → qFindA ───────────────
+state: qFindA
+tape1:  _ [X] X  Y  Y  _ 
+           ^
+rule: (qBackLeft, _) → (qFindA, _, R)
+
+──────────── Step 25 · qFindA → qFindA ──────────────────
+state: qFindA
+tape1:  _  X [X] Y  Y  _ 
+              ^
+rule: (qFindA, X) → (qFindA, X, R)
+
+──────────── Step 26 · qFindA → qFindA ──────────────────
+state: qFindA
+tape1:  _  X  X [Y] Y  _ 
+                 ^
+rule: (qFindA, X) → (qFindA, X, R)
+
+──────────── Step 27 · qFindA → qFindA ──────────────────
+state: qFindA
+tape1:  _  X  X  Y [Y] _ 
+                    ^
+rule: (qFindA, Y) → (qFindA, Y, R)
+
+──────────── Step 28 · qFindA → qFindA ──────────────────
+state: qFindA
+tape1:  _  X  X  Y  Y [_]
+                       ^
+rule: (qFindA, Y) → (qFindA, Y, R)
+
+✗ No transition available for state 'qFindA' and symbols (_)
+PASS [TIME] aabb → accepted=false steps=28
+
+──────────── result: REJECT ────────────────────────────────
+✗ reject after 28 steps
+
+
+Summary: 1 inputs run: 0 accepted, 1 rejected, 0 errors in TIME

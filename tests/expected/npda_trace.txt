@@ -1,0 +1,55 @@
+exit=0
+███ Input 1/1 , APf-1.txt : "aabb" █████████████████████████
+config: accept=final-state start=q1 bottom=S
+
+──────────── Step 0 ────────────────────────────────────────
+state: q1
+input: [a] a  b  b 
+        ^
+stack: [S]
+
+──────────── Step 1 · q1 → q1 ───────────────────────────
+state: q1
+input:  a [a] b  b 
+           ^
+stack: [A] S 
+rule: (q1, a, S) → (q1, push(A, S))
+
+──────────── Step 2 · q1 → q1 ───────────────────────────
+state: q1
+input:  a  a [b] b 
+              ^
+stack: [A] A  S 
+rule: (q1, a, A) → (q1, push(A, A))
+
+──────────── Step 3 · q1 → q2 ───────────────────────────
+state: q2
+input:  a  a  b [b]
+                 ^
+stack: [A] S 
+rule: (q1, b, A) → (q2, push())
+
+──────────── Step 4 · q2 → q2 ───────────────────────────
+state: q2
+input:  a  a  b  b  [END]
+                     ^
+stack: [S]
+rule: (q2, b, A) → (q2, push())
+
+──────────── Step 5 · q2 → q3 ───────────────────────────
+state: q3
+input:  a  a  b  b  [END]
+                     ^
+stack: [S]
+rule: (q2, ε, S) → (q3, push S)
+
+ℹ Accepting path found! Replaying 5 steps...
+
+✓ Input accepted!
+PASS [TIME] aabb → accepted=true expansions=5
+ witness_rules=[0,1,2,3,4]
+──────────── result: ACCEPT ────────────────────────────────
+✓ accept in 5 steps (5 expansions, witness 5, depth 1)
+
+
+Summary: 1 inputs run: 1 accepted, 0 rejected, 0 errors in TIME

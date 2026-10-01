@@ -27,11 +27,11 @@
 
 ## Docs
 
-This project implements a Turing Machine and a NPDA (Non-Deterministic Push Down Automata), and Primitive Recursive Functions.
+This project implements Turing machines, nondeterministic pushdown automata (NPDA), and primitive recursive functions.
 See the [docs](/docs/CC_2526_Practica2.pdf) and [npda docs](/docs/CC_2526_Practica1.pdf) pdf for more information about the assignment.
 
-The turing machine is implemented to work primaraly in simultaneous mode, with any type of expansion, and with or
-without the stay movement.
+Turing machines support multiple tapes, both operation modes, and configurable tape movement.
+The file configuration selects these settings.
 
 The input file format is as follows
 
@@ -60,11 +60,14 @@ Configuration block (optional)
 ```
 # /// config
 # num_tapes = 2
-# tape_direction = right-only        # or "bidirectional"
-# operation_mode = independent       # or "simultaneous"
-# allow_stay = true                  # true or false
+# tape_direction = right-only
+# operation_mode = independent
+# allow_stay = true
 # ///
 ```
+
+`tape_direction` accepts `right-only` or `bidirectional`. `operation_mode` accepts
+`independent` or `simultaneous`. `allow_stay` accepts `true` or `false`.
 
 Single-tape transitions
 - Format: from read to write move
@@ -129,18 +132,31 @@ q1 _ _ qf _ S _ S
 >- Use # to add comments; they’re ignored (except special config lines).
 
 
-The automata is implemented to work with, empty stack finalization and with final state finalization.
+NPDA execution supports acceptance by final state, empty stack, both, or either.
 
 > [!IMPORTANT] Location of the compiled binary
 > The build writes the binary under `./build/<platform>/<arch>/<mode>/cc`. Run `find build -name cc -type f` to locate the file.
 
 ## Requirements
 
-This project builds with xmake and LLVM Clang 23. The code uses C++23 modules and `import std`. Apple Clang and older LLVM releases do not work.
+The project uses C++23 with ordinary headers and source files. It uses
+`std::expected`, ranges, `std::format`, `std::print`, and `std::jthread`.
+The build uses LLVM Clang 23 and libc++. Named C++ modules are not required.
 
-Install the toolchain first. On macOS, run `brew install llvm xmake`. On Ubuntu 24.04, install `clang-23` and `libc++-23-dev` from apt.llvm.org. Then install xmake.
+Install LLVM and xmake from the system package manager. On macOS:
 
-Then install the remaining tools. Run `mise install` in the project root. This command provides `just`, the task runner.
+```bash
+brew install llvm xmake
+```
+
+On Ubuntu 24.04, install LLVM 23 and its libc++ packages from apt.llvm.org.
+The CI workflow lists the required packages.
+
+Run `mise install` for `just`. Xmake installs Catch2 for all tests and reproc++
+for CLI process capture. Header checks compile through Xmake. The verification
+path needs no Python runtime. Formatting requires clang-format 20 or later. Use
+clang-format 23 to match CI. Graphviz is optional and is required only for
+Turing machine image generation.
 
 ## Build
 
@@ -160,8 +176,14 @@ If the sources changed, the command rebuilds the binary. Then it runs the binary
 
 ### Available Commands
 
-- `turing <file_path> <strings...>` - Executes and sees if the given turing machine accepts the given strings
-- `npda <file_path> <strings...>` - See if the given automata accepts the given string
+- `turing <file_path> <strings...>`: run a Turing machine on the input strings.
+- `npda <file_path> <strings...>`: run an NPDA on the input strings.
+- `prf <base> <exponent>`: evaluate exponentiation as a primitive recursive function.
+- `explain <code>`: explain a parser diagnostic.
+
+Turing machine configuration comes from the input file. The CLI has no separate
+tape configuration overrides. Run `just run <command> --help` for execution and
+trace options.
 
 ### Examples
 
@@ -187,26 +209,54 @@ cc turing ./examples/turing/count-replace.turing -g
 cc prf 2 3
 ```
 
-This will execute `pow(2, 3)` and show the trace.
+This evaluates `pow(2, 3)` and shows the call counts. Add `--mode full` for the call tree.
 
 ---
 
 ```bash
-# Benchmark greedy CV generator algorithm
-cc npda ./examples/APf-1 "aabb"
+cc npda ./examples/APf/APf-1.txt "aabb"
 ```
 
-### Behavior proof
+## Formatting and verification
 
 ```bash
+just format
 just verify
+just sanitize
 ```
 
-The command runs the six behavior cases plus the full example corpus. When output changes, the command fails. Run it before you push.
+`just format` formats all project C++ headers and sources. The configuration
+starts with Google style and sets two spacing options:
 
-## Modules
+```yaml
+SeparateDefinitionBlocks: Always
+WrapNamespaceBodyWithEmptyLines: Always
+```
 
-The source is split into C++20 modules. Each domain area owns one module file under `src/modules/`. Third-party code stays in global fragments, except CLI11, which ships its own module file under `third_party/cli11/`. The build uses one flag set for every module step. Different flags break BMI loads.
+The formatter inserts blank lines between function and class definitions,
+around namespace bodies, and before a definition after a group of `using`
+declarations. `SeparateDefinitionBlocks` requires clang-format 14 or later.
+`WrapNamespaceBodyWithEmptyLines` requires clang-format 20 or later.
+`just format-check` checks formatting without changing files.
+
+To select the Homebrew formatter explicitly:
+
+```bash
+CLANG_FORMAT="$(brew --prefix llvm)/bin/clang-format" just format
+```
+
+`just verify` builds the project, checks formatting and source layout, compiles
+all headers on their own, and runs the Catch2 domain and presentation tests. It also
+compares full CLI output against fixtures and runs the example corpus.
+`just sanitize` runs these checks in a debug build with AddressSanitizer and
+UndefinedBehaviorSanitizer. It leaves the debug configuration active.
+
+To return to a release build:
+
+```bash
+xmake f -m release --sanitize=n -y
+just verify
+```
 
 ## License
 

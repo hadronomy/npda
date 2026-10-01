@@ -10,13 +10,31 @@ _default:
 build *ARGS:
     xmake build {{ARGS}}
 
+# Build and run tests. Pass arguments through to xmake test.
+test *ARGS: build
+    xmake test {{ARGS}}
+
 # Clean build artifacts
 clean:
     xmake clean
 
-# Run the behavior proof (Fails when output changes)
-verify:
-    ./tests/proof.sh $(find build -name cc -type f | head -n 1)
+# Format project-owned C++ files.
+format:
+    find src include tests -type f \( -name '*.h' -o -name '*.cc' \) -print0 | xargs -0 "${CLANG_FORMAT:-clang-format}" -i
+
+# Check formatting without changing files.
+format-check:
+    find src include tests -type f \( -name '*.h' -o -name '*.cc' \) -print0 | xargs -0 "${CLANG_FORMAT:-clang-format}" --dry-run --Werror
+
+# Check interfaces, source layout, CLI output, and the example corpus.
+verify: build format-check
+    xmake project -k compile_commands
+    xmake test
+
+# Run the same checks with address and undefined behavior sanitizers.
+sanitize:
+    xmake f -m debug --sanitize=y -y
+    just verify
 
 # Create a tarball of the project
 tar:

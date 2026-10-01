@@ -1,14 +1,13 @@
-// Run the application. Import only.
-import std;
-import app;
-import ui;
+#include <exception>
+
+#include "application.h"
+#include "terminal/ui.h"
 
 int main(int argc, char** argv) {
   try {
-    const auto app = Application();
-    return app.run(argc, argv);
+    return cli::RunApplication(argc, argv);
   } catch (const std::exception& e) {
-    ui::error(e.what());
+    ui::Error(e.what());
     return 1;
   }
 }

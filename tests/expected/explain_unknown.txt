@@ -1,0 +1,2 @@
+exit=1
+✗ Error: unknown error code 'BOGUS'

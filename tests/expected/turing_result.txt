@@ -1,0 +1,17 @@
+exit=0
+tapes: 1, direction: bidirectional, mode: independent, stay: yes, blank: _
+███ Input 1/2 , anbm.turing : "aabb" ███████████████████████
+PASS [TIME] aabb → accepted=false steps=28
+
+──────────── result: REJECT ────────────────────────────────
+✗ reject after 28 steps
+
+
+███ Input 2/2 , anbm.turing : "abb" ████████████████████████
+PASS [TIME] abb → accepted=true steps=15
+ witness_rules=[0,2,3,4,6,6,5,9,12,17,20,22,10,11,13] tape="_XYb[_]"
+──────────── result: ACCEPT ────────────────────────────────
+✓ accept in 15 steps (witness 15)
+
+
+Summary: 2 inputs run: 1 accepted, 1 rejected, 0 errors in TIME
