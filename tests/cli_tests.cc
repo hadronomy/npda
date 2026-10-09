@@ -79,37 +79,6 @@ TEST_CASE(
           "npda_diagnostics",
           {"npda", "-config", "examples/APv/APv-jueves-1.txt", "a"}
       },
-      OutputFixture{
-          "turing_result",
-          {"turing",
-           "-config",
-           "examples/turing/anbm.turing",
-           "-trace",
-           "n",
-           "aabb",
-           "abb"}
-      },
-      OutputFixture{
-          "turing_detailed_trace",
-          {"turing",
-           "-config",
-           "examples/turing/anbm.turing",
-           "-trace-limit",
-           "3",
-           "ab"}
-      },
-      OutputFixture{
-          "turing_compact_trace",
-          {"turing",
-           "-config",
-           "examples/turing/anbm.turing",
-           "-trace-view",
-           "compact",
-           "abb"}
-      },
-      OutputFixture{"prf_counts", {"prf", "2", "3"}},
-      OutputFixture{"prf_tree", {"prf", "1", "2", "-trace", "tree"}},
-      OutputFixture{"prf_off", {"prf", "2", "3", "-trace", "off"}},
       OutputFixture{"explain", {"explain", "E0006"}},
       OutputFixture{"explain_unknown", {"explain", "BOGUS"}}
   );
@@ -221,23 +190,16 @@ TEST_CASE(
     "Every example runs without crashing and produces output",
     "[cli][corpus]"
 ) {
-  const auto directory =
-      GENERATE("examples/APf", "examples/APv", "examples/turing");
-  const bool is_turing = std::string_view(directory) == "examples/turing";
+  const auto directory = GENERATE("examples/APf", "examples/APv");
   std::size_t example_count = 0;
   for (const auto& entry : std::filesystem::directory_iterator(
            test_support::SourceRoot() / directory
        )) {
-    if (entry.path().extension() != (is_turing ? ".turing" : ".txt")) continue;
+    if (entry.path().extension() != ".txt") continue;
     CAPTURE(entry.path());
     ++example_count;
     const auto result = test_support::RunCli(
-        {is_turing ? "turing" : "npda",
-         "-config",
-         entry.path().string(),
-         "-trace",
-         "y",
-         "aabb"}
+        {"npda", "-config", entry.path().string(), "-trace", "y", "aabb"}
     );
     REQUIRE(result.has_value());
     CHECK((result->exit_code == 0 || result->exit_code == 1));

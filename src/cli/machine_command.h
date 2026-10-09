@@ -20,9 +20,8 @@
 #include "diagnostics/source.h"
 #include "terminal/style.h"
 
-/// The parts that the npda and turing commands share. These are the options of
-/// the course statement, the source of the inputs, and the destination of the
-/// trace. They also include the form of each verdict and of the summary.
+/// The NPDA command options, input sources, trace output, verdicts, and
+/// summary.
 namespace cli {
 
 /// The options of a machine command. `View` gives the trace views of the

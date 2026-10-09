@@ -15,13 +15,8 @@
 #include "npda/definition.h"
 #include "npda/machine.h"
 #include "npda/parser.h"
-#include "turing/machine.h"
-#include "turing/parser.h"
-#include "turing/transition.h"
 
 namespace {
-
-const std::string kTuringText = "q f\na\na _\nq\n_\nf\nq a f a S\n";
 
 bool HasCode(const diag::DiagnosticSet& diagnostics, std::string_view code) {
   return std::ranges::any_of(diagnostics.items, [&](const diag::Diagnostic& d) {
@@ -96,70 +91,6 @@ TEST_CASE("NPDA parser reports an empty document", "[parser][npda]") {
   const auto parsed = ParseNpda("");
   CHECK_FALSE(parsed.machine.has_value());
   CHECK(parsed.diagnostics.HasErrors());
-}
-
-TEST_CASE("Turing parser returns an executable machine", "[parser][turing]") {
-  const auto parsed =
-      turing::Parse(diag::SourceFile::From("machine.turing", kTuringText));
-  REQUIRE(parsed.machine.has_value());
-  CHECK(parsed.diagnostics.items.empty());
-  CHECK(parsed.machine->Run(automata::InputSymbols("a"))->accepted);
-}
-
-TEST_CASE(
-    "Turing parser reads one write and move pair per tape",
-    "[parser][turing]"
-) {
-  const auto parsed = turing::Parse(
-      diag::SourceFile::From(
-          "two.turing",
-          "# /// config\n# num_tapes = 2\n# ///\nq f\na\na b _\nq\n_\nf\n"
-          "q a _ f b R a L\n"
-      )
-  );
-  REQUIRE(parsed.machine.has_value());
-  const auto& tapes = parsed.machine->definition().transitions.front().tapes;
-  REQUIRE(tapes.size() == 2);
-  CHECK(tapes[0].write.name() == "b");
-  CHECK(tapes[0].move == turing::HeadMove::kRight);
-  CHECK(tapes[1].write.name() == "a");
-  CHECK(tapes[1].move == turing::HeadMove::kLeft);
-}
-
-TEST_CASE(
-    "Turing parser rejects invalid and duplicate configuration",
-    "[parser][turing][configuration]"
-) {
-  const std::string configuration = GENERATE(
-      "num_tapes = 0",
-      "allow_stay = yes",
-      "num_tapes = 1\n# num_tapes = 2"
-  );
-  CAPTURE(configuration);
-  const auto parsed = turing::Parse(
-      diag::SourceFile::From(
-          "bad.turing",
-          "# /// config\n# " + configuration + "\n# ///\n" + kTuringText
-      )
-  );
-  CHECK_FALSE(parsed.machine.has_value());
-  CHECK(parsed.diagnostics.HasErrors());
-}
-
-TEST_CASE(
-    "Turing parser reports unknown configuration as a warning",
-    "[parser][turing][configuration]"
-) {
-  const auto parsed = turing::Parse(
-      diag::SourceFile::From(
-          "warn.turing",
-          "# /// config\n# unknown_key = true\n# ///\n" + kTuringText
-      )
-  );
-  REQUIRE(parsed.machine.has_value());
-  CHECK_FALSE(parsed.diagnostics.HasErrors());
-  REQUIRE(parsed.diagnostics.items.size() == 1);
-  CHECK(parsed.diagnostics.items.front().code == "C0012");
 }
 
 TEST_CASE(

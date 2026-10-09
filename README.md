@@ -27,10 +27,9 @@
 
 ## Docs
 
-This project simulates nondeterministic pushdown automata (NPDA), Turing
-machines, and primitive recursive functions. The assignments are in the
-[NPDA statement](/docs/CC_2627_Practica1.pdf) and the
-[Turing machine statement](/docs/CC_2526_Practica2.pdf).
+This project simulates nondeterministic pushdown automata (NPDA). It supports
+acceptance by final state (APf) and by empty stack (APv). The assignment is in
+the [NPDA statement](/docs/CC_2627_Practica1.pdf).
 
 ### NPDA File Format
 
@@ -59,115 +58,6 @@ it finds a shortest one. After 100000 expansions, the search stops and the
 input is undecided. Thus, an ε-loop that pushes symbols cannot make the
 program run forever.
 
-### Turing Machine File Format
-
-A Turing machine file gives the states, the symbols, the start state, the
-blank symbol, the optional accepting states, and the transition rules. A
-machine can have one tape or more. A comment starts with `#` and continues to
-the end of the line. Spaces divide the items on a line.
-
-The lines come in this order:
-
-1. The states (Q)
-2. The input symbols (Σ)
-3. The tape symbols (Γ)
-4. The start state (q0)
-5. The blank symbol (b)
-6. The accepting states (F). This line is optional.
-7. The transitions, one on each line, until the end of the file
-
-> [!NOTE]
-> If the line after b has the shape of a transition, the parser reads it as a
-> transition. Otherwise, it reads the optional F line.
-
-#### The config block
-
-The config block sets the number of tapes and other settings. It can be at any
-position in the file:
-
-```
-# /// config
-# num_tapes = 2
-# tape_direction = right-only
-# operation_mode = independent
-# allow_stay = true
-# ///
-```
-
-| Key | Values |
-| --- | --- |
-| `num_tapes` | A positive integer. The default is 1. |
-| `tape_direction` | `bidirectional` (the default) or `right-only` |
-| `operation_mode` | `independent` (the default) or `simultaneous` |
-| `allow_stay` | `true` (the default) or `false` |
-
-#### Transitions
-
-A transition for one tape has the form `from read to write move`:
-
-- `from` and `to` are states from Q.
-- `read` and `write` are tape symbols from Γ.
-- `move` is `L` (left), `R` (right), or `S` (stay).
-
-```
-q0 0 q1 1 R
-```
-
-A transition for N tapes has the form
-`from read1 ... readN to write1 move1 ... writeN moveN`. It has one read symbol
-for each tape before `to`. After `to`, it has a write symbol and a move for
-each tape. This is a transition for two tapes:
-
-```
-q0 0 1 q1 1 R 1 R
-```
-
-#### Examples
-
-A machine with one tape:
-
-```
-# states
-q0 q1 qaccept
-# input alphabet
-0 1
-# tape alphabet
-0 1 _
-# start state
-q0
-# blank symbol
-_
-# accepting states
-qaccept
-# transitions
-q0 0 q1 1 R
-q1 1 qaccept 1 S
-```
-
-A machine with two tapes:
-
-```
-# /// config
-# num_tapes = 2
-# operation_mode = simultaneous
-# allow_stay = true
-# ///
-q0 q1 qf
-0 1
-0 1 _
-q0
-_
-qf
-# transitions: from r1 r2 to w1 m1 w2 m2
-q0 0 1 q1 1 R 1 R
-q1 _ _ qf _ S _ S
-```
-
-> [!WARNING]
-> - All symbols in transitions must be in Γ.
-> - The q0 line and the b line must have exactly one item.
-> - The parser ignores comments, but it reads the lines of the config block.
-
 ## Requirements
 
 The project uses C++23 with usual headers and source files. It uses
@@ -185,8 +75,7 @@ The CI workflow lists the necessary packages.
 
 Run `mise install` to get `just`. Xmake installs Catch2 for the tests and
 reproc++ for the CLI tests. The tests do not need Python. Formatting needs
-clang-format 20 or later. CI uses clang-format 23. Graphviz is optional. Only
-the images of Turing machines need it.
+clang-format 20 or later. CI uses clang-format 23.
 
 ## Build
 
@@ -216,18 +105,16 @@ binary with the arguments. The examples below call the binary `cc`. Replace
 | Command | Use |
 | --- | --- |
 | `cc npda -config <file> [options] [inputs...]` | Run a pushdown automaton. |
-| `cc turing -config <file> [options] [inputs...]` | Run a Turing machine, or draw it with `-graph`. |
-| `cc prf <base> <exponent> [-trace counts\|tree\|off]` | Compute the power function as a primitive recursive function. |
 | `cc explain <code>` | Show the meaning of a diagnostic code and how to correct the problem. |
 
-The `npda` and `turing` commands accept the options of the assignment
-statement, and some more:
+The `npda` command accepts the options of the assignment statement and these
+additional options:
 
 | Option | Use |
 | --- | --- |
 | `-config <file>` | The machine definition. This option is necessary. |
 | `-trace y\|n` | Show how the machine runs each input. The default is `y`. |
-| `-trace-view <view>` | `detailed`, `compact`, or `tree`. Only `npda` has `tree`. The default is `detailed`. |
+| `-trace-view <view>` | `detailed`, `compact`, or `tree`. The default is `detailed`. |
 | `-trace-limit <n>` | Show a maximum of `n` configurations for each input. The default is 200. |
 | `-explain` | Explain each transition in words. |
 | `-in <file>` | Read one input from each line. The program skips blank lines. A line with only `.` is the empty string. |
@@ -254,20 +141,6 @@ APf-1.txt · final state F = {q3} · q0 = q1 · Z0 = S · 5 transitions
 
 accept  aabb  δ1 δ2 δ3 δ4 δ5
 reject  aab
-
-2 inputs · 1 accepted · 1 rejected
-```
-
-For a Turing machine, the details are the first tape and the number of steps.
-The tape starts at the first cell that is not blank and ends at the last one.
-The cell below the head is in brackets, for example `ab[c]d`.
-
-```console
-$ cc turing -config examples/turing/anbm.turing -trace n aabb abb
-anbm.turing · q0 = q0 · b = _ · F = {qacc} · 1 tape · bidirectional · independent · stay allowed · 23 transitions
-
-reject  aabb  XXYY[_]  28 steps
-accept  abb   XYb[_]  15 steps
 
 2 inputs · 1 accepted · 1 rejected
 ```
@@ -344,16 +217,6 @@ trace 0110
         └─ δ6            p      011▸0  1 1 0 S
   ...
 ```
-
-A Turing machine has only one path. Thus, its views show one step after the
-other. The detailed view draws each tape as cells, with a mark below the head.
-The compact view writes each tape as `ab[c]d`.
-
-### Graphs
-
-`-graph machine.dot` writes the Graphviz source of a Turing machine. With a
-different extension, for example `-graph machine.svg`, the program draws the
-image with the Graphviz `dot` program. Graphviz must be installed.
 
 ## Formatting and verification
 

@@ -84,7 +84,7 @@ class DiagnosticBuilder {
 /// The meaning of a diagnostic code for one type of machine.
 struct CodeInfo {
   std::string_view code;
-  /// `npda`, `turing`, or `common`.
+  /// `npda` or `common`.
   std::string_view machine;
   std::string_view title;
   /// How to correct the problem.

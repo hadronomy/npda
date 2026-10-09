@@ -56,8 +56,6 @@ template <typename T>
 
 /// Each command stores its exit status in `exit_code` when it runs.
 void RegisterNpda(CLI::App& app, int& exit_code);
-void RegisterTuring(CLI::App& app, int& exit_code);
-void RegisterPrf(CLI::App& app, int& exit_code);
 void RegisterExplain(CLI::App& app, int& exit_code);
 
 /// Parses the command line, runs the command, and returns its exit status.

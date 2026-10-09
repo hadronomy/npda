@@ -39,15 +39,14 @@ void ReportError(
     std::string label
 );
 
-/// Reads the first lines that the two machine formats share, one line for each
-/// section:
+/// Reads the NPDA definition, one line for each section:
 ///
 /// ```text
 /// Q    states
 /// Σ    input alphabet
-/// Γ    stack or tape alphabet
+/// Γ    stack alphabet
 /// q0   start state
-/// Z0   one special Γ symbol: the initial stack symbol or the blank
+/// Z0   initial stack symbol
 /// F    accepting states, optional
 /// ```
 ///

@@ -1,7 +1,0 @@
-exit=0
-anbm.turing · q0 = q0 · b = _ · F = {qacc} · 1 tape · bidirectional · independent · stay allowed · 23 transitions
-
-reject  aabb  XXYY[_]  28 steps
-accept  abb   XYb[_]  15 steps
-
-2 inputs · 1 accepted · 1 rejected

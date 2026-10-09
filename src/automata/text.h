@@ -11,7 +11,7 @@
 #include "automata/symbol.h"
 #include "terminal/style.h"
 
-/// Text forms for the output of all machines. A transition or a set of states
+/// Text forms for NPDA output. A transition or a set of states
 /// has the same form in a header, a trace, and a verdict.
 namespace automata {
 

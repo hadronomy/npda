@@ -1,4 +1,4 @@
-project_name := "PR3-PRF-2526"
+project_name := "PR1-NPDA-2627"
 dir_path := `realpath .`
 dir_name := `basename $(realpath .)`
 bin_name := "cc"
