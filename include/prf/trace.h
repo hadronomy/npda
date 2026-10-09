@@ -12,6 +12,7 @@
 
 namespace prf {
 
+/// One call that the trace recorded, and the calls that it made.
 struct TraceNode {
   std::string name;
   std::vector<std::uint64_t> args;
@@ -19,15 +20,25 @@ struct TraceNode {
   std::vector<std::unique_ptr<TraceNode>> children;
 };
 
+/// Records the calls that an evaluation makes.
 class Trace {
  public:
-  enum class Mode { kFull, kCountsOnly, kOff };
+  enum class Mode {
+    /// Records each call with its arguments and its result.
+    kTree,
+    /// Counts the calls of each function.
+    kCounts,
+    /// Records nothing.
+    kOff,
+  };
 
-  explicit Trace(Mode mode = Mode::kFull) : mode_(mode) {}
+  explicit Trace(Mode mode = Mode::kTree) : mode_(mode) {}
 
   Trace(const Trace&) = delete;
   Trace& operator=(const Trace&) = delete;
 
+  /// An open call. When the scope ends, the call closes. This occurs for a
+  /// result and for an error.
   class Scope {
    public:
     Scope(const Scope&) = delete;
@@ -47,16 +58,21 @@ class Trace {
     TraceNode* node_;
   };
 
-  // A scope closes the active call on both success and error paths.
-  [[nodiscard]] Scope Enter(std::string_view name,
-                            std::span<const std::uint64_t> arguments);
+  /// Opens a call of `name` with `arguments` below the active call.
+  [[nodiscard]] Scope Enter(
+      std::string_view name,
+      std::span<const std::uint64_t> arguments
+  );
   [[nodiscard]] std::uint64_t TotalCalls() const;
 
+  // NOLINTBEGIN(readability-identifier-naming): Google style accessors.
   [[nodiscard]] Mode mode() const { return mode_; }
 
   [[nodiscard]] const auto& roots() const { return roots_; }
 
   [[nodiscard]] const auto& counts() const { return counts_; }
+
+  // NOLINTEND(readability-identifier-naming)
 
  private:
   std::vector<std::unique_ptr<TraceNode>> roots_;

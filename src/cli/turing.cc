@@ -1,296 +1,220 @@
-#include <chrono>
 #include <cstddef>
+#include <expected>
 #include <filesystem>
 #include <format>
-#include <fstream>
-#include <iostream>
 #include <memory>
+#include <print>
 #include <string>
-#include <string_view>
-#include <utility>
-#include <vector>
 
 #include <CLI/CLI.hpp>
 
 #include "automata/symbol.h"
 #include "cli/commands.h"
-#include "diagnostics/render.h"
-#include "diagnostics/source.h"
-#include "terminal/activity.h"
-#include "terminal/ansi.h"
-#include "terminal/ui.h"
+#include "cli/machine_command.h"
+#include "terminal/capabilities.h"
+#include "terminal/style.h"
+#include "turing/definition.h"
 #include "turing/graphviz.h"
 #include "turing/machine.h"
 #include "turing/parser.h"
+#include "turing/run.h"
 #include "turing/trace.h"
 
 namespace cli {
 
 namespace {
 
+using terminal::Style;
+using terminal::Tone;
+
+constexpr std::size_t kMaxSteps = 100'000;
+
 struct TuringOptions {
-  std::filesystem::path file_path;
-  std::vector<std::string> input_strings;
-  bool trace_enabled = false;
-  bool explain = false;
-  std::size_t trace_limit = 200;
-  bool graphviz = false;
-  std::string graphviz_exe = "dot";
-  bool dot_only = false;
+  MachineOptions<turing::TraceView> machine;
+  std::filesystem::path graph;
 };
 
-int RunTuring(const TuringOptions& options, const GlobalOptions& ctx) {
-  std::filesystem::path filepath = options.file_path;
-  std::ifstream file(filepath);
+std::expected<void, turing::Error> ExportGraph(
+    const turing::Definition& definition,
+    const std::filesystem::path& path
+) {
+  if (path.extension() == ".dot") return turing::WriteDot(definition, path);
+  return turing::RenderGraph(definition, path);
+}
 
-  diag::RenderOptions opt;
-  opt.verbose = ctx.verbose;
-  terminal::Activity act(std::string("Checking ") +
-                         filepath.filename().string());
-
-  diag::SourceCache cache;
-  auto result = turing::parse::ParseWithDiagnostics(file, filepath.string());
-  const diag::SourceFile& src = cache.Insert(std::move(result.source));
-
-  // Show warnings/errors if any
-  if (!result.warnings.items.empty()) {
-    act.Dismiss();
-    diag::Render(std::cerr, cache, src.filename, result.warnings, opt);
+/// The first tape and the number of steps. The course expects the result on the
+/// first tape.
+std::string Detail(
+    const std::expected<turing::RunResult, turing::LimitReached>& result,
+    automata::Symbol blank,
+    const Style& style
+) {
+  if (!result) {
+    return style.Paint(
+        Tone::kMuted,
+        std::format("still running after {} steps", result.error().steps)
+    );
   }
+  return std::format(
+      "{}  {}",
+      turing::FormatTape(result->halted.tapes.front(), blank, style),
+      style.Paint(
+          Tone::kMuted,
+          std::format(
+              "{} {}",
+              result->steps,
+              result->steps == 1 ? "step" : "steps"
+          )
+      )
+  );
+}
 
-  if (!result.value.has_value()) {
-    act.Dismiss();
-    diag::Render(std::cerr, cache, src.filename, result.value.error(), opt);
+Verdict VerdictOf(
+    const std::expected<turing::RunResult, turing::LimitReached>& result
+) {
+  if (!result) return Verdict::kUnknown;
+  return result->accepted ? Verdict::kAccept : Verdict::kReject;
+}
+
+int RunTuring(const TuringOptions& options) {
+  const auto& machine_options = options.machine;
+  const auto source = ReadSource(machine_options.config);
+  if (!source) {
+    ReportError(source.error());
     return 1;
   }
+  const auto parsed = turing::Parse(*source);
+  ReportDiagnostics(*source, parsed.diagnostics, machine_options.verbose);
+  if (!parsed.machine) return 1;
+  const auto& machine = *parsed.machine;
+  const auto& definition = machine.definition();
+  const auto style = Style::For(terminal::OutputStream::kStdout);
 
-  if (auto& tm = result.value; result.value.has_value()) {
-    if (options.graphviz) {
-      act.Dismiss();
-      auto new_path =
-          options.file_path.filename().stem().replace_extension("png");
-      ui::Info(std::format("Writting graphviz image in {}", new_path.c_str()));
-      auto exe = options.graphviz_exe;
-      if (options.dot_only) {
-        auto res = turing::WriteGraphvizDot(tm->definition(),
-                                            new_path.replace_extension("dot"));
-        if (!res) {
-          ui::Error(res.error().message);
-          return -1;
-        }
-        return 0;
-      }
-      auto res = turing::ExportGraphvizImage(tm->definition(), new_path, exe);
-      if (!res) {
-        ui::Error(res.error().message);
-        return -1;
-      }
-      return 0;
+  std::println(
+      "{}{}{}",
+      style.Paint(Tone::kStrong, machine_options.config.filename().string()),
+      style.Separator(),
+      turing::Describe(definition, style)
+  );
+  if (!options.graph.empty()) {
+    if (auto exported = ExportGraph(definition, options.graph); !exported) {
+      ReportError(exported.error().message);
+      return 1;
     }
-
-    bool failed = false;
-    std::size_t n_accepted = 0;
-    std::size_t n_rejected = 0;
-    std::size_t n_errors = 0;
-    double total_secs = 0.0;
-    auto run = [&](std::string_view s, bool trace, std::size_t num,
-                   std::size_t total) {
-      const auto t0 = std::chrono::steady_clock::now();
-      // Framing first so the trace below belongs to a named input.
-      act.Suspend();
-      std::cout << ui::Rail(std::format("Input {}/{} , {} : \"{}\"", num, total,
-                                        filepath.filename().string(),
-                                        ui::TruncateMiddle(s)))
-                << "\n";
-      act.Resume();
-      turing::TraceOptions trace_options{.enabled = trace,
-                                         .colors = true,
-                                         .explanations = options.explain,
-                                         .step_limit = options.trace_limit};
-      turing::RunOptions run_options{.max_steps = 100000,
-                                     .track_witness = true};
-      if (trace)
-        run_options.observer = [&](const turing::ExecutionEvent& event) {
-          turing::RenderTrace(tm->definition(), event, trace_options);
-        };
-      auto r = tm->Run(automata::InputSymbols(s), run_options);
-      const double secs =
-          std::chrono::duration<double>(std::chrono::steady_clock::now() - t0)
-              .count();
-      total_secs += secs;
-      act.Suspend();
-      if (!r) {
-        std::cout << ansi::Format(ansi::Fg(ansi::TerminalColor::kRed),
-                                  "FAIL [{:7.3f}s] {} {} error: {}", secs,
-                                  ui::TruncateMiddle(s), ui::Arrow(),
-                                  ui::TruncateMiddle(r.error().message, 200))
-                  << "\n";
-        std::cout << "\n";
-        ++n_errors;
-        failed = true;
-        act.Resume();
-        return;
-      }
-
-      // Format input display - show empty string as "λ" (lambda) for clarity
-      std::string input_display = s.empty() ? "λ" : ui::TruncateMiddle(s);
-
-      // Colorize the result line. PASS means the run worked;
-      // the accepted word carries the verdict color.
-      const auto verdict =
-          r->accepted ? ansi::TerminalColor::kGreen : ansi::TerminalColor::kRed;
-      if (r->accepted)
-        ++n_accepted;
-      else
-        ++n_rejected;
-      std::cout << ansi::Format(ansi::Fg(ansi::TerminalColor::kGreen),
-                                "PASS [{:7.3f}s] ", secs)
-                << ansi::Format(ansi::Fg(verdict), "{} {} accepted={} steps={}",
-                                input_display, ui::Arrow(), r->accepted,
-                                r->steps)
-                << "\n";
-
-      if (r->witness) {
-        std::cout << ansi::Format(ansi::Fg(ansi::TerminalColor::kCyan),
-                                  " witness_rules=[");
-        for (std::size_t i = 0; i < r->witness->size(); ++i) {
-          std::cout << ansi::Format(ansi::Fg(ansi::TerminalColor::kYellow),
-                                    "{}", (*r->witness)[i]);
-          if (i + 1 < r->witness->size()) {
-            std::cout << ansi::Format(ansi::Fg(ansi::TerminalColor::kCyan),
-                                      ",");
-          }
-        }
-        std::cout << ansi::Format(ansi::Fg(ansi::TerminalColor::kCyan), "]");
-      }
-
-      // Show final tape configuration. Huge tapes print as a summary
-      // so one run cannot flood the terminal.
-      if (!r->final_tapes.empty() && !r->final_tapes[0].empty()) {
-        std::cout << ansi::Format(ansi::Fg(ansi::TerminalColor::kCyan),
-                                  " tape=\"");
-
-        const auto& tape = r->final_tapes[0];
-        std::size_t head_pos = r->final_head_positions[0];
-
-        if (tape.size() > 200) {
-          std::string plain;
-          for (std::size_t i = 0; i < tape.size(); ++i) {
-            if (i == head_pos) plain += "[";
-            plain += tape[i];
-            if (i == head_pos) plain += "]";
-          }
-          if (head_pos >= tape.size()) plain += "[ ]";
-          std::cout << ui::TruncateMiddle(plain, 80)
-                    << "\" cells=" << tape.size();
-        } else {
-          for (std::size_t i = 0; i < tape.size(); ++i) {
-            if (i == head_pos) {
-              std::cout << ansi::Format(ansi::Fg(ansi::TerminalColor::kYellow),
-                                        "[{}]", tape[i]);
-            } else {
-              std::cout << tape[i];
-            }
-          }
-
-          // Show head position if it's beyond the current tape
-          if (head_pos >= tape.size()) {
-            std::cout << ansi::Format(ansi::Fg(ansi::TerminalColor::kYellow),
-                                      "[ ]");
-          }
-
-          std::cout << "\"";
-        }
-      }
-
-      std::cout << "\n";
-      // Verdict close. Counts make the run machine-readable.
-      std::cout << ui::Rule(std::string("result: ") +
-                            (r->accepted ? "ACCEPT" : "REJECT"))
-                << "\n";
-      if (r->accepted) {
-        if (r->witness) {
-          std::cout << ansi::Format(ansi::Fg(ansi::TerminalColor::kGreen),
-                                    "{} accept in {} steps (witness {})\n", "✓",
-                                    r->steps, r->witness->size());
-        } else {
-          std::cout << ansi::Format(ansi::Fg(ansi::TerminalColor::kGreen),
-                                    "{} accept in {} steps\n", "✓", r->steps);
-        }
-      } else {
-        std::cout << ansi::Format(ansi::Fg(ansi::TerminalColor::kRed),
-                                  "{} reject after {} steps\n", "✗", r->steps);
-      }
-      std::cout << "\n\n";
-      act.Resume();
-    };
-
-    act.SetMessage(std::string("Running ") + filepath.filename().string());
-    act.Suspend();
-    turing::ShowConfiguration(tm->definition());
-    act.Resume();
-    for (std::size_t idx = 0; idx < options.input_strings.size(); ++idx) {
-      run(options.input_strings[idx], options.trace_enabled, idx + 1,
-          options.input_strings.size());
-    }
-    std::cout << std::format(
-        "Summary: {} inputs run: {} accepted, {} rejected, {} errors in "
-        "{:.3f}s\n",
-        options.input_strings.size(), n_accepted, n_rejected, n_errors,
-        total_secs);
-    if (failed)
-      act.Fail(std::string("Failed ") + filepath.filename().string());
-    else
-      act.Finish(std::string("Finished ") + filepath.filename().string());
-    return 0;
+    std::println(
+        "{} {}",
+        style.Paint(Tone::kMuted, "graph"),
+        options.graph.string()
+    );
   }
-  if (!result.value) {
-    act.Dismiss();
-    diag::Render(std::cerr, cache, src.filename, result.value.error(), opt);
+
+  const auto inputs = CollectInputs(
+      machine_options.inputs,
+      machine_options.in,
+      /*read_keyboard=*/options.graph.empty()
+  );
+  if (!inputs) {
+    ReportError(inputs.error());
     return 1;
   }
-  act.Dismiss();
-  return 0;
+  if (inputs->empty()) return 0;
+  auto trace =
+      TraceOutput::Open(machine_options.trace ? machine_options.out : "");
+  if (!trace) {
+    ReportError(trace.error());
+    return 1;
+  }
+  if (machine_options.trace || machine_options.explain) {
+    turing::WriteTransitions(
+        trace->Stream(),
+        definition,
+        trace->style(),
+        machine_options.explain
+    );
+  }
+  if (!machine_options.trace) std::println();
+
+  const turing::TraceOptions trace_options{
+      .view = machine_options.view,
+      .limit = machine_options.trace_limit,
+      .explain = machine_options.explain,
+  };
+  const auto width = InputColumnWidth(*inputs);
+  Tally tally;
+  for (const auto& text : *inputs) {
+    const auto input = automata::InputSymbols(text);
+    const auto result = machine_options.trace
+                            ? turing::TraceRun(
+                                  machine,
+                                  input,
+                                  kMaxSteps,
+                                  trace_options,
+                                  trace->Stream(),
+                                  trace->style()
+                              )
+                            : machine.Run(input, {.max_steps = kMaxSteps});
+    const auto verdict = VerdictOf(result);
+    std::println(
+        "{}",
+        FormatVerdict(
+            verdict,
+            text,
+            width,
+            Detail(result, definition.blank, style),
+            style
+        )
+    );
+    if (trace->IsFile()) {
+      const auto& file_style = trace->style();
+      std::println(
+          trace->Stream(),
+          "{}",
+          FormatVerdict(
+              verdict,
+              text,
+              width,
+              Detail(result, definition.blank, file_style),
+              file_style
+          )
+      );
+    }
+    tally.Add(verdict);
+  }
+  std::println("\n{}", tally.Summary(style));
+  return tally.AllDecided() ? 0 : 1;
 }
 
 }  // namespace
 
-void RegisterTuring(CLI::App& app, const GlobalOptions& options,
-                    int& exit_code) {
-  auto& sub = *app.add_subcommand(
-      "turing", "execute a given Turing Machine with a given string");
-  sub.fallthrough(false);
-  sub.allow_extras(false);
-
-  auto command_options = std::make_shared<TuringOptions>();
-  auto grp = sub.add_option_group("mode");
-  sub.add_option("file_path", command_options->file_path,
-                 "the Turing Machine description file path")
-      ->required()
-      ->check(CLI::ExistingFile);
-  grp->add_option("input_string", command_options->input_strings,
-                  "the string to process")
-      ->multi_option_policy(CLI::MultiOptionPolicy::TakeAll);
-  sub.add_flag("--trace,!--no-trace", command_options->trace_enabled,
-               "Enable trace mode");
-  sub.add_flag("--explain", command_options->explain,
-               "Enable explanations of transitions");
-  sub.add_option("--trace-limit", command_options->trace_limit,
-                 "Max trace steps and rows")
-      ->check(CLI::PositiveNumber);
-
-  grp->add_flag("--graphviz,-g", command_options->graphviz,
-                "Export graphviz image");
-  sub.add_option("--exe,-e", command_options->graphviz_exe,
-                 "The graphviz executable to use")
-      ->needs("--graphviz");
-  sub.add_flag("--dot-only", command_options->dot_only,
-               "Whether to only output the graphviz file and no image")
-      ->needs("--graphviz");
-  grp->require_option(1, 1);
-  sub.callback([command_options, &options, &exit_code] {
-    exit_code = RunTuring(*command_options, options);
-  });
+void RegisterTuring(CLI::App& app, int& exit_code) {
+  auto& command = AddCommand(
+      app,
+      "turing",
+      "Run a Turing machine on input strings, or draw it",
+      {
+          "cc turing -config examples/turing/anbm.turing aabb abb",
+          "cc turing -config examples/turing/anbm.turing -trace-view compact "
+          "aabb",
+          "cc turing -config examples/turing/anbm.turing -graph anbm.svg",
+      }
+  );
+  auto options = std::make_shared<TuringOptions>();
+  AddMachineOptions<turing::TraceView>(
+      command,
+      options->machine,
+      {
+          {"detailed", turing::TraceView::kDetailed},
+          {"compact", turing::TraceView::kCompact},
+      }
+  );
+  command
+      .add_option(
+          "-graph",
+          options->graph,
+          "Draw the machine: .dot for Graphviz source, .svg or .png to render"
+      )
+      ->type_name("FILE");
+  command.callback([options, &exit_code] { exit_code = RunTuring(*options); });
 }
 
 }  // namespace cli

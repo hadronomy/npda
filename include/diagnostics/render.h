@@ -1,11 +1,10 @@
 #ifndef NPDA_DIAGNOSTICS_RENDER_H_
 #define NPDA_DIAGNOSTICS_RENDER_H_
 
-#include <cstddef>
 #include <ostream>
-#include <string_view>
 
 #include "diagnostics/diagnostic.h"
+#include "diagnostics/source.h"
 
 namespace diag {
 
@@ -14,22 +13,38 @@ enum class ColorMode { kAuto, kAlways, kNever };
 enum class CharSet { kAuto, kUnicode, kAscii };
 
 struct RenderOptions {
+  /// With `kAuto`, the renderer uses color only if standard error is a terminal
+  /// that shows color.
   ColorMode color = ColorMode::kAuto;
+  /// With `kAuto`, the renderer uses Unicode only if the locale is UTF-8.
   CharSet charset = CharSet::kAuto;
-  std::size_t context_lines = 1;
-  std::size_t tab_width = 4;
-  bool links = true;  // file:// links; needs a TTY
-  bool inline_marks =
-      true;              // curly underline on the source row; needs color TTY
-  bool verbose = false;  // expand same-code groups
+  /// If true, the renderer writes all of the diagnostics in full. If false,
+  /// diagnostics with the same code become one list of locations.
+  bool verbose = false;
 };
 
-void Render(std::ostream& output, const SourceFile& source,
-            const DiagnosticSet& diagnostics,
-            const RenderOptions& options = {});
-void Render(std::ostream& output, const SourceCache& sources,
-            std::string_view filename, const DiagnosticSet& diagnostics,
-            const RenderOptions& options = {});
+/// Writes `diagnostics` with lines of `source`, in the order that the parser
+/// found them:
+///
+/// ```text
+/// █ error[E0007]: start state not in Q
+///   --> machine.txt:6:1
+///   5 │ X y
+///     │
+///   6 │ A
+///     │ ∿
+///     │ ↑ this state is not listed in Q
+///   7 │ X
+/// ```
+///
+/// If two diagnostics have the same code and labels, the renderer writes only
+/// the first.
+void Render(
+    std::ostream& output,
+    const SourceFile& source,
+    const DiagnosticSet& diagnostics,
+    const RenderOptions& options = {}
+);
 
 }  // namespace diag
 

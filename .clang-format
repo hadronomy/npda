@@ -1,5 +1,15 @@
 BasedOnStyle: Google
 Standard: c++20
+# If a call, a parameter list, or a braced initializer does not fit on one
+# line, it becomes a block. Each item and the closing bracket get a line.
+AlignAfterOpenBracket: BlockIndent
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+BinPackArguments: false
+BinPackParameters: false
+PenaltyReturnTypeOnItsOwnLine: 1000
+# A NOLINT comment works only if it stays on one line.
+CommentPragmas: '^ (IWYU pragma:|NOLINT)'
 IncludeBlocks: Regroup
 IncludeCategories:
   - Regex: '^<.*\.h>'

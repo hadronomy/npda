@@ -1,2 +1,2 @@
 exit=1
-✗ Error: unknown error code 'BOGUS'
+error: unknown error code 'BOGUS'

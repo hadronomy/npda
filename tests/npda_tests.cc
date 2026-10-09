@@ -1,4 +1,3 @@
-#include <array>
 #include <cstddef>
 #include <future>
 #include <optional>
@@ -6,280 +5,299 @@
 #include <utility>
 #include <vector>
 
-#include <catch2/catch_message.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
 #include "automata/symbol.h"
+#include "npda/definition.h"
 #include "npda/machine.h"
+#include "npda/run.h"
 
 namespace {
 
 using automata::Intern;
 using automata::Symbol;
 
-npda::Definition PushdownDefinition() {
-  return {.start_state = Intern("q"),
-          .stack_bottom = Intern("Z"),
-          .accepting_states = {Intern("f")},
-          .transitions = {
-              {Intern("q"), Intern("a"), Intern("Z"), Intern("f"), {}}}};
+/// Reads one 'a' with Z on top of the stack, pops Z, and goes to f.
+npda::Definition SingleMove(npda::Acceptance acceptance) {
+  return {
+      .start_state = Intern("q"),
+      .initial_stack_symbol = Intern("Z"),
+      .acceptance = std::move(acceptance),
+      .transitions = {
+          {.from = Intern("q"),
+           .input = Intern("a"),
+           .top = Intern("Z"),
+           .to = Intern("f"),
+           .push = {}}
+      }
+  };
 }
 
-TEST_CASE("NPDA acceptance follows the selected policy", "[npda][acceptance]") {
-  const auto policy = GENERATE(
-      npda::AcceptancePolicy::kFinalState, npda::AcceptancePolicy::kEmptyStack,
-      npda::AcceptancePolicy::kBoth, npda::AcceptancePolicy::kAny);
-  CAPTURE(npda::AcceptanceName(policy));
-  auto definition = PushdownDefinition();
-  definition.acceptance = policy;
-  SECTION("An empty stack in a final state satisfies every policy") {
-    const auto machine = npda::Machine::Create(definition);
-    REQUIRE(machine.has_value());
-    const auto result = machine->Run(automata::InputSymbols("a"));
-    REQUIRE(result.has_value());
-    CHECK(result->accepted);
+npda::Definition FinalState(std::vector<Symbol> states = {Intern("f")}) {
+  return SingleMove(npda::AcceptByFinalState{std::move(states)});
+}
+
+TEST_CASE("NPDA acceptance follows the selected mode", "[npda][acceptance]") {
+  SECTION("Final state accepts in F after the whole input") {
+    const npda::Machine machine(FinalState());
+    CHECK(machine.Run(automata::InputSymbols("a"))->Accepted());
   }
-  SECTION(
-      "An empty stack outside a final state only satisfies stack policies") {
-    definition.accepting_states.clear();
-    const auto machine = npda::Machine::Create(definition);
-    REQUIRE(machine.has_value());
-    const auto result = machine->Run(automata::InputSymbols("a"));
-    REQUIRE(result.has_value());
-    CHECK(result->accepted == (policy == npda::AcceptancePolicy::kEmptyStack ||
-                               policy == npda::AcceptancePolicy::kAny));
+  SECTION("Final state ignores an empty stack outside F") {
+    const npda::Machine machine(FinalState({}));
+    CHECK_FALSE(machine.Run(automata::InputSymbols("a"))->Accepted());
+  }
+  SECTION("Empty stack accepts in any state") {
+    const npda::Machine machine(SingleMove(npda::AcceptByEmptyStack{}));
+    CHECK(machine.Run(automata::InputSymbols("a"))->Accepted());
   }
 }
 
-TEST_CASE("NPDA acceptance requires complete input", "[npda][acceptance]") {
-  const auto machine = npda::Machine::Create(PushdownDefinition());
-  REQUIRE(machine.has_value());
+TEST_CASE("NPDA acceptance requires the whole input", "[npda][acceptance]") {
+  const npda::Machine machine(FinalState());
   const auto input = GENERATE("", "aa");
-  CAPTURE(input);
-  const auto result = machine->Run(automata::InputSymbols(input));
+  const auto result = machine.Run(automata::InputSymbols(input));
   REQUIRE(result.has_value());
-  CHECK_FALSE(result->accepted);
-  CHECK_FALSE(result->witness.has_value());
+  CHECK_FALSE(result->Accepted());
 }
 
-TEST_CASE("NPDA accepts on the last permitted expansion", "[npda][limits]") {
-  const auto machine = npda::Machine::Create(PushdownDefinition());
-  REQUIRE(machine.has_value());
+TEST_CASE("NPDA counts expansions against the limit", "[npda][limits]") {
+  const npda::Machine machine(FinalState());
   const auto input = automata::InputSymbols("a");
-  const auto result = machine->Run(input, {.max_expansions = 1});
+  const auto result = machine.Run(input, {.max_expansions = 1});
   REQUIRE(result.has_value());
-  CHECK(result->accepted);
+  CHECK(result->accepting_path == std::vector<std::size_t>{0});
   CHECK(result->expansions == 1);
-  REQUIRE(result->witness.has_value());
-  CHECK(*result->witness == std::vector<std::size_t>{0});
-  CHECK_FALSE(machine->Run(input, {.max_expansions = 0}).has_value());
+  const auto limited = machine.Run(input, {.max_expansions = 0});
+  REQUIRE_FALSE(limited.has_value());
+  CHECK(limited.error().expansions == 0);
 }
 
-TEST_CASE("NPDA witness collection is optional", "[npda][witness]") {
-  const auto machine = npda::Machine::Create(PushdownDefinition());
-  REQUIRE(machine.has_value());
-  const auto result =
-      machine->Run(automata::InputSymbols("a"), {.track_witness = false});
+TEST_CASE(
+    "NPDA accepts a start configuration with no budget",
+    "[npda][limits]"
+) {
+  const npda::Machine machine(FinalState({Intern("q")}));
+  const auto result = machine.Run({}, {.max_expansions = 0});
   REQUIRE(result.has_value());
-  CHECK(result->accepted);
-  CHECK_FALSE(result->witness.has_value());
+  CHECK(result->accepting_path == std::vector<std::size_t>{});
 }
 
-TEST_CASE("NPDA rejects invalid symbols before execution",
-          "[npda][validation]") {
-  auto definition = PushdownDefinition();
-  SECTION("The initial state must be valid") {
-    definition.start_state = {};
-    CHECK_FALSE(npda::Machine::Create(definition).has_value());
-  }
-  SECTION("Push symbols must be valid") {
-    definition.transitions.front().push = {Symbol{}};
-    CHECK_FALSE(npda::Machine::Create(definition).has_value());
-  }
-  SECTION("Input symbols must be valid") {
-    const auto machine = npda::Machine::Create(definition);
-    REQUIRE(machine.has_value());
-    CHECK_FALSE(machine->Run(std::array{Symbol{}}).has_value());
-  }
+TEST_CASE("NPDA skips moves whose top is not on the stack", "[npda][stack]") {
+  auto definition = FinalState();
+  definition.transitions.front().top = Intern("X");
+  const npda::Machine machine(definition);
+  const auto result =
+      machine.Run(automata::InputSymbols("a"), {.max_expansions = 0});
+  REQUIRE(result.has_value());
+  CHECK_FALSE(result->Accepted());
+  CHECK(result->expansions == 0);
 }
 
-TEST_CASE("NPDA runs own independent execution state", "[npda][concurrency]") {
-  const auto machine = npda::Machine::Create(PushdownDefinition());
-  REQUIRE(machine.has_value());
+TEST_CASE("NPDA pushes the first symbol as the new top", "[npda][stack]") {
+  auto definition = FinalState();
+  const auto bottom = Intern("Z");
+  const auto marker = Intern("X");
+  definition.transitions = {
+      {.from = Intern("q"),
+       .input = std::nullopt,
+       .top = bottom,
+       .to = Intern("m"),
+       .push = {marker, bottom}},
+      {.from = Intern("m"),
+       .input = Intern("a"),
+       .top = marker,
+       .to = Intern("f"),
+       .push = {}}
+  };
+  const npda::Machine machine(definition);
+  const auto result = machine.Run(automata::InputSymbols("a"));
+  REQUIRE(result.has_value());
+  CHECK(result->accepting_path == std::vector<std::size_t>{0, 1});
+}
+
+TEST_CASE("NPDA finds the shortest accepting path", "[npda][search]") {
+  auto definition = FinalState();
+  const auto start = Intern("q");
+  const auto bottom = Intern("Z");
+  const auto middle = Intern("m");
+  definition.transitions = {
+      {.from = start,
+       .input = std::nullopt,
+       .top = bottom,
+       .to = middle,
+       .push = {bottom}},
+      {.from = middle,
+       .input = std::nullopt,
+       .top = bottom,
+       .to = Intern("f"),
+       .push = {bottom}},
+      {.from = start,
+       .input = std::nullopt,
+       .top = bottom,
+       .to = Intern("f"),
+       .push = {bottom}}
+  };
+  const npda::Machine machine(definition);
+  const auto result = machine.Run({});
+  REQUIRE(result.has_value());
+  CHECK(result->accepting_path == std::vector<std::size_t>{2});
+}
+
+TEST_CASE(
+    "NPDA ε-cycles that grow the stack stop at the limit",
+    "[npda][search]"
+) {
+  auto definition = FinalState({});
+  const auto bottom = Intern("Z");
+  definition.transitions = {
+      {.from = Intern("q"),
+       .input = std::nullopt,
+       .top = bottom,
+       .to = Intern("q"),
+       .push = {bottom, bottom}}
+  };
+  const npda::Machine machine(definition);
+  const auto result = machine.Run({}, {.max_expansions = 50});
+  REQUIRE_FALSE(result.has_value());
+  CHECK(result.error().expansions == 50);
+}
+
+TEST_CASE(
+    "NPDA ε-cycles that revisit configurations terminate",
+    "[npda][search]"
+) {
+  auto definition = FinalState({});
+  const auto bottom = Intern("Z");
+  definition.transitions = {
+      {.from = Intern("q"),
+       .input = std::nullopt,
+       .top = bottom,
+       .to = Intern("q"),
+       .push = {bottom}}
+  };
+  const npda::Machine machine(definition);
+  const auto result = machine.Run({});
+  REQUIRE(result.has_value());
+  CHECK_FALSE(result->Accepted());
+  CHECK(result->expansions == 1);
+}
+
+TEST_CASE(
+    "NPDA visits report origins and applicable moves",
+    "[npda][observer]"
+) {
+  auto definition = FinalState();
+  const auto start = Intern("q");
+  const auto bottom = Intern("Z");
+  definition.transitions = {
+      {.from = start,
+       .input = Intern("a"),
+       .top = bottom,
+       .to = Intern("f"),
+       .push = {}},
+      {.from = start,
+       .input = Intern("b"),
+       .top = bottom,
+       .to = Intern("f"),
+       .push = {}},
+      {.from = start,
+       .input = std::nullopt,
+       .top = bottom,
+       .to = Intern("d"),
+       .push = {bottom}},
+      {.from = start,
+       .input = Intern("a"),
+       .top = Intern("Y"),
+       .to = Intern("f"),
+       .push = {}}
+  };
+  const npda::Machine machine(definition);
+  std::vector<std::vector<npda::Move>> moves;
+  const auto result = machine.Run(
+      automata::InputSymbols("a"),
+      {.observer = [&](const npda::Visit& visit) {
+        CHECK(visit.id == moves.size());
+        if (visit.origin) CHECK(visit.origin->parent < visit.id);
+        moves.emplace_back(visit.moves.begin(), visit.moves.end());
+      }}
+  );
+  REQUIRE(result.has_value());
+  CHECK(result->Accepted());
+  REQUIRE(moves.size() == 3);
+  REQUIRE(moves[0].size() == 2);
+  CHECK(moves[0][0].transition == 2);
+  CHECK(moves[0][0].target == 1);
+  CHECK(moves[0][1].transition == 0);
+  CHECK(moves[0][1].target == 2);
+  CHECK(moves[1].empty());
+  CHECK(moves[2].empty());
+}
+
+TEST_CASE("NPDA moves name configurations reached before", "[npda][observer]") {
+  auto definition = FinalState();
+  const auto start = Intern("q");
+  const auto bottom = Intern("Z");
+  definition.transitions = {
+      {.from = start,
+       .input = std::nullopt,
+       .top = bottom,
+       .to = start,
+       .push = {bottom}},
+  };
+  const npda::Machine machine(definition);
+  std::vector<npda::Move> moves;
+  const auto result = machine.Run(
+      automata::InputSymbols("a"),
+      {.observer = [&](const npda::Visit& visit) {
+        moves.insert(moves.end(), visit.moves.begin(), visit.moves.end());
+      }}
+  );
+  REQUIRE(result.has_value());
+  CHECK_FALSE(result->Accepted());
+  REQUIRE(moves.size() == 1);
+  CHECK(moves[0].target == 0);
+  CHECK(moves[0].repeated);
+}
+
+TEST_CASE("NPDA runs are independent", "[npda][concurrency]") {
+  const npda::Machine machine(FinalState());
   const auto input = automata::InputSymbols("a");
-  auto concurrent = std::async(
-      std::launch::async, [&machine, &input] { return machine->Run(input); });
-  const auto first = machine->Run(input);
+  auto concurrent =
+      std::async(std::launch::async, [&] { return machine.Run(input); });
+  const auto first = machine.Run(input);
   const auto second = concurrent.get();
   REQUIRE(first.has_value());
   REQUIRE(second.has_value());
-  CHECK(first->accepted);
-  CHECK(second->accepted);
-  CHECK(first->witness == second->witness);
+  CHECK(first->accepting_path == second->accepting_path);
 }
 
-TEST_CASE("NPDA breadth-first search returns the shortest witness",
-          "[npda][search]") {
-  auto definition = PushdownDefinition();
-  const auto state = Intern("q");
-  const auto end = Intern("f");
-  const auto middle = Intern("m");
-  definition.transitions = {
-      {state, std::nullopt, std::nullopt, state, {}},
-      {state, std::nullopt, std::nullopt, end, {}},
-      {state, std::nullopt, std::nullopt, middle, {}},
-      {middle, std::nullopt, std::nullopt, end, {Intern("X")}}};
-  const auto machine = npda::Machine::Create(definition);
-  REQUIRE(machine.has_value());
-  const auto breadth = machine->Run({});
-  const auto depth =
-      machine->Run({}, {.search_order = npda::SearchOrder::kDepthFirst});
-  REQUIRE(breadth.has_value());
-  REQUIRE(depth.has_value());
-  CHECK(breadth->accepted);
-  CHECK(depth->accepted);
-  REQUIRE(breadth->witness.has_value());
-  REQUIRE(depth->witness.has_value());
-  CHECK(*breadth->witness == std::vector<std::size_t>{1});
-  CHECK(*depth->witness == std::vector<std::size_t>{2, 3});
-}
-
-TEST_CASE("NPDA pushes the first symbol as the new stack top",
-          "[npda][stack]") {
-  auto definition = PushdownDefinition();
+TEST_CASE("NPDA handles a wide ε frontier", "[npda][search][regression]") {
+  auto definition = FinalState();
+  const auto start = Intern("q");
   const auto bottom = Intern("Z");
-  definition.transitions = {
-      {Intern("q"), std::nullopt, bottom, Intern("m"), {Intern("X"), bottom}},
-      {Intern("m"), Intern("a"), Intern("X"), Intern("f"), {}}};
-  const auto machine = npda::Machine::Create(definition);
-  REQUIRE(machine.has_value());
-  const auto result = machine->Run(automata::InputSymbols("a"));
-  REQUIRE(result.has_value());
-  CHECK(result->accepted);
-  CHECK(result->stack_depth == 1);
-}
-
-TEST_CASE("NPDA epsilon cycles terminate and count revisits",
-          "[npda][search]") {
-  auto definition = PushdownDefinition();
-  definition.accepting_states.clear();
-  definition.transitions = {
-      {Intern("q"), std::nullopt, std::nullopt, Intern("q"), {}}};
-  const auto machine = npda::Machine::Create(definition);
-  REQUIRE(machine.has_value());
-  const auto result = machine->Run({}, {.max_expansions = 1});
-  REQUIRE(result.has_value());
-  CHECK_FALSE(result->accepted);
-  CHECK(result->expansions == 1);
-}
-
-TEST_CASE("NPDA handles a large epsilon frontier before a consuming transition",
-          "[npda][search][regression]") {
-  auto definition = PushdownDefinition();
   definition.transitions.clear();
   for (std::size_t i = 0; i < 65538; ++i) {
-    definition.transitions.push_back({Intern("q"),
-                                      std::nullopt,
-                                      std::nullopt,
-                                      Intern("wide-" + std::to_string(i)),
-                                      {}});
+    definition.transitions.push_back(
+        {.from = start,
+         .input = std::nullopt,
+         .top = bottom,
+         .to = Intern("wide-" + std::to_string(i)),
+         .push = {bottom}}
+    );
   }
   definition.transitions.push_back(
-      {Intern("q"), Intern("a"), Intern("Z"), Intern("f"), {}});
-  const auto machine = npda::Machine::Create(std::move(definition));
-  REQUIRE(machine.has_value());
-  std::size_t events = 0;
-  bool valid_node_indices = true;
-  const auto result = machine->Run(
-      automata::InputSymbols("a"),
-      {.max_expansions = 65539,
-       .observer = [&](const npda::ExecutionEvent& event) {
-         valid_node_indices &= event.node_index < event.nodes.size();
-         ++events;
-       }});
-  REQUIRE(result.has_value());
-  CHECK(result->accepted);
-  REQUIRE(result->witness.has_value());
-  CHECK(*result->witness == std::vector<std::size_t>{65538});
-  CHECK(valid_node_indices);
-  CHECK(events > 65538);
-}
-
-TEST_CASE("NPDA observer nodes have complete predecessor edges",
-          "[npda][observer]") {
-  const auto machine = npda::Machine::Create(PushdownDefinition());
-  REQUIRE(machine.has_value());
-  std::vector<npda::EventKind> events;
+      {.from = start,
+       .input = Intern("a"),
+       .top = bottom,
+       .to = Intern("f"),
+       .push = {}}
+  );
+  const npda::Machine machine(std::move(definition));
   const auto result =
-      machine->Run(automata::InputSymbols("a"),
-                   {.observer = [&](const npda::ExecutionEvent& event) {
-                     REQUIRE(event.node_index < event.nodes.size());
-                     const auto& node = event.nodes[event.node_index];
-                     if (node.predecessor) {
-                       CHECK(node.predecessor->node_index < event.node_index);
-                       CHECK(node.predecessor->transition_index == 0);
-                     } else {
-                       CHECK(event.node_index == 0);
-                     }
-                     events.push_back(event.kind);
-                   }});
+      machine.Run(automata::InputSymbols("a"), {.max_expansions = 65539});
   REQUIRE(result.has_value());
-  CHECK(result->accepted);
-  CHECK(events == std::vector{npda::EventKind::kStep, npda::EventKind::kStep,
-                              npda::EventKind::kAccepted});
-}
-
-TEST_CASE("NPDA accepts an initial configuration with no expansion budget",
-          "[npda][limits][witness]") {
-  auto definition = PushdownDefinition();
-  definition.accepting_states.push_back(definition.start_state);
-  const auto machine = npda::Machine::Create(definition);
-  REQUIRE(machine.has_value());
-  const auto result = machine->Run({}, {.max_expansions = 0});
-  REQUIRE(result.has_value());
-  CHECK(result->accepted);
-  CHECK(result->expansions == 0);
-  REQUIRE(result->witness.has_value());
-  CHECK(result->witness->empty());
-}
-
-TEST_CASE("NPDA ignores stack mismatches without using expansion budget",
-          "[npda][limits]") {
-  auto definition = PushdownDefinition();
-  definition.transitions.front().stack_top = Intern("X");
-  const auto machine = npda::Machine::Create(definition);
-  REQUIRE(machine.has_value());
-  const auto result =
-      machine->Run(automata::InputSymbols("a"), {.max_expansions = 0});
-  REQUIRE(result.has_value());
-  CHECK_FALSE(result->accepted);
-  CHECK(result->expansions == 0);
-}
-
-TEST_CASE("NPDA options stay fixed throughout a run", "[npda][observer]") {
-  const auto machine = npda::Machine::Create(PushdownDefinition());
-  REQUIRE(machine.has_value());
-  npda::RunOptions options{.max_expansions = 1};
-  options.observer = [&](const npda::ExecutionEvent&) {
-    options.max_expansions = 0;
-    options.track_witness = false;
-  };
-  const auto result = machine->Run(automata::InputSymbols("a"), options);
-  REQUIRE(result.has_value());
-  CHECK(result->accepted);
-  REQUIRE(result->witness.has_value());
-  CHECK(*result->witness == std::vector<std::size_t>{0});
-}
-
-TEST_CASE("NPDA rejects an invalid search order at the public interface",
-          "[npda][validation]") {
-  const auto machine = npda::Machine::Create(PushdownDefinition());
-  REQUIRE(machine.has_value());
-  const auto result =
-      machine->Run({}, {.search_order = static_cast<npda::SearchOrder>(-1)});
-  REQUIRE_FALSE(result.has_value());
-  CHECK(result.error().message == "invalid search order");
+  CHECK(result->accepting_path == std::vector<std::size_t>{65538});
 }
 
 }  // namespace

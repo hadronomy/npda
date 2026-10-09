@@ -18,13 +18,20 @@
 namespace prf {
 
 std::expected<std::uint64_t, Error> Function::Evaluate(
-    std::span<const std::uint64_t> arguments, Trace& trace) const {
-  if (arguments.size() != arity()) {
+    std::span<const std::uint64_t> arguments,
+    Trace& trace
+) const {
+  if (arguments.size() != Arity()) {
     return std::unexpected(
-        Error{std::format("Arity mismatch for '{}': expected {}, got {}",
-                          name(), arity(), arguments.size())});
+        Error{std::format(
+            "Arity mismatch for '{}': expected {}, got {}",
+            Name(),
+            Arity(),
+            arguments.size()
+        )}
+    );
   }
-  auto scope = trace.Enter(name(), arguments);
+  auto scope = trace.Enter(Name(), arguments);
   auto result = DoEvaluate(arguments, trace);
   if (result) scope.SetResult(*result);
   return result;
@@ -38,13 +45,15 @@ class Zero final : public Function {
       : arity_(arity),
         name_(name.empty() ? std::format("Z^{}", arity) : std::move(name)) {}
 
-  std::size_t arity() const override { return arity_; }
+  std::size_t Arity() const override { return arity_; }
 
-  std::string_view name() const override { return name_; }
+  std::string_view Name() const override { return name_; }
 
  private:
-  std::expected<std::uint64_t, Error> DoEvaluate(std::span<const std::uint64_t>,
-                                                 Trace&) const override {
+  std::expected<std::uint64_t, Error> DoEvaluate(
+      std::span<const std::uint64_t>,
+      Trace&
+  ) const override {
     return 0;
   }
 
@@ -56,13 +65,15 @@ class Successor final : public Function {
  public:
   explicit Successor(std::string name) : name_(std::move(name)) {}
 
-  std::size_t arity() const override { return 1; }
+  std::size_t Arity() const override { return 1; }
 
-  std::string_view name() const override { return name_; }
+  std::string_view Name() const override { return name_; }
 
  private:
   std::expected<std::uint64_t, Error> DoEvaluate(
-      std::span<const std::uint64_t> arguments, Trace&) const override {
+      std::span<const std::uint64_t> arguments,
+      Trace&
+  ) const override {
     if (arguments.front() == std::numeric_limits<std::uint64_t>::max()) {
       return std::unexpected(Error{"Successor overflow on std::uint64_t"});
     }
@@ -77,16 +88,20 @@ class Projection final : public Function {
   Projection(std::size_t index, std::size_t arity, std::string name)
       : index_(index),
         arity_(arity),
-        name_(name.empty() ? std::format("P_{}^{}", index, arity)
-                           : std::move(name)) {}
+        name_(
+            name.empty() ? std::format("P_{}^{}", index, arity)
+                         : std::move(name)
+        ) {}
 
-  std::size_t arity() const override { return arity_; }
+  std::size_t Arity() const override { return arity_; }
 
-  std::string_view name() const override { return name_; }
+  std::string_view Name() const override { return name_; }
 
  private:
   std::expected<std::uint64_t, Error> DoEvaluate(
-      std::span<const std::uint64_t> arguments, Trace&) const override {
+      std::span<const std::uint64_t> arguments,
+      Trace&
+  ) const override {
     return arguments[index_ - 1];
   }
 
@@ -97,30 +112,35 @@ class Projection final : public Function {
 
 class Composition final : public Function {
  public:
-  Composition(FunctionPtr outer, std::vector<FunctionPtr> inner,
-              std::string name)
+  Composition(
+      FunctionPtr outer,
+      std::vector<FunctionPtr> inner,
+      std::string name
+  )
       : outer_(std::move(outer)),
         inner_(std::move(inner)),
         name_(std::move(name)) {
     if (name_.empty()) {
-      name_ = std::format("C({}∘[", outer_->name());
+      name_ = std::format("C({}∘[", outer_->Name());
       for (std::size_t i = 0; i < inner_.size(); ++i) {
         if (i != 0) name_ += ", ";
-        name_ += inner_[i]->name();
+        name_ += inner_[i]->Name();
       }
       name_ += "])";
     }
   }
 
-  std::size_t arity() const override {
-    return inner_.empty() ? 0 : inner_.front()->arity();
+  std::size_t Arity() const override {
+    return inner_.empty() ? 0 : inner_.front()->Arity();
   }
 
-  std::string_view name() const override { return name_; }
+  std::string_view Name() const override { return name_; }
 
  private:
   std::expected<std::uint64_t, Error> DoEvaluate(
-      std::span<const std::uint64_t> arguments, Trace& trace) const override {
+      std::span<const std::uint64_t> arguments,
+      Trace& trace
+  ) const override {
     std::vector<std::uint64_t> values;
     values.reserve(inner_.size());
     for (const auto& function : inner_) {
@@ -141,17 +161,21 @@ class PrimitiveRecursion final : public Function {
   PrimitiveRecursion(FunctionPtr base, FunctionPtr step, std::string name)
       : base_(std::move(base)),
         step_(std::move(step)),
-        name_(name.empty()
-                  ? std::format("R_last({}, {})", base_->name(), step_->name())
-                  : std::move(name)) {}
+        name_(
+            name.empty()
+                ? std::format("R_last({}, {})", base_->Name(), step_->Name())
+                : std::move(name)
+        ) {}
 
-  std::size_t arity() const override { return base_->arity() + 1; }
+  std::size_t Arity() const override { return base_->Arity() + 1; }
 
-  std::string_view name() const override { return name_; }
+  std::string_view Name() const override { return name_; }
 
  private:
   std::expected<std::uint64_t, Error> DoEvaluate(
-      std::span<const std::uint64_t> arguments, Trace& trace) const override {
+      std::span<const std::uint64_t> arguments,
+      Trace& trace
+  ) const override {
     const auto fixed_arguments = arguments.first(arguments.size() - 1);
     auto result = base_->Evaluate(fixed_arguments, trace);
     if (!result) return std::unexpected(result.error());
@@ -181,43 +205,57 @@ FunctionPtr MakeSuccessor(std::string name) {
   return std::make_shared<Successor>(std::move(name));
 }
 
-std::expected<FunctionPtr, Error> CreateProjection(std::size_t index,
-                                                   std::size_t arity,
-                                                   std::string name) {
+std::expected<FunctionPtr, Error> CreateProjection(
+    std::size_t index,
+    std::size_t arity,
+    std::string name
+) {
   if (index == 0 || index > arity)
     return std::unexpected(Error{"Projection index out of range"});
   return std::make_shared<Projection>(index, arity, std::move(name));
 }
 
 std::expected<FunctionPtr, Error> CreateComposition(
-    FunctionPtr outer, std::vector<FunctionPtr> inner, std::string name) {
+    FunctionPtr outer,
+    std::vector<FunctionPtr> inner,
+    std::string name
+) {
   if (!outer)
     return std::unexpected(Error{"Composition: outer function is null"});
-  if (std::ranges::any_of(
-          inner, [](const FunctionPtr& function) { return !function; })) {
+  if (std::ranges::any_of(inner, [](const FunctionPtr& function) {
+        return !function;
+      })) {
     return std::unexpected(Error{"Composition: null inner function"});
   }
   if (!inner.empty() &&
       std::ranges::any_of(inner, [&](const FunctionPtr& function) {
-        return function->arity() != inner.front()->arity();
+        return function->Arity() != inner.front()->Arity();
       })) {
     return std::unexpected(Error{"Composition: mismatched inner arities"});
   }
-  if (outer->arity() != inner.size())
+  if (outer->Arity() != inner.size())
     return std::unexpected(Error{"Composition: outer arity mismatch"});
-  return std::make_shared<Composition>(std::move(outer), std::move(inner),
-                                       std::move(name));
+  return std::make_shared<Composition>(
+      std::move(outer),
+      std::move(inner),
+      std::move(name)
+  );
 }
 
-std::expected<FunctionPtr, Error> CreateRecursion(FunctionPtr base,
-                                                  FunctionPtr step,
-                                                  std::string name) {
+std::expected<FunctionPtr, Error> CreateRecursion(
+    FunctionPtr base,
+    FunctionPtr step,
+    std::string name
+) {
   if (!base || !step)
     return std::unexpected(Error{"PrimitiveRecursion: null function"});
-  if (step->arity() != base->arity() + 2)
+  if (step->Arity() != base->Arity() + 2)
     return std::unexpected(Error{"PrimitiveRecursion: arity mismatch"});
-  return std::make_shared<PrimitiveRecursion>(std::move(base), std::move(step),
-                                              std::move(name));
+  return std::make_shared<PrimitiveRecursion>(
+      std::move(base),
+      std::move(step),
+      std::move(name)
+  );
 }
 
 std::expected<FunctionPtr, Error> CreatePowerFunction() {

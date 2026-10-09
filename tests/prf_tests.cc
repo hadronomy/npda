@@ -12,9 +12,11 @@
 namespace {
 
 TEST_CASE("PRF exponentiation is independent of trace mode", "[prf][trace]") {
-  const auto mode =
-      GENERATE(prf::Trace::Mode::kOff, prf::Trace::Mode::kCountsOnly,
-               prf::Trace::Mode::kFull);
+  const auto mode = GENERATE(
+      prf::Trace::Mode::kOff,
+      prf::Trace::Mode::kCounts,
+      prf::Trace::Mode::kTree
+  );
   CAPTURE(static_cast<int>(mode));
   const auto power = prf::CreatePowerFunction();
   REQUIRE(power.has_value());
@@ -24,7 +26,7 @@ TEST_CASE("PRF exponentiation is independent of trace mode", "[prf][trace]") {
   REQUIRE(result.has_value());
   CHECK(*result == 8);
   CHECK((trace.TotalCalls() == 0) == (mode == prf::Trace::Mode::kOff));
-  CHECK(trace.roots().empty() == (mode != prf::Trace::Mode::kFull));
+  CHECK(trace.roots().empty() == (mode != prf::Trace::Mode::kTree));
 }
 
 TEST_CASE("PRF evaluation checks argument arity", "[prf][validation]") {
@@ -32,7 +34,8 @@ TEST_CASE("PRF evaluation checks argument arity", "[prf][validation]") {
   REQUIRE(power.has_value());
   prf::Trace trace;
   CHECK_FALSE(
-      (*power)->Evaluate(std::array<std::uint64_t, 1>{2}, trace).has_value());
+      (*power)->Evaluate(std::array<std::uint64_t, 1>{2}, trace).has_value()
+  );
   CHECK(trace.roots().empty());
 }
 
@@ -40,7 +43,9 @@ TEST_CASE("PRF trace scopes close after arithmetic failure", "[prf][trace]") {
   prf::Trace trace;
   const auto successor = prf::MakeSuccessor();
   const auto overflow = successor->Evaluate(
-      std::array{std::numeric_limits<std::uint64_t>::max()}, trace);
+      std::array{std::numeric_limits<std::uint64_t>::max()},
+      trace
+  );
   REQUIRE_FALSE(overflow.has_value());
   const auto result =
       successor->Evaluate(std::array<std::uint64_t, 1>{0}, trace);
@@ -52,8 +57,10 @@ TEST_CASE("PRF trace scopes close after arithmetic failure", "[prf][trace]") {
   CHECK(trace.roots()[1]->result == 1);
 }
 
-TEST_CASE("PRF construction checks indices, dependencies, and arity",
-          "[prf][validation]") {
+TEST_CASE(
+    "PRF construction checks indices, dependencies, and arity",
+    "[prf][validation]"
+) {
   const auto successor = prf::MakeSuccessor();
   SECTION("Projection indices are one-based") {
     CHECK_FALSE(prf::CreateProjection(0, 1).has_value());

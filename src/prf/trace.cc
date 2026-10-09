@@ -38,10 +38,12 @@ void Trace::Scope::Leave() {
   }
 }
 
-Trace::Scope Trace::Enter(std::string_view name,
-                          std::span<const std::uint64_t> arguments) {
+Trace::Scope Trace::Enter(
+    std::string_view name,
+    std::span<const std::uint64_t> arguments
+) {
   if (mode_ != Mode::kOff) ++counts_[std::string(name)];
-  if (mode_ != Mode::kFull) return Scope(*this, nullptr);
+  if (mode_ != Mode::kTree) return Scope(*this, nullptr);
   auto node = std::make_unique<TraceNode>();
   node->name = name;
   node->args.assign(arguments.begin(), arguments.end());

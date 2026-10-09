@@ -3,14 +3,27 @@
 
 #include <span>
 #include <string>
+#include <string_view>
 
-#include "turing/machine.h"
+#include "turing/transition.h"
 
 namespace turing {
 
-[[nodiscard]] std::string JoinReads(std::span<const TapeTransition> tapes);
-[[nodiscard]] std::string JoinWrites(std::span<const TapeTransition> tapes);
-[[nodiscard]] std::string JoinMoves(std::span<const TapeTransition> tapes);
+/// Returns one field of all the tape actions, with a separator between them.
+/// For the reads of a rule with two tapes, the result is `a,b`. Moves use the
+/// letters of the file.
+[[nodiscard]] std::string JoinReads(
+    std::span<const TapeAction> tapes,
+    std::string_view separator = ","
+);
+[[nodiscard]] std::string JoinWrites(
+    std::span<const TapeAction> tapes,
+    std::string_view separator = ","
+);
+[[nodiscard]] std::string JoinMoves(
+    std::span<const TapeAction> tapes,
+    std::string_view separator = ","
+);
 
 }  // namespace turing
 

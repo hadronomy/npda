@@ -2,11 +2,8 @@
 #define NPDA_DIAGNOSTICS_DIAGNOSTIC_H_
 
 #include <algorithm>
-#include <cstddef>
-#include <functional>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -14,85 +11,88 @@
 
 namespace diag {
 
-enum class Severity { kError, kWarning, kNote, kHelp };
+enum class Severity { kError, kWarning };
 
-struct DiagnosticLabel {
-  SourceSpan span{};
-  bool primary = true;
+/// A message about one part of the source text.
+struct Label {
+  SourceSpan span;
   std::string message;
-  int order = 0;  // paint sequence when labels share a line
 };
 
+/// One problem in a source file.
 struct Diagnostic {
   Severity severity = Severity::kError;
+  /// A code that does not change, for example `E0007`. `cc explain` gives the
+  /// meaning of each code.
   std::string code;
   std::string message;
-  std::vector<DiagnosticLabel> labels;
+  std::vector<Label> labels;
+  /// Advice that the renderer writes below the source lines.
   std::vector<std::string> notes;
-
-  // File key for multi-source renders. Empty means the source under render.
-  [[nodiscard]] std::string_view file() const {
-    for (const auto& lab : labels)
-      if (!lab.span.file.empty()) return lab.span.file;
-    return {};
-  }
 };
-
-class DiagnosticBuilder;
 
 struct DiagnosticSet {
   std::vector<Diagnostic> items;
 
   [[nodiscard]] bool HasErrors() const {
-    return std::any_of(items.begin(), items.end(), [](const Diagnostic& d) {
-      return d.severity == Severity::kError;
+    return std::ranges::any_of(items, [](const Diagnostic& diagnostic) {
+      return diagnostic.severity == Severity::kError;
     });
   }
-
-  void Emit(DiagnosticBuilder builder);
 };
 
+/// Makes a diagnostic one part at a time:
+///
+/// ```cpp
+/// diag::Error("E0007", "start state not in Q")
+///     .Label(span, "this state is not listed in Q")
+///     .Emit(diagnostics);
+/// ```
 class DiagnosticBuilder {
  public:
-  friend struct DiagnosticSet;
+  DiagnosticBuilder(Severity severity, std::string code, std::string message)
+      : diagnostic_{
+            .severity = severity,
+            .code = std::move(code),
+            .message = std::move(message),
+            .labels = {},
+            .notes = {},
+        } {}
 
-  DiagnosticBuilder(std::string code, std::string message,
-                    Severity severity = Severity::kError) {
-    d_.severity = severity;
-    d_.code = std::move(code);
-    d_.message = std::move(message);
-  }
-
-  DiagnosticBuilder& Label(SourceSpan span, std::string message,
-                           bool primary = true, int order = 0) {
-    d_.labels.push_back(DiagnosticLabel{.span = std::move(span),
-                                        .primary = primary,
-                                        .message = std::move(message),
-                                        .order = order});
+  DiagnosticBuilder& Label(SourceSpan span, std::string message) {
+    diagnostic_.labels.push_back({.span = span, .message = std::move(message)});
     return *this;
   }
 
   DiagnosticBuilder& Note(std::string note) {
-    d_.notes.push_back(std::move(note));
+    diagnostic_.notes.push_back(std::move(note));
     return *this;
   }
 
-  void Emit(DiagnosticSet& dx) { dx.items.push_back(std::move(d_)); }
+  void Emit(DiagnosticSet& diagnostics) {
+    diagnostics.items.push_back(std::move(diagnostic_));
+  }
 
  private:
-  Diagnostic d_;
+  Diagnostic diagnostic_;
 };
 
 [[nodiscard]] DiagnosticBuilder Error(std::string code, std::string message);
+
 [[nodiscard]] DiagnosticBuilder Warning(std::string code, std::string message);
 
+/// The meaning of a diagnostic code for one type of machine.
 struct CodeInfo {
   std::string_view code;
+  /// `npda`, `turing`, or `common`.
   std::string_view machine;
   std::string_view title;
+  /// How to correct the problem.
   std::string_view hint;
 };
 
+/// Returns the entries for `code`, one for each type of machine that uses the
+/// code. Empty for an unknown code.
 [[nodiscard]] std::vector<CodeInfo> Explain(std::string_view code);
 
 }  // namespace diag

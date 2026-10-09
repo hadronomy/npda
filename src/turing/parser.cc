@@ -1,445 +1,250 @@
 #include "turing/parser.h"
 
-#include <algorithm>
-#include <cctype>
-#include <cstdio>
-#include <expected>
-#include <istream>
+#include <cstddef>
+#include <format>
 #include <optional>
 #include <string>
-#include <string_view>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
-#include "automata/symbol.h"
 #include "diagnostics/diagnostic.h"
 #include "diagnostics/source.h"
-#include "parsing/lexer.h"
+#include "parsing/reader.h"
 #include "turing/config_parser.h"
 #include "turing/machine.h"
+#include "turing/transition.h"
 
-namespace turing::parse {
-
-using automata::Symbol;
-using lex::AddSimpleError;
-using lex::AddSymbolError;
-using lex::LexedDocument;
-using lex::LineHasTokens;
-using lex::NextNonempty;
-using lex::ReadAll;
-using lex::Token;
-using lex::TokenLine;
-using lex::ToSet;
+namespace turing {
 
 namespace {
 
-[[nodiscard]] bool LooksLikeSingleTapeTransition(
-    const std::vector<Token>& tokens, const std::unordered_set<Symbol>& q,
-    const std::unordered_set<Symbol>& g) {
-  if (tokens.size() != 5) return false;
+using parsing::Line;
+using parsing::SymbolSet;
+using parsing::Token;
 
-  const auto& from = tokens[0];
-  const auto& read = tokens[1];
-  const auto& to = tokens[2];
-  const auto& write = tokens[3];
-  const auto& move = tokens[4];
-  const std::string_view move_text = automata::SymbolName(move.text);
+/// Reads the rules of a machine with N tapes. A rule has 3N + 2 tokens:
+///
+/// ```text
+/// from  read1 .. readN  to  write1 move1 .. writeN moveN
+/// ```
+///
+/// With one tape, this is the usual `from read to write move`.
+class RuleParser {
+ public:
+  RuleParser(
+      std::size_t num_tapes,
+      const SymbolSet& states,
+      const SymbolSet& tape_alphabet,
+      diag::DiagnosticSet& diagnostics
+  )
+      : num_tapes_(num_tapes),
+        states_(states),
+        tape_alphabet_(tape_alphabet),
+        diagnostics_(diagnostics) {}
 
-  if (q.count(from.text) == 0) return false;
-  if (g.count(read.text) == 0) return false;  // Γ
-  if (q.count(to.text) == 0) return false;
-  if (g.count(write.text) == 0) return false;
-  if (move_text != "L" && move_text != "R" && move_text != "S") return false;
+  [[nodiscard]] std::size_t Arity() const { return 3 * num_tapes_ + 2; }
 
-  return true;
-}
-
-[[nodiscard]] bool LooksLikeMultiTapeTransition(
-    const std::vector<Token>& tokens, const std::unordered_set<Symbol>& q,
-    const std::unordered_set<Symbol>& g, std::size_t num_tapes) {
-  // Expect: from read1 ... readN to write1 move1 write2 move2 ... writeN moveN
-  const std::size_t expected_size = 2 + num_tapes * 3;
-  if (tokens.size() != expected_size) return false;
-
-  const auto& from = tokens[0];
-  if (q.count(from.text) == 0) return false;
-
-  const std::size_t to_idx = 1 + num_tapes;
-  if (to_idx >= tokens.size()) return false;
-  const auto& to = tokens[to_idx];
-  if (q.count(to.text) == 0) return false;
-
-  // read symbols
-  for (std::size_t i = 0; i < num_tapes; ++i) {
-    if (1 + i >= tokens.size()) return false;
-    if (g.count(tokens[1 + i].text) == 0) return false;
+  /// Returns true if the line is a correct rule. Reports nothing.
+  [[nodiscard]] bool Matches(const Line& line) const {
+    if (line.tokens.size() != Arity()) return false;
+    const Fields fields = Split(line);
+    if (!states_.contains(fields.from.symbol) ||
+        !states_.contains(fields.to.symbol)) {
+      return false;
+    }
+    for (std::size_t tape = 0; tape < num_tapes_; ++tape) {
+      if (!tape_alphabet_.contains(fields.Read(tape).symbol) ||
+          !tape_alphabet_.contains(fields.Write(tape).symbol) ||
+          !ParseHeadMove(fields.Move(tape).symbol.name())) {
+        return false;
+      }
+    }
+    return true;
   }
 
-  // write/move pairs
-  for (std::size_t i = 0; i < num_tapes; ++i) {
-    const std::size_t pair_base = 1 + num_tapes + 1 + 2 * i;
-    if (pair_base + 1 >= tokens.size()) return false;
-    const auto& write = tokens[pair_base];
-    const auto& move = tokens[pair_base + 1];
-    const std::string_view move_text = automata::SymbolName(move.text);
-    if (g.count(write.text) == 0) return false;
-    if (move_text != "L" && move_text != "R" && move_text != "S") return false;
+  /// Reads one rule and reports each bad field. The result is correct only if
+  /// the function reported nothing.
+  std::optional<Transition> Parse(const Line& line) {
+    if (line.tokens.size() != Arity()) {
+      parsing::ReportError(
+          diagnostics_,
+          "E0010",
+          std::format("transition must have {} parts", Arity()),
+          line.span,
+          num_tapes_ == 1 ? "expected: from read to write move"
+                          : "expected: from read1..readN to write1 move1 .. "
+                            "writeN moveN"
+      );
+      return std::nullopt;
+    }
+    const Fields fields = Split(line);
+    CheckState(fields.from, "E0011", "unknown 'from' state");
+    CheckState(fields.to, "E0014", "unknown 'to' state");
+    Transition rule{
+        .from = fields.from.symbol,
+        .tapes = {},
+        .to = fields.to.symbol
+    };
+    for (std::size_t tape = 0; tape < num_tapes_; ++tape) {
+      CheckSymbol(fields.Read(tape), "E0012", "unknown read symbol");
+      CheckSymbol(fields.Write(tape), "E0015", "unknown write symbol");
+      const Token& move = fields.Move(tape);
+      const auto head_move = ParseHeadMove(move.symbol.name());
+      if (!head_move) {
+        parsing::ReportError(
+            diagnostics_,
+            "E0019",
+            "invalid move direction",
+            move.span,
+            "must be L, R, or S"
+        );
+      }
+      rule.tapes.push_back(
+          {.read = fields.Read(tape).symbol,
+           .write = fields.Write(tape).symbol,
+           .move = head_move.value_or(HeadMove::kStay)}
+      );
+    }
+    return rule;
   }
 
-  return true;
-}
+ private:
+  struct Fields {
+    const std::vector<Token>& tokens;
+    std::size_t num_tapes;
+    const Token& from;
+    const Token& to;
+
+    [[nodiscard]] const Token& Read(std::size_t tape) const {
+      return tokens[1 + tape];
+    }
+
+    [[nodiscard]] const Token& Write(std::size_t tape) const {
+      return tokens[num_tapes + 2 + 2 * tape];
+    }
+
+    [[nodiscard]] const Token& Move(std::size_t tape) const {
+      return tokens[num_tapes + 3 + 2 * tape];
+    }
+  };
+
+  [[nodiscard]] Fields Split(const Line& line) const {
+    return {
+        .tokens = line.tokens,
+        .num_tapes = num_tapes_,
+        .from = line.tokens.front(),
+        .to = line.tokens[num_tapes_ + 1]
+    };
+  }
+
+  void CheckState(const Token& token, std::string code, std::string message) {
+    if (states_.contains(token.symbol)) return;
+    parsing::ReportError(
+        diagnostics_,
+        std::move(code),
+        std::move(message),
+        token.span,
+        "state not in Q"
+    );
+  }
+
+  void CheckSymbol(const Token& token, std::string code, std::string message) {
+    if (tape_alphabet_.contains(token.symbol)) return;
+    parsing::ReportError(
+        diagnostics_,
+        std::move(code),
+        std::move(message),
+        token.span,
+        "symbol not in Γ"
+    );
+  }
+
+  std::size_t num_tapes_;
+  const SymbolSet& states_;
+  const SymbolSet& tape_alphabet_;
+  diag::DiagnosticSet& diagnostics_;
+};
 
 }  // namespace
 
-[[nodiscard]] ParseResult ParseWithDiagnostics(std::istream& is,
-                                               std::string filename) {
-  ParseResult out;
-  out.source = diag::SourceFile::From(filename, ReadAll(is));
-  const auto st = lex::Lex(out.source);
-  const diag::SourceSpan eof = lex::EofSpan(out.source);
+ParseResult Parse(const diag::SourceFile& source) {
+  auto [config, diagnostics] = ParseConfig(source);
+  ParseResult result{
+      .diagnostics = std::move(diagnostics),
+      .machine = std::nullopt
+  };
+  parsing::Reader reader(source, result.diagnostics);
+  const auto states = reader.ReadSet("Q");
+  const auto input_alphabet = reader.ReadSet("Σ");
+  const auto tape_alphabet = reader.ReadSet("Γ");
 
-  diag::DiagnosticSet dx;
-
-  std::size_t i = 0;
-  MachineConfig config;
-
-  // Parse structured configuration
-  auto config_result = ParseConfiguration(out.source);
-  config = config_result.config;
-
-  // Accumulate configuration diagnostics
-  for (auto& diag : config_result.diagnostics.items) {
-    dx.items.push_back(std::move(diag));
+  const auto start =
+      reader.ReadSingle("q0", "E0005", "invalid q0 line", "the start state");
+  if (start && !states.contains(start->symbol)) {
+    parsing::ReportError(
+        result.diagnostics,
+        "E0007",
+        "start state not in Q",
+        start->span,
+        "this state is not listed in Q"
+    );
+  }
+  const auto blank = reader.ReadSingle(
+      "b",
+      "E0006",
+      "invalid blank symbol line",
+      "the blank symbol"
+  );
+  if (blank && !tape_alphabet.contains(blank->symbol)) {
+    parsing::ReportError(
+        result.diagnostics,
+        "E0008",
+        "blank symbol not in Γ",
+        blank->span,
+        "this symbol is not listed in Γ"
+    );
+  }
+  if (blank && input_alphabet.contains(blank->symbol)) {
+    parsing::ReportError(
+        result.diagnostics,
+        "E0018",
+        "blank symbol cannot be in Σ",
+        blank->span,
+        "this symbol is listed in Σ"
+    );
   }
 
-  // 1) Q (states)
-  std::vector<Token> state_tokens;
-  const std::optional<std::size_t> states_line = NextNonempty(st, i);
-  if (!lex::RequireLine(dx, states_line, "Q", eof)) {
-    state_tokens = {};
-  } else {
-    state_tokens = st.lines[*states_line].tokens;
-    i = *states_line + 1;
-    if (state_tokens.empty()) {
-      AddSimpleError(dx, "E0002", "empty set Q",
-                     st.lines[*states_line].line_span,
-                     "no states found on this line");
-    }
+  RuleParser rules(config.num_tapes, states, tape_alphabet, result.diagnostics);
+  auto accepting = reader.ReadAcceptingStates(
+      states,
+      [&](const Line& line) { return rules.Matches(line); },
+      [&](const Line& line) { return line.tokens.size() == rules.Arity(); }
+  );
+  std::vector<Transition> transitions;
+  for (const Line& line : reader.Rest()) {
+    if (auto rule = rules.Parse(line)) transitions.push_back(*std::move(rule));
   }
 
-  // 2) Σ (input alphabet)
-  std::vector<Token> input_symbol_tokens;
-  const std::optional<std::size_t> input_alphabet_line = NextNonempty(st, i);
-  if (!lex::RequireLine(dx, input_alphabet_line, "Σ", eof)) {
-    input_symbol_tokens = {};
-  } else {
-    input_symbol_tokens = st.lines[*input_alphabet_line].tokens;
-    i = *input_alphabet_line + 1;
-    if (input_symbol_tokens.empty()) {
-      AddSimpleError(dx, "E0003", "empty alphabet Σ",
-                     st.lines[*input_alphabet_line].line_span,
-                     "no input symbols found");
-    }
+  if (result.diagnostics.HasErrors() || !start || !blank) return result;
+  auto machine = Machine::Create(
+      {.config = config,
+       .start_state = start->symbol,
+       .blank = blank->symbol,
+       .accepting_states = std::move(accepting).value_or(std::vector<Symbol>{}),
+       .transitions = std::move(transitions)}
+  );
+  if (!machine) {
+    parsing::ReportError(
+        result.diagnostics,
+        "E0017",
+        "failed to build Turing machine",
+        reader.LastSpan(),
+        machine.error().message
+    );
+    return result;
   }
-
-  // 3) Γ (tape alphabet)
-  std::vector<Token> tape_symbol_tokens;
-  const std::optional<std::size_t> storage_alphabet_line = NextNonempty(st, i);
-  if (!lex::RequireLine(dx, storage_alphabet_line, "Γ", eof)) {
-    tape_symbol_tokens = {};
-  } else {
-    tape_symbol_tokens = st.lines[*storage_alphabet_line].tokens;
-    i = *storage_alphabet_line + 1;
-    if (tape_symbol_tokens.empty()) {
-      AddSimpleError(dx, "E0004", "empty tape alphabet Γ",
-                     st.lines[*storage_alphabet_line].line_span,
-                     "no tape symbols found");
-    }
-  }
-
-  // Build sets
-  const auto states = ToSet(state_tokens);
-  const auto input_alphabet = ToSet(input_symbol_tokens);
-  const auto tape_alphabet = ToSet(tape_symbol_tokens);
-
-  // 4) q0 (start state)
-  Token start_state_token{automata::Intern("<q0?>"), eof};
-  const std::optional<std::size_t> start_state_line = NextNonempty(st, i);
-  if (!lex::RequireLine(dx, start_state_line, "q0", eof)) {
-    // keep default placeholder
-  } else {
-    const TokenLine& start_state_tokens = st.lines[*start_state_line];
-    i = *start_state_line + 1;
-    if (start_state_tokens.tokens.size() != 1) {
-      AddSimpleError(dx, "E0005", "invalid q0 line",
-                     start_state_tokens.line_span,
-                     "expected exactly one token (the start state)");
-      if (!start_state_tokens.tokens.empty())
-        start_state_token = start_state_tokens.tokens.front();
-    } else {
-      start_state_token = start_state_tokens.tokens[0];
-    }
-    if (states.count(start_state_token.text) == 0) {
-      AddSymbolError(dx, "E0007", "start state not in Q", start_state_token,
-                     "this state is not listed in Q");
-    }
-  }
-
-  // 5) b (blank symbol)
-  Token blank_symbol_token{automata::Intern("<b?>"), eof};
-  const std::optional<std::size_t> blank_symbol_line = NextNonempty(st, i);
-  if (!lex::RequireLine(dx, blank_symbol_line, "b", eof)) {
-    // keep default
-  } else {
-    const TokenLine& blank_tokens = st.lines[*blank_symbol_line];
-    i = *blank_symbol_line + 1;
-    if (blank_tokens.tokens.size() != 1) {
-      AddSimpleError(dx, "E0006", "invalid blank symbol line",
-                     blank_tokens.line_span,
-                     "expected exactly one token (the blank symbol)");
-      if (!blank_tokens.tokens.empty())
-        blank_symbol_token = blank_tokens.tokens.front();
-    } else {
-      blank_symbol_token = blank_tokens.tokens[0];
-    }
-    if (tape_alphabet.count(blank_symbol_token.text) == 0) {
-      AddSymbolError(dx, "E0008", "blank symbol not in Γ", blank_symbol_token,
-                     "this symbol is not listed in Γ");
-    }
-    if (input_alphabet.count(blank_symbol_token.text) == 1) {
-      AddSymbolError(dx, "E0018", "blank symbol cannot be in Σ",
-                     blank_symbol_token, "this symbol is listed in Σ");
-    }
-  }
-
-  // 6) F (accepting states) - optional
-  std::vector<Token> accepting_state_tokens;
-  bool has_accepting_states = false;
-  const std::optional<std::size_t> accepting_states_line = NextNonempty(st, i);
-  if (accepting_states_line.has_value()) {
-    const TokenLine& accepting_tokens = st.lines[*accepting_states_line];
-
-    // Check if this looks like transitions or accepting states
-    bool is_transition = false;
-    if (config.num_tapes == 1) {
-      is_transition = LooksLikeSingleTapeTransition(accepting_tokens.tokens,
-                                                    states, tape_alphabet);
-    } else {
-      is_transition = LooksLikeMultiTapeTransition(
-          accepting_tokens.tokens, states, tape_alphabet, config.num_tapes);
-    }
-
-    if (!is_transition) {
-      // A line is an F line only if every token names a known state.
-      // A transition-shaped line stays a transition, so typos in rules
-      // report transition errors instead of F errors. Any other line is
-      // neither: report its unknown tokens and skip it.
-      const bool all_states = std::ranges::all_of(
-          accepting_tokens.tokens,
-          [&](const Token& t) { return states.contains(t.text); });
-      if (all_states) {
-        has_accepting_states = true;
-        accepting_state_tokens = accepting_tokens.tokens;
-        i = *accepting_states_line + 1;
-      } else {
-        // Short of transition arity: cannot be a rule. Report unknown
-        // tokens and skip the line. Longer lines fall through to the
-        // transitions loop, which reports per-field errors.
-        const std::size_t arity =
-            (config.num_tapes == 1) ? 5 : 2 + config.num_tapes * 3;
-        if (accepting_tokens.tokens.size() != arity) {
-          for (const auto& t : accepting_tokens.tokens) {
-            if (states.count(t.text) == 0) {
-              AddSymbolError(dx, "E0009", "invalid accepting states line", t,
-                             "unknown state '" +
-                                 std::string(automata::SymbolName(t.text)) +
-                                 "'",
-                             "F must contain only states from Q");
-            }
-          }
-          i = *accepting_states_line + 1;
-        }
-      }
-    }
-  }
-
-  // 7) Transitions
-  std::vector<Transition> rules;
-  if (i < st.lines.size()) {
-    rules.reserve(st.lines.size() - i);
-  }
-
-  for (std::size_t k = i; k < st.lines.size(); ++k) {
-    const TokenLine& l = st.lines[k];
-    if (!LineHasTokens(l)) continue;
-
-    const auto& t = l.tokens;
-
-    if (config.num_tapes == 1) {
-      // Single tape transition: from read to write move
-      if (t.size() != 5) {
-        AddSimpleError(dx, "E0010", "transition must have exactly 5 parts",
-                       l.line_span, "expected: from read to write move");
-        continue;  // recover by skipping this line
-      }
-
-      const Token& from = t[0];
-      const Token& read = t[1];
-      const Token& to = t[2];
-      const Token& write = t[3];
-      const Token& move = t[4];
-      const std::string_view move_text = automata::SymbolName(move.text);
-
-      // bad_* reshape nothing here: unknown fields are hard errors
-      // and the rule is still recorded for diagnostics.
-      if (states.count(from.text) == 0) {
-        AddSymbolError(dx, "E0011", "unknown 'from' state", from,
-                       "state not in Q");
-      }
-      if (tape_alphabet.count(read.text) == 0) {
-        AddSymbolError(dx, "E0012", "unknown read symbol", read,
-                       "symbol not in Γ");
-      }
-      if (states.count(to.text) == 0) {
-        AddSymbolError(dx, "E0014", "unknown 'to' state", to, "state not in Q");
-      }
-      if (tape_alphabet.count(write.text) == 0) {
-        AddSymbolError(dx, "E0015", "unknown write symbol", write,
-                       "symbol not in Γ");
-      }
-      if (move_text != "L" && move_text != "R" && move_text != "S") {
-        AddSymbolError(dx, "E0019", "invalid move direction", move,
-                       "must be L, R, or S");
-      }
-
-      // Build arity-1 multi rule (even for invalids to aid recovery)
-      Direction dir = Direction::kStay;
-      if (const auto d = FromChar(move_text)) {
-        dir = *d;
-      }
-
-      Transition rule;
-      rule.from_state = from.text;
-      rule.to_state = to.text;
-      rule.tapes = {{read.text, write.text, dir}};
-
-      rules.push_back(std::move(rule));
-    } else {
-      // Multi-tape transition
-      const std::size_t expected_size = 2 + config.num_tapes * 3;
-      if (t.size() != expected_size) {
-        AddSimpleError(
-            dx, "E0010", "multi-tape transition must have correct format",
-            l.line_span,
-            "expected: from read1 ... readN to write1 move1 ... writeN moveN");
-        continue;
-      }
-
-      const Token& from = t[0];
-      if (states.count(from.text) == 0) {
-        AddSymbolError(dx, "E0011", "unknown 'from' state", from,
-                       "state not in Q");
-        continue;
-      }
-
-      const std::size_t to_idx = 1 + config.num_tapes;
-      const Token& to = t[to_idx];
-      if (states.count(to.text) == 0) {
-        AddSymbolError(dx, "E0014", "unknown 'to' state", to, "state not in Q");
-        continue;
-      }
-
-      Transition rule;
-      rule.from_state = from.text;
-      rule.to_state = to.text;
-      rule.tapes.reserve(config.num_tapes);
-      std::vector<Symbol> reads(config.num_tapes);
-
-      bool valid = true;
-
-      // Parse read symbols
-      for (std::size_t tape_idx = 0; tape_idx < config.num_tapes; ++tape_idx) {
-        const std::size_t read_idx = 1 + tape_idx;
-        if (read_idx >= t.size()) {
-          valid = false;
-          break;
-        }
-        const Token& read = t[read_idx];
-        if (tape_alphabet.count(read.text) == 0) {
-          AddSymbolError(dx, "E0012", "unknown read symbol", read,
-                         "symbol not in Γ");
-          valid = false;
-        } else {
-          reads[tape_idx] = read.text;
-        }
-      }
-
-      // Parse (write_i, move_i) pairs after 'to'
-      for (std::size_t tape_idx = 0; tape_idx < config.num_tapes; ++tape_idx) {
-        const std::size_t pair_base = 1 + config.num_tapes + 1 + 2 * tape_idx;
-        if (pair_base + 1 >= t.size()) {
-          valid = false;
-          break;
-        }
-        const Token& write = t[pair_base];
-        const Token& move = t[pair_base + 1];
-        const std::string_view move_text = automata::SymbolName(move.text);
-
-        Symbol write_sym{};
-        if (tape_alphabet.count(write.text) == 0) {
-          AddSymbolError(dx, "E0015", "unknown write symbol", write,
-                         "symbol not in Γ");
-          valid = false;
-        } else {
-          write_sym = write.text;
-        }
-
-        Direction dir = Direction::kStay;
-        if (const auto d = FromChar(move_text)) {
-          dir = *d;
-        } else {
-          AddSymbolError(dx, "E0019", "invalid move direction", move,
-                         "must be L, R, or S");
-          valid = false;
-        }
-        rule.tapes.push_back({reads[tape_idx], write_sym, dir});
-      }
-
-      if (valid) {
-        rules.push_back(std::move(rule));
-      }
-    }
-  }
-
-  // Build Turing Machine regardless; suppress returning it if errors exist
-  Definition definition;
-  definition.config = config;
-  definition.start_state = start_state_token.text;
-  definition.blank_symbol = blank_symbol_token.text;
-
-  if (has_accepting_states && !accepting_state_tokens.empty()) {
-    std::vector<Symbol> f;
-    f.reserve(accepting_state_tokens.size());
-    for (const auto& t : accepting_state_tokens) f.push_back(t.text);
-    definition.accepting_states = std::move(f);
-  }
-
-  definition.transitions = std::move(rules);
-
-  auto built = Machine::Create(std::move(definition));
-  if (!built) {
-    // Report as an error but still include prior diagnostics
-    AddSimpleError(dx, "E0017", "failed to build Turing Machine",
-                   st.lines.empty() ? eof : st.lines.back().line_span,
-                   built.error().message);
-  }
-
-  if (dx.HasErrors()) {
-    return {std::unexpected(std::move(dx)), std::move(out.source), {}};
-  }
-  return {std::expected<Machine, diag::DiagnosticSet>(std::move(*built)),
-          std::move(out.source), std::move(dx)};
+  result.machine = *std::move(machine);
+  return result;
 }
 
-}  // namespace turing::parse
+}  // namespace turing

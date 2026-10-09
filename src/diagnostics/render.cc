@@ -3,14 +3,13 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <cctype>
-#include <cstdlib>
+#include <cstddef>
 #include <filesystem>
-#include <functional>
-#include <iostream>
+#include <format>
 #include <map>
-#include <ranges>
+#include <ostream>
 #include <set>
+#include <span>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -27,652 +26,441 @@ namespace diag {
 
 namespace {
 
-bool ColorEnabled() {
-  return terminal::CapabilitiesFor(terminal::OutputStream::kStderr).color;
-}
+/// The number of source lines that the renderer shows before and after each
+/// labeled line.
+constexpr std::size_t kContextLines = 1;
+constexpr std::size_t kTabWidth = 4;
+/// The number of locations that a collapsed group lists. A count replaces the
+/// other locations.
+constexpr std::size_t kMaxLocationsListed = 3;
 
-// Resolve Auto against the terminal. Explicit modes pass through.
-[[nodiscard]] bool ResolveColor(ColorMode mode) {
-  if (mode == ColorMode::kAlways) return true;
-  if (mode == ColorMode::kNever) return false;
-  return ColorEnabled();
-}
+constexpr std::string_view kDim = "\x1b[2m";
+constexpr std::string_view kReset = "\x1b[0m";
+constexpr std::string_view kCurlyUnderline = "\x1b[4:3m";
+constexpr std::string_view kUnderlineOff = "\x1b[59m\x1b[24m";
 
 struct Glyphs {
-  const char* vbar;      // │ |
-  const char* arrow;     // -->
-  char32_t under;        // ∿ ^
-  char32_t msg;          // ↑ ^
-  char32_t sec;          // - -
-  const char* mtop;      // ╭ `
-  const char* mmid;      // ├ |
-  const char* mbot;      // ╰ `
-  const char* mhead;     // ▶ >
-  const char* rail;      // █ !
-  const char* ellipsis;  // … ...
-  const char* ddash;     // ── --
+  std::string_view rail;
+  std::string_view arrow;
+  std::string_view bar;
+  std::string_view mark;
+  std::string_view pointer;
+  std::string_view branch;
+  std::string_view last;
+  std::string_view dash;
+  std::string_view ellipsis;
 };
 
-[[nodiscard]] const Glyphs& GlyphsFor(bool unicode) {
-  static constexpr Glyphs kUni{"│", "-->", U'∿', U'↑', U'-', "╭",
-                               "├", "╰",   "▶",  "█",  "…",  "──"};
-  static constexpr Glyphs kAsc{"|", "-->", U'^', U'^', U'-',  "`",
-                               "|", "`",   ">",  "!",  "...", "--"};
-  return unicode ? kUni : kAsc;
-}
-
-// Terminal capability probe. Runs once per process.
-const terminal::Capabilities& ProbeTerminal() {
-  return terminal::CapabilitiesFor(terminal::OutputStream::kStderr);
-}
-
-struct Resolved {
-  bool color = false;
-  bool unicode = true;
-  const Glyphs* g = &GlyphsFor(true);
-  bool links = false;
-  bool marks = false;
+constexpr Glyphs kUnicode{
+    .rail = "█",
+    .arrow = "-->",
+    .bar = "│",
+    .mark = "∿",
+    .pointer = "↑",
+    .branch = "├",
+    .last = "╰",
+    .dash = "──",
+    .ellipsis = "…",
 };
 
-[[nodiscard]] Resolved ResolveOpt(const RenderOptions& opt) {
-  const terminal::Capabilities& t = ProbeTerminal();
-  const bool color = ResolveColor(opt.color);
-  const bool unicode = opt.charset == CharSet::kUnicode ||
-                       (opt.charset == CharSet::kAuto && t.utf8);
-  Resolved r;
-  r.color = color;
-  r.unicode = unicode;
-  r.g = &GlyphsFor(unicode);
-  r.links = opt.links && t.tty;
-  r.marks = opt.inline_marks && color && t.tty && unicode;
-  return r;
-}
+constexpr Glyphs kAscii{
+    .rail = "!",
+    .arrow = "-->",
+    .bar = "|",
+    .mark = "^",
+    .pointer = "^",
+    .branch = "|",
+    .last = "`",
+    .dash = "--",
+    .ellipsis = "...",
+};
 
-// Underline color per severity. Mirrors the foreground palette, brightened.
-[[nodiscard]] std::string_view SevUnderColor(Severity s, bool color) {
-  if (!color) return "";
-  switch (s) {
-    case Severity::kError:
-      return "\x1b[58;5;9m";
-    case Severity::kWarning:
-      return "\x1b[58;5;11m";
-    case Severity::kNote:
-      return "\x1b[58;5;12m";
-    case Severity::kHelp:
-      return "\x1b[58;5;10m";
-  }
-  return "";
-}
+/// What the output can use at its destination.
+struct Features {
+  bool color;
+  const Glyphs* glyphs;
+  /// OSC 8 hyperlinks from each location to its file.
+  bool links;
+  /// A curly underline below the labeled text in the source line.
+  bool curly_underline;
+};
 
-// Expand tabs to display columns. map[i] holds the display column of byte i.
-[[nodiscard]] std::string ExpandTabs(std::string_view line,
-                                     std::size_t tab_width,
-                                     std::vector<std::size_t>& map) {
-  if (tab_width == 0) tab_width = 1;
-  std::string out;
-  out.reserve(line.size());
-  map.resize(line.size() + 1);
-  std::size_t col = 0;
-  for (std::size_t i = 0; i < line.size(); ++i) {
-    map[i] = col;
-    if (line[i] == '\t') {
-      const std::size_t next = ((col / tab_width) + 1) * tab_width;
-      out.append(next - col, ' ');
-      col = next;
-    } else {
-      out.push_back(line[i]);
-      ++col;
-    }
-  }
-  map[line.size()] = col;
-  return out;
-}
-
-// Wrap a location in an OSC 8 hyperlink. Falls back to plain text.
-[[nodiscard]] std::string LinkLocation(std::string_view filename,
-                                       std::size_t line, std::size_t col,
-                                       bool active) {
-  const std::string text = std::string(filename) + ":" + std::to_string(line) +
-                           ":" + std::to_string(col);
-  if (!active) return text;
-  char host[256] = {};
-  if (gethostname(host, sizeof(host)) != 0) return text;
-  std::error_code ec;
-  const std::string abs = std::filesystem::absolute(filename, ec).string();
-  if (ec) return text;
-  return "\x1b]8;;file://" + std::string(host) + abs + "#" +
-         std::to_string(line) + "\x1b\\" + text + "\x1b]8;;\x1b\\";
-}
-
-namespace ansi {
-
-[[nodiscard]] constexpr std::string_view Red(bool c) {
-  return c ? "\x1b[31m" : "";
-}
-
-[[nodiscard]] constexpr std::string_view Yellow(bool c) {
-  return c ? "\x1b[33m" : "";
-}
-
-[[nodiscard]] constexpr std::string_view Blue(bool c) {
-  return c ? "\x1b[34m" : "";
-}
-
-[[nodiscard]] constexpr std::string_view Green(bool c) {
-  return c ? "\x1b[32m" : "";
-}
-
-[[nodiscard]] constexpr std::string_view Dim(bool c) {
-  return c ? "\x1b[2m" : "";
-}
-
-[[nodiscard]] constexpr std::string_view Reset(bool c) {
-  return c ? "\x1b[0m" : "";
-}
-
-}  // namespace ansi
-
-[[nodiscard]] constexpr std::string_view SevStr(Severity s) {
-  switch (s) {
-    case Severity::kError:
-      return "error";
-    case Severity::kWarning:
-      return "warning";
-    case Severity::kNote:
-      return "note";
-    case Severity::kHelp:
-      return "help";
-  }
-  return "message";
-}
-
-[[nodiscard]] std::string_view SevColor(Severity s, bool color) {
-  using ansi::Blue;
-  using ansi::Dim;
-  using ansi::Green;
-  using ansi::Red;
-  using ansi::Reset;
-  using ansi::Yellow;
-  if (!color) return Reset(false);
-
-  switch (s) {
-    case Severity::kError:
-      return Red(true);
-    case Severity::kWarning:
-      return Yellow(true);
-    case Severity::kNote:
-      return Blue(true);
-    case Severity::kHelp:
-      return Green(true);
-  }
-  return Reset(true);
-}
-
-inline void RenderSnippet(std::ostream& os, const SourceFile& src,
-                          const Diagnostic& d, const RenderOptions& opt,
-                          const Resolved& r) {
-  using ansi::Blue;
-  using ansi::Dim;
-  using ansi::Green;
-  using ansi::Red;
-  using ansi::Reset;
-  using ansi::Yellow;
-  const bool color = r.color;
-  const Glyphs& g = *r.g;
-
-  struct LineMarks {
-    std::vector<const DiagnosticLabel*> primary;
-    std::vector<const DiagnosticLabel*> secondary;
+Features Resolve(const RenderOptions& options) {
+  const auto& terminal =
+      terminal::CapabilitiesFor(terminal::OutputStream::kStderr);
+  const bool color = options.color == ColorMode::kAlways ||
+                     (options.color == ColorMode::kAuto && terminal.color);
+  const bool unicode = options.charset == CharSet::kUnicode ||
+                       (options.charset == CharSet::kAuto && terminal.utf8);
+  return {
+      .color = color,
+      .glyphs = unicode ? &kUnicode : &kAscii,
+      .links = terminal.tty,
+      .curly_underline = color && terminal.tty && unicode,
   };
+}
 
-  std::map<std::size_t, LineMarks> per_line;
+std::string_view SeverityName(Severity severity) {
+  return severity == Severity::kError ? "error" : "warning";
+}
 
-  // Paint order decides ties when labels share a line. Stable sort keeps
-  // emission order for equal values.
-  std::vector<const DiagnosticLabel*> ordered;
-  ordered.reserve(d.labels.size());
-  for (const auto& lab : d.labels) ordered.push_back(&lab);
-  std::stable_sort(ordered.begin(), ordered.end(),
-                   [](const DiagnosticLabel* a, const DiagnosticLabel* b) {
-                     return a->order < b->order;
-                   });
+std::string_view SeverityColor(Severity severity) {
+  return severity == Severity::kError ? "\x1b[31m" : "\x1b[33m";
+}
 
-  // Line range per label, in paint order. Multi-line spans paint a gutter.
-  struct Range {
-    std::size_t sl;
-    std::size_t el;
-  };
+std::string_view UnderlineColor(Severity severity) {
+  return severity == Severity::kError ? "\x1b[58;5;9m" : "\x1b[58;5;11m";
+}
 
-  std::vector<Range> ranges;
-  ranges.reserve(ordered.size());
-
-  for (const auto* lab : ordered) {
-    const auto [sl, unused_col] = src.line_col(lab->span.lo);
-    (void)unused_col;
-    std::size_t el = sl;
-    if (!lab->span.empty()) {
-      const auto [ell, unused_col2] =
-          src.line_col(lab->span.hi ? lab->span.hi - 1 : lab->span.hi);
-      (void)unused_col2;
-      el = ell;
-    }
-    ranges.push_back({sl, el});
-    for (std::size_t line = sl; line <= el; ++line) {
-      auto& bucket =
-          lab->primary ? per_line[line].primary : per_line[line].secondary;
-      bucket.push_back(lab);
-    }
-  }
-
-  const bool multiline =
-      std::any_of(ranges.begin(), ranges.end(),
-                  [](const Range& rg) { return rg.el > rg.sl; });
-
-  // Gutter mark for one line. Empty for single-line diagnostics.
-  const auto gutter_for = [&](std::size_t l) -> std::string {
-    if (!multiline) return {};
-    bool start = false;
-    bool end = false;
-    bool inside = false;
-    for (const auto& rg : ranges) {
-      if (l == rg.sl)
-        start = true;
-      else if (l == rg.el)
-        end = true;
-      else if (l > rg.sl && l < rg.el)
-        inside = true;
-    }
-    if (start) return std::string(g.mtop) + " ";
-    if (end) return std::string(g.mbot) + " ";
-    if (inside) return std::string(g.vbar) + " ";
-    return "  ";
-  };
-
-  std::size_t max_line_num_width = 2;
-  if (!per_line.empty()) {
-    max_line_num_width = std::max<std::size_t>(
-        max_line_num_width,
-        std::to_string(per_line.rbegin()->first + opt.context_lines).length());
-  }
-  std::string pad(max_line_num_width, ' ');
-
-  std::size_t printed_upto = 0;
-  std::vector<std::size_t> colmap;
-  const auto print_plain = [&](std::size_t l) {
-    std::string num = std::to_string(l);
-    if (num.size() < max_line_num_width)
-      num.insert(0, max_line_num_width - num.size(), ' ');
-    const std::string shown =
-        ExpandTabs(src.line_view(l), opt.tab_width, colmap);
-    os << ' ' << gutter_for(l) << Dim(color) << num << " " << g.vbar << " "
-       << Reset(color) << shown << '\n';
-  };
-
-  const auto to_utf8 = [](std::u32string_view s) {
-    std::string out;
-    out.reserve(s.size() * 4);
-    for (char32_t cp : s) {
-      if (cp <= 0x7F) {
-        out.push_back(static_cast<char>(cp));
-      } else if (cp <= 0x7FF) {
-        out.push_back(static_cast<char>(0xC0 | (cp >> 6)));
-        out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
-      } else if (cp <= 0xFFFF) {
-        out.push_back(static_cast<char>(0xE0 | (cp >> 12)));
-        out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
-        out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+/// A source line with spaces in place of its tabs.
+class ExpandedLine {
+ public:
+  explicit ExpandedLine(std::string_view line) {
+    for (const char byte : line) {
+      columns_.push_back(text_.size());
+      if (byte == '\t') {
+        text_.append(kTabWidth - text_.size() % kTabWidth, ' ');
       } else {
-        out.push_back(static_cast<char>(0xF0 | (cp >> 18)));
-        out.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
-        out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
-        out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+        text_.push_back(byte);
       }
     }
-    return out;
-  };
-  const std::string under_utf8 = to_utf8(std::u32string_view(&g.under, 1));
-  const std::string msg_utf8 = to_utf8(std::u32string_view(&g.msg, 1));
-  const std::string sec_utf8 = to_utf8(std::u32string_view(&g.sec, 1));
+    columns_.push_back(text_.size());
+  }
 
-  // Byte column to display column. Clamps past the end.
-  const auto dcol = [&](std::size_t b) {
-    return b < colmap.size() ? colmap[b] : colmap.back();
-  };
+  [[nodiscard]] const std::string& Text() const { return text_; }
 
-  bool header_printed = false;
-  for (const auto& [line, marks] : per_line) {
-    if (!header_printed) {
-      const DiagnosticLabel* first = nullptr;
-      if (!marks.primary.empty())
-        first = marks.primary.front();
-      else if (!marks.secondary.empty())
-        first = marks.secondary.front();
+  /// Returns the display column where byte `byte` of the line starts.
+  [[nodiscard]] std::size_t Column(std::size_t byte) const {
+    return columns_[std::min(byte, columns_.size() - 1)];
+  }
 
-      auto [l, c] = src.line_col(first ? first->span.lo : 0);
-      os << "  " << Dim(color) << g.arrow << Reset(color) << " "
-         << LinkLocation(src.filename, l, c, r.links) << '\n';
-      header_printed = true;
+ private:
+  std::string text_;
+  std::vector<std::size_t> columns_;
+};
+
+/// The columns from `begin` to `end` that a label covers on its line. `end` is
+/// not included.
+struct Mark {
+  std::size_t begin;
+  std::size_t end;
+  const Label* label;
+};
+
+/// Writes the diagnostics of one source file.
+class Renderer {
+ public:
+  Renderer(std::ostream& out, const SourceFile& source, Features features)
+      : out_(&out), source_(&source), features_(features) {}
+
+  void WriteFull(const Diagnostic& diagnostic) const {
+    WriteTitle(diagnostic, "");
+    WriteExcerpt(diagnostic);
+    *out_ << '\n';
+  }
+
+  /// Writes diagnostics with the same code as one title and a list of
+  /// locations.
+  void WriteCollapsed(std::span<const Diagnostic* const> group) const {
+    const auto& glyphs = *features_.glyphs;
+    WriteTitle(
+        *group.front(),
+        std::format(
+            " ({} occurrences) {} {}",
+            group.size(),
+            glyphs.dash,
+            source_->filename
+        )
+    );
+    const auto listed = std::min(group.size(), kMaxLocationsListed);
+    for (std::size_t index = 0; index < listed; ++index) {
+      const auto& label = group[index]->labels.front();
+      const bool last = index + 1 == listed && group.size() == listed;
+      *out_ << std::format(
+          "  {}{} {}",
+          last ? glyphs.last : glyphs.branch,
+          glyphs.dash,
+          Location(label.span.lo)
+      );
+      if (!label.message.empty()) *out_ << ": " << label.message;
+      *out_ << '\n';
     }
-    const std::size_t lead =
-        line > opt.context_lines ? line - opt.context_lines : 1;
-    for (std::size_t l = std::max(printed_upto + 1, lead); l < line; ++l)
-      print_plain(l);
-
-    const std::string shown =
-        ExpandTabs(src.line_view(line), opt.tab_width, colmap);
-
-    os << ' ' << gutter_for(line) << pad << Dim(color) << " " << g.vbar
-       << Reset(color) << '\n';
-
-    std::string line_number = std::to_string(line);
-    if (line_number.size() < max_line_num_width)
-      line_number.insert(0, max_line_num_width - line_number.size(), ' ');
-
-    // Curly underline on the source row for primary single-line labels.
-    std::string painted = shown;
-    if (r.marks) {
-      struct Seg {
-        std::size_t s;
-        std::size_t e;
-
-        [[nodiscard]] bool operator<(const Seg& o) const { return s < o.s; }
-      };
-
-      std::vector<Seg> segs;
-      for (const auto* lb : marks.primary) {
-        const auto [sl, sc] = src.line_col(lb->span.lo);
-        if (sl != line || lb->span.empty()) continue;
-        const auto [el, ec] =
-            src.line_col(lb->span.hi ? lb->span.hi - 1 : lb->span.hi);
-        if (el != line) continue;
-        segs.push_back({dcol(sc ? sc - 1 : 0), dcol(ec ? ec : 0)});
-      }
-      std::sort(segs.begin(), segs.end());
-      std::string acc;
-      acc.reserve(painted.size() + segs.size() * 16);
-      std::size_t pos = 0;
-      const std::string open = std::string("\x1b[4:3m") +
-                               std::string(SevUnderColor(d.severity, true));
-      for (const auto& sg : segs) {
-        if (sg.s < pos || sg.e <= sg.s) continue;
-        acc.append(painted, pos, sg.s - pos);
-        acc += open;
-        acc.append(painted, sg.s, std::min(sg.e, painted.size()) - sg.s);
-        acc += "\x1b[59m\x1b[24m";
-        pos = std::min(sg.e, painted.size());
-      }
-      acc.append(painted, pos, std::string::npos);
-      painted = std::move(acc);
+    if (group.size() > listed) {
+      *out_ << std::format(
+          "  {}{} {}(+{} more, -verbose shows all)\n",
+          glyphs.last,
+          glyphs.dash,
+          glyphs.ellipsis,
+          group.size() - listed
+      );
     }
+    *out_ << '\n';
+  }
 
-    os << ' ' << gutter_for(line) << Dim(color) << line_number << " " << g.vbar
-       << " " << Reset(color) << painted << '\n';
+  void WriteAbort(std::size_t errors) const {
+    *out_ << Paint(SeverityColor(Severity::kError), "error")
+          << std::format(": aborting due to {} previous errors\n", errors);
+  }
 
-    // Mark kinds per display column: 1 primary, 2 secondary.
-    std::vector<char> kind(colmap.back() + 1, 0);
-    auto place_marks = [&](const std::vector<const DiagnosticLabel*>& labs,
-                           char kindv) {
-      for (const auto* lb : labs) {
-        const auto [sl, sc] = src.line_col(lb->span.lo);
-        std::size_t el = sl;
-        std::size_t ec = 0;
-        if (!lb->span.empty()) {
-          const auto [ell, ecc] =
-              src.line_col(lb->span.hi ? lb->span.hi - 1 : lb->span.hi);
-          el = ell;
-          ec = ecc;
-        }
-        if (line < sl || line > el) continue;
-        if (sl != el && line != sl && line != el)
-          continue;  // gutter covers middle lines
-        const std::size_t bstart = (line == sl) ? (sc ? sc - 1 : 0) : 0;
-        std::size_t bend;
-        if (line == el)
-          bend = (!lb->span.empty() && ec) ? ec : bstart + 1;
-        else
-          bend = src.line_view(line)
-                     .size();  // start row of multi-line: mark to EOL
-        std::size_t ds = dcol(bstart);
-        std::size_t de = dcol(bend);
-        if (de <= ds) de = ds + 1;
-        if (de > kind.size()) kind.resize(de, 0);
-        for (std::size_t i = ds; i < de; ++i) kind[i] = kindv;
-      }
-    };
+ private:
+  [[nodiscard]] std::string Paint(
+      std::string_view code,
+      std::string_view text
+  ) const {
+    if (!features_.color) return std::string(text);
+    return std::format("{}{}{}", code, text, kReset);
+  }
 
-    place_marks(marks.secondary, 2);
-    place_marks(marks.primary, 1);
+  /// `file:line:column`. If the terminal can, the text is a link to the file.
+  [[nodiscard]] std::string Location(std::size_t offset) const {
+    const auto [line, column] = source_->LineColumn(offset);
+    const auto& filename = source_->filename;
+    const auto text = std::format("{}:{}:{}", filename, line, column);
+    if (!features_.links) return text;
+    char host[256] = {};
+    std::error_code error;
+    const auto path = std::filesystem::absolute(filename, error);
+    if (gethostname(host, sizeof(host)) != 0 || error) return text;
+    return std::format(
+        "\x1b]8;;file://{}{}#{}\x1b\\{}\x1b]8;;\x1b\\",
+        host,
+        path.string(),
+        line,
+        text
+    );
+  }
 
-    while (!kind.empty() && kind.back() == 0) kind.pop_back();
+  void WriteTitle(const Diagnostic& diagnostic, std::string_view suffix) const {
+    const auto color = SeverityColor(diagnostic.severity);
+    *out_ << Paint(color, features_.glyphs->rail) << ' '
+          << Paint(color, SeverityName(diagnostic.severity));
+    if (!diagnostic.code.empty()) *out_ << '[' << diagnostic.code << ']';
+    *out_ << ": " << diagnostic.message << suffix << '\n';
+  }
 
-    if (!kind.empty()) {
-      os << ' ' << gutter_for(line) << pad << Dim(color) << " " << g.vbar << " "
-         << Reset(color);
-      for (char k : kind) {
-        if (k == 1) {
-          os << SevColor(d.severity, color) << under_utf8 << Reset(color);
-        } else if (k == 2) {
-          os << Blue(color) << sec_utf8 << Reset(color);
-        } else {
-          os << ' ';
-        }
-      }
-      os << '\n';
+  /// Writes the labeled lines and the lines next to them, the marks and the
+  /// message of each label, and the notes.
+  void WriteExcerpt(const Diagnostic& diagnostic) const {
+    std::map<std::size_t, std::vector<const Label*>> labels_by_line;
+    for (const auto& label : diagnostic.labels) {
+      labels_by_line[source_->LineColumn(label.span.lo).first].push_back(
+          &label
+      );
     }
-
-    // Messages attach at the end row of each span.
-    auto print_msgs = [&](const std::vector<const DiagnosticLabel*>& labs,
-                          bool primary) {
-      for (const auto* lb : labs) {
-        const auto [sl, sc] = src.line_col(lb->span.lo);
-        std::size_t el = sl;
-        std::size_t ec = 0;
-        if (!lb->span.empty()) {
-          const auto [ell, ecc] =
-              src.line_col(lb->span.hi ? lb->span.hi - 1 : lb->span.hi);
-          el = ell;
-          ec = ecc;
-        }
-        if (el != line) continue;
-
-        std::size_t indent =
-            (line == sl) ? dcol(sc ? sc - 1 : 0) : dcol(ec ? ec : 0);
-        os << ' ' << gutter_for(line) << pad << Dim(color) << " " << g.vbar
-           << " " << Reset(color);
-        for (std::size_t i = 0; i < indent; ++i) os << ' ';
-
-        const std::string_view col_code =
-            primary ? SevColor(d.severity, color) : Blue(color);
-        const std::string& marker = primary ? msg_utf8 : sec_utf8;
-        os << col_code << marker << Reset(color);
-        if (!lb->message.empty()) os << ' ' << lb->message;
-        os << '\n';
+    const auto last_line =
+        labels_by_line.empty() ? 0 : labels_by_line.rbegin()->first;
+    const auto width = std::max<std::size_t>(
+        std::to_string(last_line + kContextLines).size(),
+        2
+    );
+    if (!labels_by_line.empty()) {
+      const auto& first = *labels_by_line.begin()->second.front();
+      *out_ << "  " << Paint(kDim, features_.glyphs->arrow) << ' '
+            << Location(first.span.lo) << '\n';
+    }
+    std::size_t written = 0;
+    for (const auto& [line, labels] : labels_by_line) {
+      const auto first_context =
+          line > kContextLines ? line - kContextLines : 1;
+      for (auto number = std::max(written + 1, first_context); number < line;
+           ++number) {
+        WriteSourceRow(
+            number,
+            width,
+            ExpandedLine(source_->Line(number)).Text()
+        );
       }
-    };
-
-    print_msgs(marks.secondary, false);
-    print_msgs(marks.primary, true);
-    printed_upto = line;
-    for (std::size_t l = line + 1;
-         l <= line + opt.context_lines && l <= src.line_count(); ++l) {
-      print_plain(l);
-      printed_upto = l;
+      WriteLabeledLine(diagnostic.severity, line, labels, width);
+      written = line;
+      for (auto number = line + 1;
+           number <= line + kContextLines && number <= source_->LineCount();
+           ++number) {
+        WriteSourceRow(
+            number,
+            width,
+            ExpandedLine(source_->Line(number)).Text()
+        );
+        written = number;
+      }
+    }
+    for (const auto& note : diagnostic.notes) {
+      *out_ << ' ' << std::string(width, ' ') << Paint(kDim, " = ") << note
+            << '\n';
     }
   }
 
-  for (const auto& n : d.notes) {
-    os << ' ' << gutter_for(printed_upto) << pad << Dim(color) << " = "
-       << Reset(color) << n << '\n';
+  void WriteLabeledLine(
+      Severity severity,
+      std::size_t line,
+      std::span<const Label* const> labels,
+      std::size_t width
+  ) const {
+    const ExpandedLine expanded(source_->Line(line));
+    const auto marks = MarksOn(line, labels, expanded);
+    *out_ << ' ' << std::string(width, ' ')
+          << Paint(kDim, std::format(" {}", features_.glyphs->bar)) << '\n';
+    WriteSourceRow(line, width, Underlined(expanded.Text(), marks, severity));
+    WriteGutterRow(width, MarkRow(marks, severity));
+    for (const auto& mark : marks) {
+      std::string row =
+          std::string(mark.begin, ' ') +
+          Paint(SeverityColor(severity), features_.glyphs->pointer);
+      if (!mark.label->message.empty()) row += " " + mark.label->message;
+      WriteGutterRow(width, row);
+    }
   }
+
+  [[nodiscard]] std::vector<Mark> MarksOn(
+      std::size_t line,
+      std::span<const Label* const> labels,
+      const ExpandedLine& expanded
+  ) const {
+    std::vector<Mark> marks;
+    const auto line_start = source_->line_starts[line - 1];
+    const auto line_end = line_start + source_->Line(line).size();
+    for (const auto* label : labels) {
+      const auto begin = label->span.lo - line_start;
+      const auto end = std::min(label->span.hi, line_end) - line_start;
+      const auto begin_column = expanded.Column(begin);
+      marks.push_back({
+          .begin = begin_column,
+          .end = std::max(expanded.Column(end), begin_column + 1),
+          .label = label,
+      });
+    }
+    return marks;
+  }
+
+  [[nodiscard]] std::string MarkRow(
+      std::span<const Mark> marks,
+      Severity severity
+  ) const {
+    std::size_t width = 0;
+    for (const auto& mark : marks) width = std::max(width, mark.end);
+    std::vector<bool> marked(width, false);
+    for (const auto& mark : marks) {
+      std::fill(marked.begin() + mark.begin, marked.begin() + mark.end, true);
+    }
+    std::string row;
+    for (const bool cell : marked) {
+      row += cell ? Paint(SeverityColor(severity), features_.glyphs->mark)
+                  : std::string(" ");
+    }
+    return row;
+  }
+
+  [[nodiscard]] std::string Underlined(
+      const std::string& text,
+      std::vector<Mark> marks,
+      Severity severity
+  ) const {
+    if (!features_.curly_underline) return text;
+    std::ranges::sort(marks, {}, &Mark::begin);
+    std::string underlined;
+    std::size_t position = 0;
+    for (const auto& mark : marks) {
+      if (mark.begin < position || mark.begin >= text.size()) continue;
+      const auto end = std::min(mark.end, text.size());
+      underlined += text.substr(position, mark.begin - position);
+      underlined += std::format(
+          "{}{}{}{}",
+          kCurlyUnderline,
+          UnderlineColor(severity),
+          text.substr(mark.begin, end - mark.begin),
+          kUnderlineOff
+      );
+      position = end;
+    }
+    return underlined + text.substr(position);
+  }
+
+  void WriteSourceRow(
+      std::size_t number,
+      std::size_t width,
+      std::string_view text
+  ) const {
+    const auto gutter =
+        std::format("{:>{}} {} ", number, width, features_.glyphs->bar);
+    *out_ << ' ' << Paint(kDim, gutter) << text << '\n';
+  }
+
+  void WriteGutterRow(std::size_t width, std::string_view text) const {
+    *out_ << ' ' << std::string(width, ' ')
+          << Paint(kDim, std::format(" {} ", features_.glyphs->bar)) << text
+          << '\n';
+  }
+
+  std::ostream* out_;
+  const SourceFile* source_;
+  Features features_;
+};
+
+/// Removes repeats. Diagnostics with the same code, spans, and messages are one
+/// problem.
+std::vector<const Diagnostic*> Distinct(const DiagnosticSet& diagnostics) {
+  std::vector<const Diagnostic*> distinct;
+  std::set<
+      std::tuple<std::string_view, std::size_t, std::size_t, std::string_view>>
+      seen;
+  for (const auto& diagnostic : diagnostics.items) {
+    bool fresh = diagnostic.labels.empty();
+    for (const auto& label : diagnostic.labels) {
+      fresh |= seen.insert({
+                               diagnostic.code,
+                               label.span.lo,
+                               label.span.hi,
+                               label.message,
+                           })
+                   .second;
+    }
+    if (fresh) distinct.push_back(&diagnostic);
+  }
+  return distinct;
 }
 
-inline void RenderGroup(std::ostream& os, const SourceFile& src,
-                        const std::vector<const Diagnostic*>& group,
-                        const RenderOptions& opt, const Resolved& r) {
-  using ansi::Blue;
-  using ansi::Dim;
-  using ansi::Green;
-  using ansi::Red;
-  using ansi::Reset;
-  using ansi::Yellow;
-  for (const auto* dp : group) {
-    const auto& d = *dp;
-    os << SevColor(d.severity, r.color) << r.g->rail << Reset(r.color) << " "
-       << SevColor(d.severity, r.color) << SevStr(d.severity) << Reset(r.color);
-    if (!d.code.empty()) {
-      os << "[" << d.code << "]";
-    }
-    os << ": " << d.message << '\n';
-    RenderSnippet(os, src, d, opt, r);
-    os << '\n';
+/// Groups diagnostics by severity and code, in the order of their first
+/// appearance.
+std::vector<std::vector<const Diagnostic*>> GroupByCode(
+    std::span<const Diagnostic* const> diagnostics
+) {
+  std::vector<std::vector<const Diagnostic*>> groups;
+  std::unordered_map<std::string, std::size_t> group_of;
+  for (const auto* diagnostic : diagnostics) {
+    const auto key = std::format(
+        "{}:{}",
+        SeverityName(diagnostic->severity),
+        diagnostic->code
+    );
+    const auto [entry, added] = group_of.try_emplace(key, groups.size());
+    if (added) groups.emplace_back();
+    groups[entry->second].push_back(diagnostic);
   }
-}
-
-inline void RenderCore(
-    std::ostream& os,
-    const std::vector<
-        std::pair<const SourceFile*, std::vector<const Diagnostic*>>>& groups,
-    const RenderOptions& opt) {
-  using ansi::Blue;
-  using ansi::Dim;
-  using ansi::Green;
-  using ansi::Red;
-  using ansi::Reset;
-  using ansi::Yellow;
-  const Resolved r = ResolveOpt(opt);
-  const Glyphs& g = *r.g;
-
-  // Collapse same-code runs on one file. Verbose mode expands them.
-  struct Collapse {
-    std::string key;
-    std::vector<const Diagnostic*> members;
-  };
-
-  for (const auto& [src, group] : groups) {
-    std::vector<Collapse> collapses;
-    std::unordered_map<std::string, std::size_t, TransparentHash,
-                       std::equal_to<>>
-        index;
-    for (const auto* dp : group) {
-      const std::string key = std::string(SevStr(dp->severity)) + '\0' +
-                              dp->code + '\0' + std::string(dp->file());
-      const auto it = index.find(key);
-      if (it == index.end()) {
-        index.emplace(key, collapses.size());
-        collapses.push_back({key, {dp}});
-      } else {
-        collapses[it->second].members.push_back(dp);
-      }
-    }
-    // Emit in first-appearance order. Runs of one stay full renders.
-    for (auto& c : collapses) {
-      if (c.members.size() < 2 || opt.verbose ||
-          c.members.front()->labels.empty()) {
-        RenderGroup(os, *src, c.members, opt, r);
-        continue;
-      }
-      const Diagnostic& first = *c.members.front();
-      const std::string file =
-          std::string(first.file().empty() ? std::string_view(src->filename)
-                                           : first.file());
-      os << SevColor(first.severity, r.color) << g.rail << Reset(r.color) << " "
-         << SevColor(first.severity, r.color) << SevStr(first.severity)
-         << Reset(r.color);
-      if (!first.code.empty()) os << "[" << first.code << "]";
-      os << ": " << first.message << " (" << c.members.size()
-         << " occurrences) " << g.ddash << " " << file << '\n';
-      const std::size_t shown_n = std::min<std::size_t>(c.members.size(), 3);
-      for (std::size_t i = 0; i < shown_n; ++i) {
-        const Diagnostic& m = *c.members[i];
-        const DiagnosticLabel* pick = nullptr;
-        for (const auto& lab : m.labels)
-          if (lab.primary) {
-            pick = &lab;
-            break;
-          }
-        if (pick == nullptr) pick = &m.labels.front();
-        const auto [l, co] = src->line_col(pick->span.lo);
-        const bool last = (i + 1 == shown_n) && c.members.size() <= 3;
-        os << "  " << (last ? g.mbot : g.mmid) << g.ddash << " "
-           << LinkLocation(file, l, co, r.links);
-        if (!pick->message.empty()) os << ": " << pick->message;
-        os << '\n';
-      }
-      if (c.members.size() > 3)
-        os << "  " << g.mbot << g.ddash << " " << g.ellipsis << "(+"
-           << c.members.size() - 3 << " more, --verbose shows all)\n";
-      os << '\n';
-    }
-  }
-
-  std::size_t errors = 0;
-  for (const auto& [src, group] : groups)
-    for (const auto* dp : group)
-      if (dp->severity == Severity::kError) ++errors;
-  if (errors > 1)
-    os << SevColor(Severity::kError, r.color) << "error" << Reset(r.color)
-       << ": aborting due to " << errors << " previous errors\n";
+  return groups;
 }
 
 }  // namespace
 
-void Render(std::ostream& os, const SourceFile& src, const DiagnosticSet& ds,
-            const RenderOptions& opt) {
-  using ansi::Reset;
-
-  // Drop exact duplicates: same code and span means one fault.
-  std::vector<const Diagnostic*> shown;
-  std::set<std::tuple<std::string_view, std::string_view, std::size_t,
-                      std::size_t, std::string_view>>
-      seen;
-  for (const auto& d : ds.items) {
-    if (d.labels.empty()) {
-      shown.push_back(&d);
+void Render(
+    std::ostream& output,
+    const SourceFile& source,
+    const DiagnosticSet& diagnostics,
+    const RenderOptions& options
+) {
+  const Renderer renderer(output, source, Resolve(options));
+  const auto distinct = Distinct(diagnostics);
+  for (const auto& group : GroupByCode(distinct)) {
+    const bool collapse =
+        group.size() > 1 && !options.verbose && !group.front()->labels.empty();
+    if (collapse) {
+      renderer.WriteCollapsed(group);
       continue;
     }
-    bool fresh = false;
-    for (const auto& lab : d.labels)
-      fresh |= seen.insert({d.code, lab.span.file, lab.span.lo, lab.span.hi,
-                            lab.message})
-                   .second;
-    if (fresh) shown.push_back(&d);
+    for (const auto* diagnostic : group) renderer.WriteFull(*diagnostic);
   }
-
-  RenderCore(os, {{&src, std::move(shown)}}, opt);
-}
-
-void Render(std::ostream& os, const SourceCache& cache, std::string_view name,
-            const DiagnosticSet& ds, const RenderOptions& opt) {
-  // Group diagnostics by file. Unknown files render title-only.
-  std::vector<std::pair<std::string, std::vector<const Diagnostic*>>> keyed;
-  std::unordered_map<std::string, std::size_t, TransparentHash, std::equal_to<>>
-      index;
-  for (const auto& d : ds.items) {
-    const std::string key(d.file());
-    const auto it = index.find(key);
-    if (it == index.end()) {
-      index.emplace(key, keyed.size());
-      keyed.push_back({key, {&d}});
-    } else {
-      keyed[it->second].second.push_back(&d);
-    }
-  }
-
-  static const SourceFile kEmpty = SourceFile::From("<unknown>", "");
-  const SourceFile* fallback = cache.Find(name);
-  if (fallback == nullptr) fallback = &kEmpty;
-
-  std::vector<std::pair<const SourceFile*, std::vector<const Diagnostic*>>>
-      groups;
-  groups.reserve(keyed.size());
-  for (auto& [key, vec] : keyed) {
-    const SourceFile* src = fallback;
-    if (!key.empty() && key != name) {
-      if (const SourceFile* hit = cache.Find(key); hit != nullptr) src = hit;
-    }
-    groups.push_back({src, std::move(vec)});
-  }
-  RenderCore(os, groups, opt);
+  const auto errors = std::ranges::count_if(distinct, [](const Diagnostic* d) {
+    return d->severity == Severity::kError;
+  });
+  if (errors > 1) renderer.WriteAbort(static_cast<std::size_t>(errors));
 }
 
 }  // namespace diag

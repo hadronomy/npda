@@ -5,24 +5,26 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cerrno>
-#include <cstdlib>
+#include <cstddef>
 #include <cstring>
 #include <expected>
 #include <filesystem>
 #include <format>
 #include <fstream>
-#include <functional>
 #include <ios>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <system_error>
-#include <unordered_map>
-#include <unordered_set>
-#include <utility>
 #include <vector>
 
+#include "automata/symbol.h"
+#include "turing/config.h"
+#include "turing/definition.h"
 #include "turing/machine.h"
+#include "turing/transition.h"
 #include "turing/transition_text.h"
 
 extern char** environ;
@@ -31,233 +33,161 @@ namespace turing {
 
 namespace {
 
-[[nodiscard]] std::string DotEscape(std::string_view s) {
-  std::string out;
-  out.reserve(s.size() + 8);
-  for (char c : s) {
-    if (c == '"' || c == '\\') out.push_back('\\');
-    if (c == '\n') {
-      out += "\\n";
+std::string Quote(std::string_view text) {
+  std::string quoted = "\"";
+  for (const char character : text) {
+    if (character == '\n') {
+      quoted += "\\n";
       continue;
     }
-    out.push_back(c);
+    if (character == '"' || character == '\\') quoted += '\\';
+    quoted += character;
   }
-  return out;
+  return quoted + '"';
+}
+
+std::string RuleLabel(const Transition& transition) {
+  return std::format(
+      "{} / {} / {}",
+      JoinReads(transition.tapes),
+      JoinWrites(transition.tapes),
+      JoinMoves(transition.tapes)
+  );
 }
 
 }  // namespace
 
-template <typename A, typename B>
-struct PairHash {
-  std::size_t operator()(const std::pair<A, B>& p) const noexcept {
-    std::size_t h1 = std::hash<A>{}(p.first);
-    std::size_t h2 = std::hash<B>{}(p.second);
-    // boost-ish hash combine
-    return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
-  }
-};
-
-std::string ToGraphvizDot(const Definition& definition,
-                          const GraphvizOptions& opt) {
-  std::unordered_set<std::string> accepting_str;
-  accepting_str.reserve(definition.accepting_states.size());
-  for (const auto& s : definition.accepting_states) {
-    accepting_str.insert(std::format("{}", s));
-  }
-
-  auto state_id = [](const Symbol& s) { return std::format("{}", s); };
-
-  auto rule_text = [&](const Transition& r) {
-    const auto reads = JoinReads(r.tapes);
-    const auto writes = JoinWrites(r.tapes);
-    const auto moves = JoinMoves(r.tapes);
-
-    if (opt.compact_labels) {
-      // Compact, readable item
-      return std::format("r:({}) | w:({}) | m:({})", reads, writes, moves);
-    }
-    return std::format("read: ({})  write: ({})  move: ({})", reads, writes,
-                       moves);
+std::string ToDot(const Definition& definition) {
+  std::vector<Symbol> states{definition.start_state};
+  const auto add_state = [&](Symbol state) {
+    if (!std::ranges::contains(states, state)) states.push_back(state);
   };
 
-  // Collect all states explicitly
-  std::unordered_set<std::string> all_states;
-  all_states.insert(state_id(definition.start_state));
-  for (const auto& s : definition.accepting_states)
-    all_states.insert(state_id(s));
-  for (const auto& r : definition.transitions) {
-    all_states.insert(state_id(r.from_state));
-    all_states.insert(state_id(r.to_state));
+  struct Edge {
+    Symbol from;
+    Symbol to;
+    std::vector<std::string> labels;
+  };
+
+  std::vector<Edge> edges;
+  for (const auto& transition : definition.transitions) {
+    add_state(transition.from);
+    add_state(transition.to);
+    auto edge = std::ranges::find_if(edges, [&](const Edge& candidate) {
+      return candidate.from == transition.from && candidate.to == transition.to;
+    });
+    if (edge == edges.end()) {
+      edges.push_back({transition.from, transition.to, {}});
+      edge = std::prev(edges.end());
+    }
+    edge->labels.push_back(RuleLabel(transition));
   }
+  for (const auto state : definition.accepting_states) add_state(state);
 
-  // Group edges by (from, to) and aggregate labels
-  using EdgeKey = std::pair<std::string, std::string>;
-  std::unordered_map<EdgeKey, std::vector<std::string>,
-                     PairHash<std::string, std::string>>
-      edge_labels;
-
-  edge_labels.reserve(definition.transitions.size());
-  for (const auto& r : definition.transitions) {
-    const auto from_str = state_id(r.from_state);
-    const auto to_str = state_id(r.to_state);
-    edge_labels[{from_str, to_str}].push_back(rule_text(r));
-  }
-
-  // Build DOT
-  std::string dot;
-  dot += "digraph TM {\n";
-  dot += "  graph [\n";
-  dot += std::format("    bgcolor=\"{}\",\n", opt.background);
-  dot += "    splines=true,\n";
-  dot += "    overlap=false,\n";
-  dot += std::format("    pad=\"{}\",\n", 0.15);
-  dot += std::format("    nodesep=\"{}\",\n", opt.nodesep);
-  dot += std::format("    ranksep=\"{}\"\n", opt.ranksep);
-  dot += "  ];\n";
-  dot += std::format("  rankdir={};\n", opt.rankdir);
-  dot += std::format("  dpi={};", 300);
+  const auto& config = definition.config;
+  std::string dot =
+      "digraph TM {\n"
+      "  graph [bgcolor=\"#FFFFFF\", splines=true, overlap=false, pad=0.15, "
+      "nodesep=0.35, ranksep=0.6, dpi=300];\n"
+      "  rankdir=LR;\n"
+      "  node [fontname=\"Helvetica\", shape=circle, style=filled, "
+      "color=\"#455A64\", fillcolor=\"#ECEFF1\", fontcolor=\"#263238\", "
+      "penwidth=1.2];\n"
+      "  edge [fontname=\"Helvetica\", color=\"#37474F\", "
+      "fontcolor=\"#263238\", penwidth=1.4, arrowsize=0.9];\n"
+      "  labelloc=t;\n"
+      "  labeljust=l;\n";
   dot += std::format(
-      "  node [fontname=\"{}\", shape={}, style=filled, color=\"{}\", "
-      "fillcolor=\"{}\", fontcolor=\"{}\", penwidth={}];\n",
-      DotEscape(opt.fontname), opt.node_shape, opt.node_color, opt.node_fill,
-      opt.node_font, opt.node_penwidth);
-  dot += std::format(
-      "  edge [fontname=\"{}\", color=\"{}\", fontcolor=\"{}\", penwidth={}, "
-      "arrowsize={}];\n",
-      DotEscape(opt.fontname), opt.edge_color, opt.edge_font, opt.edge_penwidth,
-      opt.arrowsize);
-  dot += "  labelloc=\"t\";\n";
-  dot += "  labeljust=\"l\";\n";
-  dot += std::format(
-      "  label=\"Turing Machine\\nTapes: {} | Tape dir: {} | Mode: {} | "
-      "AllowStay: {} | Blank: {}\";\n",
-      definition.config.num_tapes,
-      (definition.config.tape_direction == TapeDirection::kBidirectional
-           ? "Bidirectional"
-           : "Right-only"),
-      (definition.config.operation_mode == OperationMode::kSimultaneous
-           ? "Simultaneous"
-           : "Independent"),
-      (definition.config.allow_stay ? "true" : "false"),
-      DotEscape(std::format("{}", definition.blank_symbol)));
-
-  // Start node arrow
-  if (opt.show_start_edge) {
-    dot += "  __start [shape=point, width=0.15, label=\"\", color=\"" +
-           opt.edge_color + "\"];\n";
-    dot += std::format("  __start -> \"{}\" [color=\"{}\"];\n",
-                       DotEscape(state_id(definition.start_state)),
-                       opt.edge_color);
-  }
-
-  // Render states
-  for (const auto& s_str : all_states) {
-    const bool is_accept = accepting_str.find(s_str) != accepting_str.end();
-    if (is_accept) {
-      if (opt.color_accepting) {
-        dot += std::format(
-            "  \"{}\" [shape=doublecircle, color=\"{}\", fontcolor=\"{}\", "
-            "fillcolor=\"{}\", "
-            "penwidth={}];\n",
-            DotEscape(s_str), opt.accept_color, opt.node_font, opt.accept_fill,
-            opt.accept_penwidth);
-      } else {
-        dot +=
-            std::format("  \"{}\" [shape=doublecircle];\n", DotEscape(s_str));
-      }
-    } else {
+      "  label={};\n",
+      Quote(
+          std::format(
+              "{} tape(s), {}, {}, stay {}, blank {}",
+              config.num_tapes,
+              config.tape_direction == TapeDirection::kBidirectional
+                  ? "bidirectional"
+                  : "right-only",
+              config.operation_mode == OperationMode::kSimultaneous
+                  ? "simultaneous"
+                  : "independent",
+              config.allow_stay ? "allowed" : "forbidden",
+              definition.blank
+          )
+      )
+  );
+  dot +=
+      "  __start [shape=point, width=0.15, label=\"\", color=\"#37474F\"];\n";
+  dot +=
+      std::format("  __start -> {};\n", Quote(definition.start_state.name()));
+  for (const auto state : states) {
+    if (std::ranges::contains(definition.accepting_states, state)) {
       dot += std::format(
-          "  \"{}\" [shape={}, color=\"{}\", fillcolor=\"{}\", "
-          "fontcolor=\"{}\", penwidth={}];\n",
-          DotEscape(s_str), opt.node_shape, opt.node_color, opt.node_fill,
-          opt.node_font, opt.node_penwidth);
+          "  {} [shape=doublecircle, color=\"#2E7D32\", "
+          "fillcolor=\"#E8F5E9\", penwidth=1.6];\n",
+          Quote(state.name())
+      );
+    } else {
+      dot += std::format("  {};\n", Quote(state.name()));
     }
   }
-
-  // Render merged edges; each edge lists all rule variants
-  for (const auto& [key, labels] : edge_labels) {
-    const auto& from_str = key.first;
-    const auto& to_str = key.second;
-
-    // Build combined label with bullets (•) and newlines
-    std::string combined;
-    combined.reserve(64 * labels.size());
-    for (std::size_t i = 0; i < labels.size(); ++i) {
-      if (i) combined += "\\n";
-      combined += "• ";
-      combined += DotEscape(labels[i]);
+  for (const auto& edge : edges) {
+    std::string label;
+    for (const auto& rule : edge.labels) {
+      if (!label.empty()) label += '\n';
+      label += rule;
     }
-
-    dot += std::format("  \"{}\" -> \"{}\" [label=\"{}\"];\n",
-                       DotEscape(from_str), DotEscape(to_str), combined);
+    dot += std::format(
+        "  {} -> {} [label={}];\n",
+        Quote(edge.from.name()),
+        Quote(edge.to.name()),
+        Quote(label)
+    );
   }
-
-  if (opt.show_legend) {
-    dot += "  subgraph cluster_legend {\n";
-    dot += "    label = \"Legend\";\n";
-    dot += "    style = \"rounded,dashed\";\n";
-    dot += "    color = \"#B0BEC5\";\n";
-    dot += "    fontcolor = \"#37474F\";\n";
-    dot +=
-        "    legend_accept [label=\"accepting (double circle)\", "
-        "shape=doublecircle, color=\"" +
-        opt.accept_color + "\", fillcolor=\"" + opt.accept_fill +
-        "\", style=filled];\n";
-    dot += "    legend_state [label=\"state\", shape=" + opt.node_shape +
-           ", color=\"" + opt.node_color + "\", fillcolor=\"" + opt.node_fill +
-           "\", style=filled];\n";
-    dot +=
-        "    legend_t [label=\"edge label: • r:(reads) | w:(writes) | "
-        "m:(moves)\", shape=box, "
-        "style=rounded, color=\"#B0BEC5\", fontcolor=\"#37474F\"];\n";
-    dot += "    legend_state -> legend_state [style=invis];\n";
-    dot += "  }\n";
-  }
-
-  dot += "}\n";
-  return dot;
+  return dot + "}\n";
 }
 
-std::expected<void, Error> WriteGraphvizDot(const Definition& definition,
-                                            const std::filesystem::path& path,
-                                            const GraphvizOptions& opt) {
-  std::error_code ec;
-  if (path.has_parent_path()) {
-    std::filesystem::create_directories(path.parent_path(), ec);
-    if (ec) {
-      return std::unexpected(
-          Error{std::format("failed to create directories '{}': {}",
-                            path.string(), ec.message())});
-    }
-  }
-  std::ofstream ofs(path, std::ios::binary);
-  if (!ofs) {
+std::expected<void, Error> WriteDot(
+    const Definition& definition,
+    const std::filesystem::path& path
+) {
+  std::ofstream file(path, std::ios::binary);
+  if (!file) {
     return std::unexpected(
-        Error{std::format("failed to open output '{}'", path.string())});
+        Error{std::format("cannot open '{}' for writing", path.string())}
+    );
   }
-  ofs << ToGraphvizDot(definition, opt);
-  if (!ofs) {
+  file << ToDot(definition);
+  if (!file) {
     return std::unexpected(
-        Error{std::format("failed to write DOT to '{}'", path.string())});
+        Error{std::format("cannot write '{}'", path.string())}
+    );
   }
   return {};
 }
 
-std::expected<void, Error> ExportGraphvizImage(
-    const Definition& definition, const std::filesystem::path& output_path,
-    std::string_view dot_exe, std::string_view format,
-    const GraphvizOptions& opt) {
-  std::error_code ec;
-  const auto tmp_dir = std::filesystem::temp_directory_path(ec);
-  if (ec) {
+std::expected<void, Error> RenderGraph(
+    const Definition& definition,
+    const std::filesystem::path& output,
+    std::string_view executable
+) {
+  std::error_code error;
+  const auto directory = std::filesystem::temp_directory_path(error);
+  if (error) {
     return std::unexpected(
-        Error{std::format("failed to get temp directory: {}", ec.message())});
+        Error{std::format(
+            "cannot find a temporary directory: {}",
+            error.message()
+        )}
+    );
   }
-  std::string temporary_path = (tmp_dir / "npda-graphviz-XXXXXX").string();
-  const int descriptor = mkstemp(temporary_path.data());
+  std::string dot_path = (directory / "npda-graphviz-XXXXXX").string();
+  const int descriptor = mkstemp(dot_path.data());
   if (descriptor == -1) {
-    return std::unexpected(Error{std::format(
-        "failed to create temporary DOT file: {}", std::strerror(errno))});
+    return std::unexpected(
+        Error{std::format(
+            "cannot create a temporary DOT file: {}",
+            std::strerror(errno)
+        )}
+    );
   }
   close(descriptor);
 
@@ -268,44 +198,64 @@ std::expected<void, Error> ExportGraphvizImage(
       std::error_code ignored;
       std::filesystem::remove(path, ignored);
     }
-  } temporary{temporary_path};
+  } temporary{dot_path};
 
-  if (auto write = WriteGraphvizDot(definition, temporary.path, opt); !write) {
-    return std::unexpected(write.error());
-  }
-  if (output_path.has_parent_path()) {
-    std::filesystem::create_directories(output_path.parent_path(), ec);
-    if (ec) return std::unexpected(Error{ec.message()});
+  if (auto written = WriteDot(definition, temporary.path); !written) {
+    return written;
   }
 
-  // Use an argument vector so file paths and executable names never enter a
-  // shell.
+  std::string format = output.extension().string();
+  format = format.empty() ? "png" : format.substr(1);
   std::vector<std::string> arguments{
-      std::string(dot_exe), "-T" + std::string(format), temporary_path,
-      "-Goverlap=false",    "-Gmodel=subset",           "-o",
-      output_path.string()};
+      std::string(executable),
+      "-T" + format,
+      dot_path,
+      "-Goverlap=false",
+      "-Gmodel=subset",
+      "-o",
+      output.string()
+  };
   std::vector<char*> argv;
   for (auto& argument : arguments) argv.push_back(argument.data());
   argv.push_back(nullptr);
-  // POSIX sys/types.h owns pid_t; Darwin stores its typedef in a private
-  // header. NOLINTNEXTLINE(misc-include-cleaner)
+  // NOLINTNEXTLINE(misc-include-cleaner): Darwin keeps pid_t in a private header.
   pid_t process = 0;
-  const int spawn_error = posix_spawnp(&process, argv.front(), nullptr, nullptr,
-                                       argv.data(), environ);
-  if (spawn_error != 0) {
+  if (const int spawn_error = posix_spawnp(
+          &process,
+          argv.front(),
+          nullptr,
+          nullptr,
+          argv.data(),
+          environ
+      );
+      spawn_error != 0) {
     return std::unexpected(
-        Error{std::format("failed to start graphviz '{}': {}", dot_exe,
-                          std::strerror(spawn_error))});
+        Error{std::format(
+            "cannot start '{}': {}",
+            executable,
+            std::strerror(spawn_error)
+        )}
+    );
   }
   int status = 0;
   while (waitpid(process, &status, 0) == -1) {
     if (errno == EINTR) continue;
-    return std::unexpected(Error{
-        std::format("failed to wait for graphviz: {}", std::strerror(errno))});
+    return std::unexpected(
+        Error{std::format(
+            "cannot wait for '{}': {}",
+            executable,
+            std::strerror(errno)
+        )}
+    );
   }
   if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-    return std::unexpected(Error{std::format(
-        "graphviz '{}' failed (process status {})", dot_exe, status)});
+    return std::unexpected(
+        Error{std::format(
+            "'{}' failed with process status {}",
+            executable,
+            status
+        )}
+    );
   }
   return {};
 }

@@ -15,10 +15,13 @@ struct ProcessOutput {
   std::string error_output;
 };
 
-// Runs the built CLI with plain output and a 30-second deadline. Empty input
-// supplies EOF. Process failures are separate from the CLI's exit code.
+/// Runs the CLI with plain output and a deadline of 30 seconds. If `input` is
+/// empty, standard input is at its end immediately. A failure to run the
+/// process is different from the exit code of the CLI.
 std::expected<ProcessOutput, std::error_code> RunCli(
-    std::vector<std::string> arguments, std::string_view input = {});
+    std::vector<std::string> arguments,
+    std::string_view input = {}
+);
 
 }  // namespace test_support
 

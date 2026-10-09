@@ -28,8 +28,10 @@ std::filesystem::path SourceRoot() {
 std::string ReadFile(const std::filesystem::path& path) {
   std::ifstream input(path, std::ios::binary);
   if (!input) throw std::runtime_error("Cannot read " + path.string());
-  return {std::istreambuf_iterator<char>(input),
-          std::istreambuf_iterator<char>()};
+  return {
+      std::istreambuf_iterator<char>(input),
+      std::istreambuf_iterator<char>()
+  };
 }
 
 void WriteFile(const std::filesystem::path& path, std::string_view text) {

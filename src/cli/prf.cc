@@ -1,92 +1,80 @@
-#include <chrono>
+#include <array>
 #include <cstdint>
-#include <format>
 #include <iostream>
-#include <map>
 #include <memory>
+#include <print>
 #include <string>
-#include <vector>
 
 #include <CLI/CLI.hpp>
 
 #include "cli/commands.h"
+#include "cli/machine_command.h"
 #include "prf/function.h"
 #include "prf/trace.h"
 #include "prf/trace_render.h"
-#include "terminal/ansi.h"
-#include "terminal/ui.h"
+#include "terminal/capabilities.h"
+#include "terminal/style.h"
 
 namespace cli {
 
 namespace {
 
 struct PrfOptions {
-  std::vector<std::uint64_t> params;
-  prf::Trace::Mode mode = prf::Trace::Mode::kCountsOnly;
+  std::array<std::uint64_t, 2> arguments{};
+  prf::Trace::Mode trace = prf::Trace::Mode::kCounts;
 };
 
-int RunPrf(const PrfOptions& options, const GlobalOptions&) {
-  auto power = prf::CreatePowerFunction();
+int RunPrf(const PrfOptions& options) {
+  const auto power = prf::CreatePowerFunction();
   if (!power) {
-    ui::Error(power.error().message);
+    ReportError(power.error().message);
     return 1;
   }
-  prf::Trace trace(options.mode);
-
-  {
-    std::vector<std::uint64_t> args = options.params;
-    const auto t0 = std::chrono::steady_clock::now();
-    auto result = (*power)->Evaluate(args, trace);
-    if (!result) {
-      ui::Error(result.error().message);
-      return 1;
-    }
-    const auto r = *result;
-    const double secs =
-        std::chrono::duration<double>(std::chrono::steady_clock::now() - t0)
-            .count();
-    std::cout << ui::Rail(std::format("pow({})", prf::JoinArguments(args)))
-              << "\n";
-    std::cout << ansi::Format(ansi::Fg(ansi::TerminalColor::kGreen),
-                              "PASS [{:7.3f}s] pow({}) = {}", secs,
-                              prf::JoinArguments(args), r)
-              << "\n";
-    prf::RenderTrace(trace, std::cout);
-    std::cout << ui::Rule("result: DONE") << "\n";
-    std::cout << ansi::Format(ansi::Fg(ansi::TerminalColor::kGreen),
-                              "{} done in {:.3f}s ({} calls)\n", "✓", secs,
-                              trace.TotalCalls());
-    std::cout << "\n";
+  prf::Trace trace(options.trace);
+  const auto result = (*power)->Evaluate(options.arguments, trace);
+  if (!result) {
+    ReportError(result.error().message);
+    return 1;
   }
-
+  const auto style = terminal::Style::For(terminal::OutputStream::kStdout);
+  std::println(
+      "pow({}) = {}",
+      prf::JoinArguments(options.arguments),
+      style.Paint(terminal::Tone::kStrong, std::to_string(*result))
+  );
+  prf::WriteTrace(std::cout, trace, style);
   return 0;
 }
 
 }  // namespace
 
-void RegisterPrf(CLI::App& app, const GlobalOptions& options, int& exit_code) {
-  auto& sub =
-      *app.add_subcommand("prf", "execute primitive recursive functions");
-  sub.fallthrough(false);
-  sub.allow_extras(false);
-
-  auto command_options = std::make_shared<PrfOptions>();
-  sub.add_option("params", command_options->params,
-                 "the prf parameters for execution")
-      ->expected(2, 2)
-      ->required();
-  const std::map<std::string, prf::Trace::Mode> mode_map{
-      {"off", prf::Trace::Mode::kOff},
-      {"full", prf::Trace::Mode::kFull},
-      {"counts-only", prf::Trace::Mode::kCountsOnly},
-  };
-
-  sub.add_option("--mode", command_options->mode, "Trace mode")
-      ->transform(CLI::CheckedTransformer(mode_map, CLI::ignore_case)
-                      .description("off|full|counts-only"));
-  sub.callback([command_options, &options, &exit_code] {
-    exit_code = RunPrf(*command_options, options);
-  });
+void RegisterPrf(CLI::App& app, int& exit_code) {
+  auto& command = AddCommand(
+      app,
+      "prf",
+      "Compute base^exponent as a primitive recursive function",
+      {"cc prf 2 3", "cc prf 1 2 -trace tree"}
+  );
+  auto options = std::make_shared<PrfOptions>();
+  command.add_option("base", options->arguments[0], "Base")->required();
+  command.add_option("exponent", options->arguments[1], "Exponent")->required();
+  command
+      .add_option(
+          "-trace",
+          options->trace,
+          "What to show: the calls of each function, a tree of all calls, or "
+          "nothing"
+      )
+      ->transform(
+          OneOf<prf::Trace::Mode>(
+              {{"counts", prf::Trace::Mode::kCounts},
+               {"tree", prf::Trace::Mode::kTree},
+               {"off", prf::Trace::Mode::kOff}}
+          )
+      )
+      ->type_name("counts|tree|off")
+      ->default_str("counts");
+  command.callback([options, &exit_code] { exit_code = RunPrf(*options); });
 }
 
 }  // namespace cli

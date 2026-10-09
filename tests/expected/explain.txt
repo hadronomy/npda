@@ -1,3 +1,5 @@
 exit=0
-E0007 [common]: start state not in Q
-Name a state from the Q line.
+E0006 [npda] invalid Z0 line
+  Write exactly one token: the initial stack symbol.
+E0006 [turing] invalid blank symbol line
+  Write exactly one token: the blank symbol.

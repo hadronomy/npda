@@ -10,60 +10,56 @@
 
 namespace automata {
 
-// Intern() is the only way to create a valid symbol. Copies share stable text.
+/// An interned token: a state, an alphabet symbol, or an input character.
+///
+/// Only `Intern` makes symbols. Thus, each symbol names real text. A copy of a
+/// symbol is one integer. Equality and hashing do not read the text.
 class Symbol {
  public:
-  Symbol() = default;
-
-  [[nodiscard]] constexpr bool valid() const noexcept {
-    return id_ != kInvalidId;
-  }
-
   [[nodiscard]] constexpr bool operator==(const Symbol&) const noexcept =
       default;
 
-  [[nodiscard]] std::size_t Hash() const noexcept {
-    return std::hash<std::uint32_t>{}(id_);
-  }
+  /// Returns the text. The text stays valid until the process ends.
+  // NOLINTNEXTLINE(readability-identifier-naming): Google style accessor.
+  [[nodiscard]] std::string_view name() const;
 
  private:
   friend Symbol Intern(std::string_view text);
-  friend std::string_view SymbolName(Symbol symbol);
+  friend struct std::hash<Symbol>;
 
-  explicit Symbol(std::uint32_t id) : id_(id) {}
+  explicit constexpr Symbol(std::uint32_t id) noexcept : id_(id) {}
 
-  static constexpr std::uint32_t kInvalidId = static_cast<std::uint32_t>(-1);
-  std::uint32_t id_ = kInvalidId;
+  std::uint32_t id_;
 };
 
+/// Returns the symbol for `text`. Equal texts give equal symbols.
 [[nodiscard]] Symbol Intern(std::string_view text);
-// The table owns the returned bytes for the lifetime of the process.
-[[nodiscard]] std::string_view SymbolName(Symbol symbol);
-// Command input uses one symbol per byte. File alphabets retain whole tokens.
+
+/// Divides an input string into symbols, one for each UTF-8 code point.
+///
+/// Alphabets in machine files keep whole tokens. Thus, `Z0` in a file is one
+/// symbol.
 [[nodiscard]] std::vector<Symbol> InputSymbols(std::string_view text);
 
 }  // namespace automata
 
-namespace std {
-
 template <>
-struct hash<automata::Symbol> {
-  std::size_t operator()(automata::Symbol s) const noexcept { return s.Hash(); }
-};
-
-// Format through the table, so "{}" keeps working on symbols.
-template <typename Char>
-struct formatter<automata::Symbol, Char> {
-  formatter<std::string_view, Char> base_;
-
-  constexpr auto parse(auto& pc) { return base_.parse(pc); }
-
-  template <typename Ctx>
-  auto format(automata::Symbol s, Ctx& ctx) const {
-    return base_.format(automata::SymbolName(s), ctx);
+struct std::hash<automata::Symbol> {
+  std::size_t operator()(automata::Symbol symbol) const noexcept {
+    return std::hash<std::uint32_t>{}(symbol.id_);
   }
 };
 
-}  // namespace std
+template <typename Char>
+struct std::formatter<automata::Symbol, Char>
+    : std::formatter<std::string_view, Char> {
+  // NOLINTNEXTLINE(readability-identifier-naming): std::formatter needs it.
+  auto format(automata::Symbol symbol, auto& context) const {
+    return std::formatter<std::string_view, Char>::format(
+        symbol.name(),
+        context
+    );
+  }
+};
 
 #endif  // NPDA_AUTOMATA_SYMBOL_H_

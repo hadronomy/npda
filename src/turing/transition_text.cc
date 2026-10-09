@@ -3,42 +3,54 @@
 #include <functional>
 #include <span>
 #include <string>
+#include <string_view>
 
-#include "automata/symbol.h"
-#include "turing/machine.h"
+#include "turing/transition.h"
 
 namespace turing {
 
 namespace {
 
-template <typename Projection>
-std::string JoinTapes(std::span<const TapeTransition> tapes,
-                      Projection projection) {
+template <typename Field>
+std::string Join(
+    std::span<const TapeAction> tapes,
+    std::string_view separator,
+    Field field
+) {
   std::string text;
-  for (const auto& tape : tapes) {
-    if (!text.empty()) text += ',';
-    text += std::invoke(projection, tape);
+  for (const auto& action : tapes) {
+    if (!text.empty()) text += separator;
+    text += std::invoke(field, action);
   }
   return text;
 }
 
 }  // namespace
 
-std::string JoinReads(std::span<const TapeTransition> tapes) {
-  return JoinTapes(tapes, [](const TapeTransition& tape) {
-    return automata::SymbolName(tape.read);
+std::string JoinReads(
+    std::span<const TapeAction> tapes,
+    std::string_view separator
+) {
+  return Join(tapes, separator, [](const TapeAction& action) {
+    return action.read.name();
   });
 }
 
-std::string JoinWrites(std::span<const TapeTransition> tapes) {
-  return JoinTapes(tapes, [](const TapeTransition& tape) {
-    return automata::SymbolName(tape.write);
+std::string JoinWrites(
+    std::span<const TapeAction> tapes,
+    std::string_view separator
+) {
+  return Join(tapes, separator, [](const TapeAction& action) {
+    return action.write.name();
   });
 }
 
-std::string JoinMoves(std::span<const TapeTransition> tapes) {
-  return JoinTapes(tapes, [](const TapeTransition& tape) {
-    return std::string(1, ToChar(tape.move));
+std::string JoinMoves(
+    std::span<const TapeAction> tapes,
+    std::string_view separator
+) {
+  return Join(tapes, separator, [](const TapeAction& action) {
+    return std::string(1, ToChar(action.move));
   });
 }
 

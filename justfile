@@ -6,40 +6,40 @@ bin_name := "cc"
 _default:
     just --list -u
 
-# Build the project
+# Build the project.
 build *ARGS:
     xmake build {{ARGS}}
 
-# Build and run tests. Pass arguments through to xmake test.
+# Build the project and run the tests. The arguments go to xmake test.
 test *ARGS: build
     xmake test {{ARGS}}
 
-# Clean build artifacts
+# Remove the build files.
 clean:
     xmake clean
 
-# Format project-owned C++ files.
+# Format the C++ files of the project.
 format:
     find src include tests -type f \( -name '*.h' -o -name '*.cc' \) -print0 | xargs -0 "${CLANG_FORMAT:-clang-format}" -i
 
-# Check formatting without changing files.
+# Find formatting errors. Do not change the files.
 format-check:
     find src include tests -type f \( -name '*.h' -o -name '*.cc' \) -print0 | xargs -0 "${CLANG_FORMAT:-clang-format}" --dry-run --Werror
 
-# Check interfaces, source layout, CLI output, and the example corpus.
+# Build, then test the format, the headers, the CLI output, and the examples.
 verify: build format-check
     xmake project -k compile_commands
     xmake test
 
-# Run the same checks with address and undefined behavior sanitizers.
+# Do the verify steps with the address and undefined behavior sanitizers.
 sanitize:
     xmake f -m debug --sanitize=y -y
     just verify
 
-# Create a tarball of the project
+# Make a tarball of the project.
 tar:
     cd .. && tar cvfz ./{{dir_name}}/{{project_name}}.tar.gz --exclude-from={{dir_name}}/.gitignore {{dir_name}}
 
-# Run the executable, only rebuilding if source has changed
+# Run the executable. Build it again only if the source changed.
 run *ARGS:
     xmake run {{bin_name}} {{ARGS}}

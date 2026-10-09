@@ -2,341 +2,486 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <expected>
 #include <format>
-#include <functional>
 #include <optional>
+#include <ostream>
 #include <print>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
-#include "terminal/ansi.h"
-#include "terminal/palette.h"
-#include "terminal/ui.h"
+#include "automata/symbol.h"
+#include "automata/text.h"
+#include "terminal/box.h"
+#include "terminal/style.h"
+#include "terminal/table.h"
+#include "turing/config.h"
+#include "turing/definition.h"
 #include "turing/machine.h"
+#include "turing/run.h"
+#include "turing/tape.h"
+#include "turing/transition.h"
 #include "turing/transition_text.h"
 
 namespace turing {
 
 namespace {
 
-struct RenderContext {
-  TraceOptions trace;
-  bool track_witness;
-  bool show_config;
+using automata::RuleLayout;
+using automata::RuleText;
+using terminal::BoxCell;
+using terminal::Style;
+using terminal::Styled;
+using terminal::Table;
+using terminal::Tone;
+
+/// The number of cells that a trace draws on each side of a head. With this
+/// number, a trace shows a sweep, and two tapes fit next to each other.
+constexpr std::size_t kTraceRadius = 8;
+
+/// The width of the labels of the detailed view, from `state` to `reject`.
+constexpr std::size_t kLabelWidth = 6;
+
+/// The cells of a tape that the trace shows: from `begin` to `end`, both
+/// included.
+struct Window {
+  std::size_t begin;
+  std::size_t end;
+  bool cut_left;
+  bool cut_right;
 };
 
-class Renderer {
- public:
-  explicit Renderer(const Definition& definition) : definition_(definition) {}
+Window WindowOf(
+    const Tape& tape,
+    Symbol blank,
+    std::optional<std::size_t> radius
+) {
+  std::size_t first = tape.head;
+  std::size_t last = tape.head;
+  for (std::size_t index = 0; index < tape.cells.size(); ++index) {
+    if (tape.cells[index] == blank) continue;
+    first = std::min(first, index);
+    last = std::max(last, index);
+  }
+  if (!radius) {
+    return {.begin = first, .end = last, .cut_left = false, .cut_right = false};
+  }
+  const auto begin =
+      std::max(first, tape.head > *radius ? tape.head - *radius : 0);
+  const auto end = std::min(last, tape.head + *radius);
+  return {
+      .begin = begin,
+      .end = end,
+      .cut_left = begin > first,
+      .cut_right = end < last,
+  };
+}
 
-  void EmitTraceStep(const TapeConfiguration& node, std::size_t step_num,
-                     const std::optional<Transition>& rule,
-                     const RenderContext& opt) const;
-  void ShowConfiguration(const RenderContext& opt) const;
-  void ReplayTracePath(std::span<const TapeConfiguration> nodes,
-                       std::size_t final_idx, const RenderContext& opt) const;
+std::string_view MoveName(HeadMove move) {
+  switch (move) {
+    case HeadMove::kLeft:
+      return "move left";
+    case HeadMove::kRight:
+      return "move right";
+    case HeadMove::kStay:
+      return "stay";
+  }
+  return "stay";
+}
+
+std::string Explain(const Transition& transition) {
+  std::string text;
+  for (std::size_t tape = 0; tape < transition.tapes.size(); ++tape) {
+    const auto& action = transition.tapes[tape];
+    if (transition.tapes.size() > 1) {
+      text += std::format("{}Tape {}: ", tape == 0 ? "" : ". ", tape + 1);
+    }
+    text += std::format("read {}", action.read);
+    if (action.write != action.read) {
+      text += std::format(", write {}", action.write);
+    }
+    text += std::format(", {}", MoveName(action.move));
+  }
+  if (transition.to == transition.from) {
+    return text + std::format(", stay in {}", transition.to);
+  }
+  return text + std::format(", go to {}", transition.to);
+}
+
+RuleText Split(const Transition& transition) {
+  std::string result(transition.to.name());
+  for (const auto& action : transition.tapes) {
+    result += std::format(", {}, {}", action.write, ToChar(action.move));
+  }
+  return {
+      .condition = std::format(
+          "({}, {})",
+          transition.from,
+          JoinReads(transition.tapes, ", ")
+      ),
+      .result = std::format("({})", result),
+  };
+}
+
+std::vector<RuleText> SplitAll(const Definition& definition) {
+  std::vector<RuleText> rules;
+  for (const auto& transition : definition.transitions) {
+    rules.push_back(Split(transition));
+  }
+  return rules;
+}
+
+/// A copy of a step from a run, so that a view can draw it after the run.
+struct Record {
+  Configuration configuration;
+  std::optional<std::size_t> transition;
+};
+
+/// Draws the recorded steps of one run in the view of the options.
+class TraceWriter {
+ public:
+  TraceWriter(
+      std::ostream& out,
+      const Definition& definition,
+      const Style& style,
+      const TraceOptions& options,
+      std::vector<Record> records,
+      std::size_t steps
+  )
+      : out_(&out),
+        definition_(&definition),
+        style_(style),
+        options_(options),
+        rules_(SplitAll(definition)),
+        layout_(RuleLayout::For(rules_)),
+        records_(std::move(records)),
+        steps_(steps) {}
+
+  void Write(
+      std::span<const Symbol> input,
+      const std::expected<RunResult, LimitReached>& result
+  ) const {
+    const auto text = automata::Concat(input);
+    automata::WriteHeading(
+        *out_,
+        "trace",
+        text.empty() ? style_.glyphs().epsilon : text,
+        style_
+    );
+    const auto halted = result && result->steps < records_.size()
+                            ? std::optional(result->steps)
+                            : std::nullopt;
+    switch (options_.view) {
+      case TraceView::kDetailed:
+        WriteDetailed(halted, result);
+        break;
+      case TraceView::kCompact:
+        WriteCompact(halted, result);
+        break;
+    }
+    if (steps_ > records_.size()) {
+      if (options_.view == TraceView::kDetailed) std::println(*out_);
+      automata::WriteHiddenNotice(
+          *out_,
+          steps_ - records_.size(),
+          "step",
+          style_
+      );
+    }
+    std::println(*out_);
+  }
 
  private:
-  const Definition& definition_;
-
-  static std::function<void(std::string_view)> SinkOf(
-      const RenderContext& opt) {
-    return opt.trace.sink ? opt.trace.sink : [](std::string_view text) {
-      std::print("{}", text);
-    };
-  }
-};
-
-void Renderer::EmitTraceStep(const TapeConfiguration& node,
-                             std::size_t step_num,
-                             const std::optional<Transition>& rule,
-                             const RenderContext& opt) const {
-  if (!opt.trace.enabled) return;
-
-  auto sink = SinkOf(opt);
-  std::string out;
-
-  const auto st = [&](ansi::TextStyle s) {
-    return opt.trace.colors ? s : ansi::TextStyle{};
-  };
-  ansi::TextStyle faint;
-  faint.em = ansi::Emphasis::kFaint;
-  ansi::TextStyle bold;
-  bold.em = ansi::Emphasis::kBold;
-
-  // Step card header. Title holds number plus transition only.
-  std::string title = std::format("Step {}", step_num);
-  if (rule.has_value()) {
-    const auto& r0 = rule.value();
-    title += std::format(" · {} {} {}", std::format("{}", r0.from_state),
-                         ui::Arrow(), std::format("{}", r0.to_state));
-  }
-  out += "\n" + ui::Rule(title) + "\n";
-
-  // Current state. Bold always; green only when accepting.
-  out += ansi::Format(st(faint), "state: ");
-  if (std::ranges::contains(definition_.accepting_states, node.state)) {
-    out += ansi::Format(
-        st(ansi::Fg(terminal::colors::kSuccess) | ansi::Emphasis::kBold),
-        "{}\n", std::format("{}", node.state));
-  } else {
-    out += ansi::Format(st(bold), "{}\n", std::format("{}", node.state));
+  /// The rule with the widths of all the rules, so that it aligns with them.
+  [[nodiscard]] Styled Rule(std::size_t transition) const {
+    return automata::FormatRule(
+        transition,
+        rules_[transition],
+        layout_,
+        style_
+    );
   }
 
-  constexpr std::size_t k_window = 8;
-  const std::string k_ellipsis = ansi::UnicodeEnabled() ? "… " : "... ";
-  // Code-point width. Marker math uses this, never byte length.
-  const auto cpwidth = [](std::string_view s) {
-    std::size_t n = 0;
-    for (unsigned char c : s)
-      if ((c & 0xC0) != 0x80) ++n;
-    return n;
-  };
-  const auto cpcut = [](std::string_view s, std::size_t n) {
-    std::size_t i = 0;
-    std::size_t count = 0;
-    while (i < s.size() && count < n) {
-      unsigned char c = static_cast<unsigned char>(s[i]);
-      std::size_t len = 1;
-      if ((c & 0xE0) == 0xC0)
-        len = 2;
-      else if ((c & 0xF0) == 0xE0)
-        len = 3;
-      else if ((c & 0xF8) == 0xF0)
-        len = 4;
-      i += len;
-      ++count;
+  /// The rule without spaces for alignment, for use in a sentence.
+  [[nodiscard]] Styled InlineRule(std::size_t transition) const {
+    return automata::FormatRule(
+        transition,
+        rules_[transition],
+        RuleLayout{},
+        style_
+    );
+  }
+
+  [[nodiscard]] std::string TapeName(std::size_t tape) const {
+    if (definition_->config.num_tapes == 1) return "tape";
+    return std::format("tape {}", tape + 1);
+  }
+
+  /// The reason why the machine halted at `configuration`.
+  [[nodiscard]] std::string HaltReason(
+      const Configuration& configuration,
+      bool accepted
+  ) const {
+    if (accepted) {
+      return std::format("halted in final state {}", configuration.state);
     }
-    return std::string(s.substr(0, std::min(i, s.size())));
-  };
-
-  for (std::size_t tape_idx = 0; tape_idx < definition_.config.num_tapes;
-       ++tape_idx) {
-    const std::string tag = std::format("tape{}: ", tape_idx + 1);
-    out += ansi::Format(st(faint), "{}", tag);
-
-    const auto& tape = node.tapes[tape_idx].cells;
-    const std::size_t head_pos = node.tapes[tape_idx].head_position;
-    // Logical cells: the tape plus blanks out to the head. The marker
-    // always lands on a printed cell, never in a gap.
-    const std::size_t logical = std::max(tape.size(), head_pos + 1);
-    const std::size_t head_cell = head_pos;
-    const std::size_t lo = (head_cell > k_window) ? head_cell - k_window : 0;
-    const std::size_t hi = std::min(logical, head_cell + k_window + 1);
-
-    const auto cell_text = [&](std::size_t i) {
-      if (i < tape.size()) return cpcut(std::format("{}", tape[i]), 6);
-      return cpcut(std::format("{}", definition_.blank_symbol), 6);
-    };
-
-    std::size_t head_col = 0;
-    std::size_t col = 0;
-    if (lo > 0) {
-      out += k_ellipsis;
-      col += cpwidth(k_ellipsis);
+    std::string reads;
+    for (const auto& tape : configuration.tapes) {
+      if (!reads.empty()) reads += ", ";
+      reads += ReadHead(tape, definition_->blank).name();
     }
-    for (std::size_t i = lo; i < hi; ++i) {
-      const std::string piece = (i == head_cell) ? "[" + cell_text(i) + "]"
-                                                 : " " + cell_text(i) + " ";
-      if (i == head_cell) head_col = col + 1 + cpwidth(cell_text(i)) / 2;
-      const bool is_head = (i == head_cell);
-      const bool is_blank = (i >= tape.size());
-      if (is_head) {
-        const auto fg =
-            is_blank ? terminal::colors::kSuccess : terminal::colors::kWarning;
-        out +=
-            ansi::Format(st(ansi::Fg(fg) | ansi::Emphasis::kBold), "{}", piece);
-      } else if (is_blank) {
-        out += ansi::Format(st(faint), "{}", piece);
-      } else {
-        out += piece;
-      }
-      col += cpwidth(piece);
-    }
-    if (hi < logical) out += k_ellipsis;
-
-    out += "\n";
-    out += std::string(tag.size(), ' ');
-    out += std::string(head_col, ' ');
-    out += "^\n";
+    return std::format(
+        "no transition reads ({}) in state {}",
+        reads,
+        configuration.state
+    );
   }
 
-  if (rule.has_value()) {
-    const auto& r = rule.value();
-    const std::string arr = ui::Arrow();
-    out += ansi::Format(st(faint), "rule: ");
-    out += std::format("({}, {}) ", std::format("{}", r.from_state),
-                       JoinReads(r.tapes));
-    out += ansi::Format(st(bold), "{} ({}, {}, {})", arr,
-                        std::format("{}", r.to_state), JoinWrites(r.tapes),
-                        JoinMoves(r.tapes));
-    out += "\n";
-
-    if (opt.trace.explanations) {
-      out += ansi::Format(st(faint),
-                          "In state {}, read ({}), write ({}), move heads "
-                          "({}), and go to state {}\n",
-                          std::format("{}", r.from_state), JoinReads(r.tapes),
-                          JoinWrites(r.tapes), JoinMoves(r.tapes),
-                          std::format("{}", r.to_state));
-    }
+  void WriteLabeled(std::string_view label, std::string_view value) const {
+    std::println(
+        *out_,
+        "    {}  {}",
+        style_.Paint(Tone::kMuted, terminal::PadRight(label, kLabelWidth)),
+        value
+    );
   }
 
-  sink(out);
-}
-
-void Renderer::ShowConfiguration(const RenderContext& opt) const {
-  if (!opt.show_config) return;
-
-  auto sink = SinkOf(opt);
-
-  const std::string kv = std::format(
-      "tapes: {}, direction: {}, mode: {}, stay: {}, blank: {}",
-      definition_.config.num_tapes,
-      definition_.config.tape_direction == TapeDirection::kBidirectional
-          ? "bidirectional"
-          : "right-only",
-      definition_.config.operation_mode == OperationMode::kSimultaneous
-          ? "simultaneous"
-          : "independent",
-      definition_.config.allow_stay ? "yes" : "no",
-      std::format("{}", definition_.blank_symbol));
-  if (opt.trace.colors) {
-    sink(ansi::Format(ansi::Fg(terminal::colors::kInfo), "{}", kv));
-    sink("\n");
-    return;
-  }
-  sink(kv + "\n");
-}
-
-void Renderer::ReplayTracePath(std::span<const TapeConfiguration> nodes,
-                               std::size_t final_idx,
-                               const RenderContext& opt) const {
-  if (!opt.trace.enabled || !opt.track_witness) return;
-
-  std::vector<std::size_t> node_path_rev;
-  std::vector<std::size_t> rule_path_rev;
-
-  for (std::size_t cur = final_idx;;) {
-    node_path_rev.push_back(cur);
-    if (!nodes[cur].predecessor) break;
-    rule_path_rev.push_back(nodes[cur].predecessor->transition_index);
-    cur = nodes[cur].predecessor->node_index;
-  }
-
-  std::vector<std::size_t> node_path(node_path_rev.rbegin(),
-                                     node_path_rev.rend());
-  std::vector<std::size_t> transition_path(rule_path_rev.rbegin(),
-                                           rule_path_rev.rend());
-
-  auto sink = SinkOf(opt);
-
-  if (opt.trace.colors) {
-    sink(ansi::Format(
-        ansi::Fg(terminal::colors::kBannerText),
-        "\n{} Accepting configuration found! Replaying {} steps...\n",
-        terminal::symbols::kInfo, transition_path.size()));
-  } else {
-    sink(std::format("\nAccepting configuration found! Replaying {} steps...\n",
-                     transition_path.size()));
-  }
-
-  if (!opt.trace.show_full_trace) {
-    std::vector<std::size_t> show;
-    if (node_path.size() > std::max<std::size_t>(2, opt.trace.step_limit) + 1 &&
-        std::max<std::size_t>(2, opt.trace.step_limit) > 1) {
-      const std::size_t head =
-          std::max<std::size_t>(2, opt.trace.step_limit) / 2;
-      const std::size_t tail =
-          std::max<std::size_t>(2, opt.trace.step_limit) - head;
-      for (std::size_t i = 0; i < head; ++i) show.push_back(i);
-      for (std::size_t i = node_path.size() - tail; i < node_path.size(); ++i)
-        show.push_back(i);
-    } else {
-      for (std::size_t i = 0; i < node_path.size(); ++i) show.push_back(i);
-    }
-
-    std::size_t step_num = 0;
-    for (std::size_t k = 0; k < show.size(); ++k) {
-      const std::size_t i = show[k];
-      if (k > 0 && i != show[k - 1] + 1) {
-        for (std::size_t j = show[k - 1] + 1; j < i; j += 50) {
-          sink(ui::Rule(
-                   std::format("… step {} · {}", j,
-                               std::format("{}", nodes[node_path[j]].state))) +
-               "\n");
+  void WriteDetailed(
+      std::optional<std::size_t> halted,
+      const std::expected<RunResult, LimitReached>& result
+  ) const {
+    for (std::size_t number = 0; number < records_.size(); ++number) {
+      const auto& record = records_[number];
+      std::println(*out_);
+      const auto id = style_.Paint(Tone::kHeading, std::format("#{}", number));
+      if (record.transition) {
+        std::println(
+            *out_,
+            "{}  {} {}",
+            id,
+            style_.Paint(Tone::kMuted, "by"),
+            InlineRule(*record.transition).text
+        );
+        if (options_.explain) {
+          WriteLabeled(
+              "",
+              style_.Paint(
+                  Tone::kMuted,
+                  Explain(definition_->transitions[*record.transition])
+              )
+          );
         }
-        sink(std::format("… ({} steps hidden, raise --trace-limit to expand)\n",
-                         i - show[k - 1] - 1));
+      } else {
+        std::println(*out_, "{}  {}", id, style_.Paint(Tone::kMuted, "start"));
       }
-      std::optional<Transition> rule_opt = std::nullopt;
-      if (i > 0 && k > 0 && i == show[k - 1] + 1)
-        rule_opt = definition_.transitions[transition_path[i - 1]];
-      EmitTraceStep(nodes[node_path[i]], step_num++, rule_opt, opt);
+      const auto& configuration = record.configuration;
+      WriteLabeled(
+          "state",
+          style_.Paint(Tone::kStrong, configuration.state.name())
+      );
+      for (std::size_t tape = 0; tape < configuration.tapes.size(); ++tape) {
+        WriteTapeCells(TapeName(tape), configuration.tapes[tape]);
+      }
+      if (halted == number) {
+        const bool accepted = result->accepted;
+        WriteLabeled(
+            accepted ? "accept" : "reject",
+            style_.Paint(
+                accepted ? Tone::kGood : Tone::kBad,
+                HaltReason(configuration, accepted)
+            )
+        );
+      }
     }
   }
 
-  if (opt.trace.colors) {
-    sink(ansi::Format(ansi::Fg(terminal::colors::kSuccess),
-                      "\n{} Input accepted!\n", terminal::symbols::kSuccess));
-  } else {
-    sink("\nInput accepted!\n");
+  void WriteTapeCells(std::string_view label, const Tape& tape) const {
+    const auto blank = definition_->blank;
+    const auto window = WindowOf(tape, blank, kTraceRadius);
+    const auto& ellipsis = style_.glyphs().ellipsis;
+    std::vector<BoxCell> cells;
+    if (window.cut_left) cells.push_back({std::string(ellipsis), Tone::kMuted});
+    std::size_t head = 0;
+    for (std::size_t index = window.begin; index <= window.end; ++index) {
+      const auto symbol = index < tape.cells.size() ? tape.cells[index] : blank;
+      if (index == tape.head) head = cells.size();
+      cells.push_back({
+          std::string(symbol.name()),
+          index == tape.head ? Tone::kStrong
+          : symbol == blank  ? Tone::kMuted
+                             : Tone::kPlain,
+      });
+    }
+    if (window.cut_right) {
+      cells.push_back({std::string(ellipsis), Tone::kMuted});
+    }
+    const auto row = terminal::DrawBoxedRow(cells, style_);
+    WriteLabeled("", row.top);
+    WriteLabeled(label, row.middle);
+    WriteLabeled("", row.bottom);
+    WriteLabeled(
+        "",
+        std::string(row.centers[head], ' ') +
+            style_.Paint(Tone::kAccent, style_.glyphs().head)
+    );
   }
-}
+
+  void WriteCompact(
+      std::optional<std::size_t> halted,
+      const std::expected<RunResult, LimitReached>& result
+  ) const {
+    Table table;
+    std::vector<Styled> header{
+        style_.Span(Tone::kMuted, "#"),
+        style_.Span(Tone::kMuted, "state"),
+    };
+    for (std::size_t tape = 0; tape < definition_->config.num_tapes; ++tape) {
+      header.push_back(style_.Span(Tone::kMuted, TapeName(tape)));
+    }
+    header.push_back(style_.Span(Tone::kMuted, "by"));
+    table.AddRow(std::move(header));
+    for (std::size_t number = 0; number < records_.size(); ++number) {
+      const auto& record = records_[number];
+      std::vector<Styled> row{
+          style_.Span(Tone::kMuted, std::format("#{}", number)),
+          style_.Span(Tone::kStrong, record.configuration.state.name()),
+      };
+      for (const auto& tape : record.configuration.tapes) {
+        row.push_back(style_.Span(
+            Tone::kPlain,
+            FormatTape(tape, definition_->blank, style_, kTraceRadius)
+        ));
+      }
+      row.push_back(record.transition ? Rule(*record.transition) : Styled{});
+      if (halted == number) {
+        row.push_back(
+            result->accepted ? style_.Span(Tone::kGood, "accept")
+                             : style_.Span(Tone::kBad, "reject")
+        );
+      }
+      table.AddRow(std::move(row));
+    }
+    table.Write(*out_);
+  }
+
+  std::ostream* out_;
+  const Definition* definition_;
+  Style style_;
+  TraceOptions options_;
+  std::vector<RuleText> rules_;
+  RuleLayout layout_;
+  std::vector<Record> records_;
+  std::size_t steps_;
+};
 
 }  // namespace
 
-void ShowConfiguration(const Definition& definition,
-                       const TraceOptions& options) {
-  Renderer(definition).ShowConfiguration(RenderContext{options, true, true});
+std::string Describe(const Definition& definition, const Style& style) {
+  const auto& config = definition.config;
+  const auto count = definition.transitions.size();
+  const std::vector<std::string> parts{
+      std::format("q0 = {}", definition.start_state),
+      std::format("b = {}", definition.blank),
+      std::format("F = {}", automata::FormatSet(definition.accepting_states)),
+      std::format(
+          "{} {}",
+          config.num_tapes,
+          config.num_tapes == 1 ? "tape" : "tapes"
+      ),
+      config.tape_direction == TapeDirection::kBidirectional ? "bidirectional"
+                                                             : "right-only",
+      config.operation_mode == OperationMode::kSimultaneous ? "simultaneous"
+                                                            : "independent",
+      config.allow_stay ? "stay allowed" : "no stay",
+      std::format("{} {}", count, count == 1 ? "transition" : "transitions"),
+  };
+  std::string text;
+  for (const auto& part : parts) {
+    if (!text.empty()) text += style.Separator();
+    text += part;
+  }
+  return text;
 }
 
-void RenderTrace(const Definition& definition, const ExecutionEvent& event,
-                 const TraceOptions& options) {
-  if (!options.enabled) return;
-  const Renderer renderer(definition);
-  const RenderContext context{options, event.track_witness, false};
-  const auto& node = event.nodes[event.node_index];
-  switch (event.kind) {
-    case EventKind::kStep:
-      if (options.show_full_trace || !event.track_witness) {
-        std::optional<Transition> transition;
-        if (event.track_witness && node.predecessor)
-          transition =
-              definition.transitions[node.predecessor->transition_index];
-        renderer.EmitTraceStep(node, event.steps, transition, context);
-      }
-      break;
-    case EventKind::kAccepted:
-      if (event.track_witness)
-        renderer.ReplayTracePath(event.nodes, event.node_index, context);
-      break;
-    case EventKind::kNoTransition: {
-      std::vector<Symbol> symbols;
-      for (std::size_t i = 0; i < node.tapes.size(); ++i) {
-        const auto& tape = node.tapes[i].cells;
-        const auto position = node.tapes[i].head_position;
-        symbols.push_back(position < tape.size() ? tape[position]
-                                                 : definition.blank_symbol);
-      }
-      const auto sink =
-          options.sink ? options.sink
-                       : [](std::string_view text) { std::print("{}", text); };
-      if (options.colors) {
-        sink(ansi::Format(
-            ansi::Fg(terminal::colors::kError),
-            "\n{} No transition available for state '{}' and symbols ({})\n",
-            terminal::symbols::kError, node.state, ansi::Join(symbols, ",")));
-      } else {
-        sink(std::format(
-            "\nNo transition available for state '{}' and symbols ({})\n",
-            node.state, ansi::Join(symbols, ",")));
-      }
-      break;
+std::string FormatTransition(const Transition& transition, const Style& style) {
+  const auto text = Split(transition);
+  return std::format(
+      "{} {} {}",
+      text.condition,
+      style.glyphs().arrow,
+      text.result
+  );
+}
+
+std::string FormatTape(
+    const Tape& tape,
+    Symbol blank,
+    const Style& style,
+    std::optional<std::size_t> radius
+) {
+  const auto window = WindowOf(tape, blank, radius);
+  const auto& ellipsis = style.glyphs().ellipsis;
+  std::string text(window.cut_left ? ellipsis : "");
+  for (std::size_t index = window.begin; index <= window.end; ++index) {
+    const auto symbol = index < tape.cells.size() ? tape.cells[index] : blank;
+    if (index == tape.head) {
+      text += std::format("[{}]", symbol);
+    } else {
+      text += symbol.name();
     }
   }
+  if (window.cut_right) text += ellipsis;
+  return text;
+}
+
+void WriteTransitions(
+    std::ostream& out,
+    const Definition& definition,
+    const Style& style,
+    bool explain
+) {
+  std::vector<std::string> notes;
+  if (explain) {
+    for (const auto& transition : definition.transitions) {
+      notes.push_back(Explain(transition));
+    }
+  }
+  automata::WriteTransitionList(out, SplitAll(definition), notes, style);
+}
+
+std::expected<RunResult, LimitReached> TraceRun(
+    const Machine& machine,
+    std::span<const Symbol> input,
+    std::size_t max_steps,
+    const TraceOptions& options,
+    std::ostream& out,
+    const Style& style
+) {
+  std::vector<Record> records;
+  std::size_t steps = 0;
+  const auto record = [&](const Step& step) {
+    ++steps;
+    if (step.number >= options.limit) return;
+    records.push_back({
+        .configuration = step.configuration,
+        .transition = step.transition,
+    });
+  };
+  const auto result =
+      machine.Run(input, {.max_steps = max_steps, .observer = record});
+  const TraceWriter writer(
+      out,
+      machine.definition(),
+      style,
+      options,
+      std::move(records),
+      steps
+  );
+  writer.Write(input, result);
+  return result;
 }
 
 }  // namespace turing

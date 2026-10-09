@@ -22,22 +22,23 @@ end
 
 target("automata")
     set_kind("static")
-    add_files("src/parsing/*.cc", "src/npda/machine.cc", "src/npda/parser.cc", "src/npda/search.cc",
-              "src/turing/machine.cc", "src/turing/parser.cc", "src/turing/execution.cc", "src/turing/config_parser.cc",
+    add_files("src/automata/symbol.cc", "src/parsing/*.cc",
+              "src/npda/machine.cc", "src/npda/parser.cc",
+              "src/turing/machine.cc", "src/turing/parser.cc", "src/turing/config_parser.cc",
               "src/turing/transition_text.cc", "src/prf/function.cc", "src/prf/trace.cc",
-              "src/diagnostics/diagnostic.cc", "src/diagnostics/source.cc")
+              "src/diagnostics/*.cc")
 
 target("presentation")
     set_kind("static")
     add_deps("automata")
-    add_files("src/npda/trace.cc", "src/turing/trace.cc", "src/turing/graphviz.cc",
-              "src/prf/trace_render.cc", "src/diagnostics/render.cc", "src/terminal/*.cc")
+    add_files("src/automata/text.cc", "src/npda/trace.cc", "src/turing/trace.cc",
+              "src/turing/graphviz.cc", "src/prf/trace_render.cc", "src/terminal/*.cc")
 
 target("cc")
     set_kind("binary")
     add_deps("presentation", "automata")
     add_packages("cli11")
-    add_files("src/*.cc", "src/cli/*.cc")
+    add_files("src/main.cc", "src/cli/*.cc")
 
 target("domain_tests")
     set_kind("binary")

@@ -2,61 +2,44 @@
 #define NPDA_DIAGNOSTICS_SOURCE_H_
 
 #include <cstddef>
-#include <functional>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
 namespace diag {
 
+/// Byte offsets `[lo, hi)` into the text of a `SourceFile`.
 struct SourceSpan {
-  std::size_t lo = 0;  // inclusive
-  std::size_t hi = 0;  // exclusive
-  std::string file{};  // empty means the source under render
+  std::size_t lo = 0;
+  std::size_t hi = 0;
 
-  [[nodiscard]] bool empty() const { return lo >= hi; }
+  [[nodiscard]] bool Empty() const { return lo >= hi; }
 };
 
 struct SourceFile {
   std::string filename;
   std::string text;
-  std::vector<std::size_t> line_starts;  // offsets of each line start
+  /// The byte offset where each line starts.
+  std::vector<std::size_t> line_starts;
 
   [[nodiscard]] static SourceFile From(std::string filename, std::string text);
 
-  [[nodiscard]] std::size_t line_count() const;
+  [[nodiscard]] std::size_t LineCount() const;
 
-  [[nodiscard]] std::pair<std::size_t, std::size_t> line_col(
-      std::size_t pos) const;
+  /// Returns the line and the column of a byte offset. Both start at one. An
+  /// offset after the end of the text gives the last position.
+  [[nodiscard]] std::pair<std::size_t, std::size_t> LineColumn(
+      std::size_t offset
+  ) const;
 
-  [[nodiscard]] std::string_view line_view(std::size_t line_1) const;
-};
+  /// Returns the line `number`, without its line terminator. Lines start at
+  /// one. Returns an empty view if the line does not exist. The view points
+  /// into `text`.
+  [[nodiscard]] std::string_view Line(std::size_t number) const;
 
-// Owns named sources for multi-file renders. Memoizes parsed files.
-// Heterogeneous lookup takes string_view keys with no allocation.
-struct TransparentHash {
-  using is_transparent = void;
-
-  [[nodiscard]] std::size_t operator()(std::string_view s) const noexcept {
-    return std::hash<std::string_view>{}(s);
-  }
-};
-
-struct SourceCache {
-  std::unordered_map<std::string, SourceFile, TransparentHash, std::equal_to<>>
-      files;
-
-  const SourceFile* Find(std::string_view name) const {
-    const auto it = files.find(name);
-    return it == files.end() ? nullptr : &it->second;
-  }
-
-  const SourceFile& Insert(SourceFile sf) {
-    const auto [it, _] = files.insert_or_assign(sf.filename, std::move(sf));
-    return it->second;
-  }
+  /// Returns the span of `part`. `part` must be a view into `text`.
+  [[nodiscard]] SourceSpan SpanOf(std::string_view part) const;
 };
 
 }  // namespace diag

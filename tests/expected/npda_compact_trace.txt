@@ -1,0 +1,51 @@
+exit=0
+APv-2.txt · empty stack · q0 = p · Z0 = S · 12 transitions
+
+transitions
+  δ1   (p, 0, S) → (p, 0S)
+  δ2   (p, 1, S) → (p, 1S)
+  δ3   (p, 0, 0) → (p, 00)
+  δ4   (p, 0, 1) → (p, 01)
+  δ5   (p, 1, 0) → (p, 10)
+  δ6   (p, 1, 1) → (p, 11)
+  δ7   (p, ε, S) → (q, S)
+  δ8   (p, ε, 0) → (q, 0)
+  δ9   (p, ε, 1) → (q, 1)
+  δ10  (q, 0, 0) → (q, ε)
+  δ11  (q, 1, 1) → (q, ε)
+  δ12  (q, ε, S) → (q, ε)
+
+trace 0110
+  #   state  input  stack
+  #0  p      ▸0110  S
+    ├─ δ7   (p, ε, S) → (q, S)   ⇒ #1
+    └─ δ1   (p, 0, S) → (p, 0S)  ⇒ #2
+  #1  q      ▸0110  S
+    └─ δ12  (q, ε, S) → (q, ε)   ⇒ #3
+  #2  p      0▸110  0 S
+    ├─ δ8   (p, ε, 0) → (q, 0)   ⇒ #4
+    └─ δ5   (p, 1, 0) → (p, 10)  ⇒ #5
+  #3  q      ▸0110  ε        dead end
+  #4  q      0▸110  0 S      dead end
+  #5  p      01▸10  1 0 S
+    ├─ δ9   (p, ε, 1) → (q, 1)   ⇒ #6
+    └─ δ6   (p, 1, 1) → (p, 11)  ⇒ #7
+  #6  q      01▸10  1 0 S
+    └─ δ11  (q, 1, 1) → (q, ε)   ⇒ #8
+  #7  p      011▸0  1 1 0 S
+    ├─ δ9   (p, ε, 1) → (q, 1)   ⇒ #9
+    └─ δ4   (p, 0, 1) → (p, 01)  ⇒ #10
+  … The trace does not show 6 more configurations. Increase -trace-limit to show them.
+
+accepting path
+  start                        p  ▸0110  S
+  δ1   (p, 0, S) → (p, 0S)  ⇒  p  0▸110  0 S
+  δ5   (p, 1, 0) → (p, 10)  ⇒  p  01▸10  1 0 S
+  δ9   (p, ε, 1) → (q, 1)   ⇒  q  01▸10  1 0 S
+  δ11  (q, 1, 1) → (q, ε)   ⇒  q  011▸0  0 S
+  δ10  (q, 0, 0) → (q, ε)   ⇒  q  0110▸  S
+  δ12  (q, ε, S) → (q, ε)   ⇒  q  0110▸  ε
+
+accept  0110  δ1 δ5 δ9 δ11 δ10 δ12
+
+1 input · 1 accepted · 0 rejected

@@ -19,7 +19,8 @@ std::vector<std::filesystem::path> SourceFiles() {
   std::vector<std::filesystem::path> paths;
   for (const auto* directory : {"src", "include", "tests"}) {
     for (const auto& entry : std::filesystem::recursive_directory_iterator(
-             test_support::SourceRoot() / directory)) {
+             test_support::SourceRoot() / directory
+         )) {
       if (!entry.is_regular_file()) continue;
       const auto relative =
           entry.path().lexically_relative(test_support::SourceRoot());
@@ -46,8 +47,10 @@ std::string HeaderGuard(std::filesystem::path path) {
   return "NPDA_" + guard + '_';
 }
 
-TEST_CASE("Project headers use path-based include guards",
-          "[source][headers]") {
+TEST_CASE(
+    "Project headers use path-based include guards",
+    "[source][headers]"
+) {
   for (const auto& path : SourceFiles()) {
     if (path.extension() != ".h") continue;
     CAPTURE(path);
@@ -58,8 +61,10 @@ TEST_CASE("Project headers use path-based include guards",
   }
 }
 
-TEST_CASE("Project sources use includes and separated declaration blocks",
-          "[source][format]") {
+TEST_CASE(
+    "Project sources use includes and separated declaration blocks",
+    "[source][format]"
+) {
   const std::regex module_declaration(R"(^(export\s+)?(module|import)\b.*)");
   const std::regex namespace_opener(R"(^namespace [\w:]* \{)");
   const std::regex type_declaration(R"(^(struct|class|enum)\b.*)");
@@ -67,7 +72,8 @@ TEST_CASE("Project sources use includes and separated declaration blocks",
     CAPTURE(path);
     CHECK(path.extension() != ".cppm");
     std::istringstream input(
-        test_support::ReadFile(test_support::SourceRoot() / path));
+        test_support::ReadFile(test_support::SourceRoot() / path)
+    );
     std::vector<std::string> lines;
     for (std::string line; std::getline(input, line);)
       lines.push_back(std::move(line));
@@ -75,8 +81,9 @@ TEST_CASE("Project sources use includes and separated declaration blocks",
     for (std::size_t index = 0; index < lines.size(); ++index) {
       const auto& line = lines[index];
       if (std::regex_match(line, module_declaration)) {
-        errors.push_back("Named module declaration at line " +
-                         std::to_string(index + 1));
+        errors.push_back(
+            "Named module declaration at line " + std::to_string(index + 1)
+        );
       }
       if (index + 1 == lines.size()) continue;
       const auto& following = lines[index + 1];
@@ -85,8 +92,9 @@ TEST_CASE("Project sources use includes and separated declaration blocks",
           (std::regex_match(line, namespace_opener) && !following.empty()) ||
           (line.starts_with("using ") &&
            std::regex_match(following, type_declaration))) {
-        errors.push_back("Missing blank line at line " +
-                         std::to_string(index + 2));
+        errors.push_back(
+            "Missing blank line at line " + std::to_string(index + 2)
+        );
       }
     }
     CAPTURE(errors);
