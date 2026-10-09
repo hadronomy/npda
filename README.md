@@ -74,7 +74,7 @@ On Ubuntu 24.04, install LLVM 23 and its libc++ packages from apt.llvm.org.
 The CI workflow lists the necessary packages.
 
 Run `mise install` to get `just`. Xmake installs Catch2 for the tests and
-reproc++ for the CLI tests. The tests do not need Python. Formatting needs
+reproc++ for the CLI tests. Formatting needs
 clang-format 20 or later. CI uses clang-format 23.
 
 ## Build
