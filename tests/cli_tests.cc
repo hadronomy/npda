@@ -77,7 +77,7 @@ TEST_CASE(
       },
       OutputFixture{
           "npda_diagnostics",
-          {"npda", "-config", "examples/APv/APv-jueves-1.txt", "a"}
+          {"npda", "-config", "tests/fixtures/invalid_start_state.npda", "a"}
       },
       OutputFixture{"explain", {"explain", "E0006"}},
       OutputFixture{"explain_unknown", {"explain", "BOGUS"}}
