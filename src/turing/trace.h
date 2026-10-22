@@ -20,8 +20,8 @@
 namespace turing {
 
 enum class TraceView {
-  /// One block for each step. The block shows the state, each tape as cells
-  /// with a mark below the head, and the transition that gave the step.
+  /// One block per step, showing the state, each tape as cells with a mark
+  /// below the head, and the transition that produced the step.
   kDetailed,
   /// One line for each step.
   kCompact,
@@ -29,8 +29,8 @@ enum class TraceView {
 
 struct TraceOptions {
   TraceView view = TraceView::kDetailed;
-  /// The maximum number of steps that the trace shows. The run continues after
-  /// this limit.
+  /// Limits the steps shown in the trace while the run continues past this
+  /// limit.
   std::size_t limit = 200;
   /// If true, the detailed view adds a note in words below each transition.
   bool explain = false;
@@ -46,9 +46,9 @@ struct TraceOptions {
     const terminal::Style& style
 );
 
-/// Returns a rule: `(q0, a) → (q1, X, R)`. With more tapes, the condition has
-/// one read for each tape. The result has one write and one move for each
-/// tape. In the independent mode, the result has one action for each tape:
+/// Returns a transition such as `(q0, a) → (q1, X, R)`. With more tapes, the
+/// condition includes one read per tape, and the result includes one write and
+/// one move per tape. In the independent mode, each tape has one action:
 /// `(q0, a) → (q1, X)` or `(q0, a) → (q1, R)`.
 [[nodiscard]] std::string FormatTransition(
     const Transition& transition,
@@ -58,10 +58,10 @@ struct TraceOptions {
 
 /// Returns the tape in the form of the course: `ab[c]d`.
 ///
-/// The text starts at the first cell that is not blank and ends at the last
-/// one. If the head is outside these cells, the text extends to the head. The
-/// cell below the head is in brackets. With a `radius`, the text keeps only the
-/// cells near the head, and an ellipsis shows each cut.
+/// The text spans the first through the last nonblank cell, extending to the
+/// head if it lies outside that span, and brackets the cell under the head.
+/// With a `radius`, only the cells near the head remain, with an ellipsis at
+/// each cut.
 [[nodiscard]] std::string FormatTape(
     const Tape& tape,
     Symbol blank,
@@ -69,8 +69,8 @@ struct TraceOptions {
     std::optional<std::size_t> radius = std::nullopt
 );
 
-/// Writes the numbered transitions. If `explain` is true, each rule also has a
-/// note in words.
+/// Writes the numbered transitions, with an explanation in words for each
+/// transition if `explain` is true.
 void WriteTransitions(
     std::ostream& out,
     const Definition& definition,
@@ -82,8 +82,8 @@ void WriteTransitions(
 ///
 /// # Errors
 ///
-/// `LimitReached` if the machine did not halt after `max_steps` moves. The
-/// trace shows the steps that the machine did.
+/// `LimitReached` if the machine did not halt after `max_steps` moves, with the
+/// completed steps still shown in the trace.
 [[nodiscard]] std::expected<RunResult, LimitReached> TraceRun(
     const Machine& machine,
     std::span<const Symbol> input,

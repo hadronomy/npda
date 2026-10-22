@@ -12,10 +12,10 @@ namespace turing {
 
 /// Returns the machine as a Graphviz digraph.
 ///
-/// Each state is a node. An accepting state has a double border. Each pair of
-/// states has one edge, with a label that lists all the rules between the two
-/// states as `reads / writes / moves`. States and edges are in the order of the
-/// file. Thus, each run gives the same text.
+/// States appear as nodes, with a double border for accepting states, and each
+/// connected pair has one edge whose label lists its transitions as
+/// `reads / writes / moves`. States and edges follow file order so that each
+/// call produces the same text.
 [[nodiscard]] std::string ToDot(const Definition& definition);
 
 /// Writes `ToDot(definition)` to `path`.
@@ -30,9 +30,9 @@ namespace turing {
 
 /// Draws the machine with Graphviz.
 ///
-/// The extension of `output` sets the image format. Thus, `machine.svg` runs
-/// `executable -Tsvg`. The program finds the executable in `PATH` and does not
-/// use a shell.
+/// The extension of `output` sets the image format, so `machine.svg` runs
+/// `executable -Tsvg`. The program finds the executable in `PATH` and runs it
+/// without a shell.
 ///
 /// # Errors
 ///

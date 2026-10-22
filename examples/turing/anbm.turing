@@ -1,14 +1,17 @@
 # Machine 1: L = { aⁿbᵐ | m ≥ n, n > 0 }
 #
-# Each round marks the first free a as X and the first free b as Y. When no
-# free a is left, the rest of the tape must hold only Y and b.
+# Each round pairs the first free a with the first free b by marking them as
+# X and Y. Once all the a are marked, the remaining suffix must contain only
+# Y and b.
 #
-# q0  marks the next a. If the next cell is Y, all of the a are marked. At the
-#     start, a b or a blank stops the machine: n = 0.
-# q1  goes right to the first free b and marks it. A blank stops the machine:
-#     m < n.
+# q0  marks the next a, or enters the final check when it reaches Y because
+#     all the a are marked. An initial b or blank stops the machine because
+#     n = 0.
+# q1  searches right for the first free b and marks it as Y. If it reaches a
+#     blank first, the machine stops because m < n.
 # q2  goes back left to the last X.
-# q3  checks that only Y and b come before the blank. An a stops the machine.
+# q3  checks that only Y and b remain before the blank, stopping the machine
+#     if it finds an a.
 # q4  accepts.
 
 # Q

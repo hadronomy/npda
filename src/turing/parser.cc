@@ -32,8 +32,8 @@ using parsing::Token;
 
 constexpr std::string_view kTapesSection = "number of tapes";
 
-/// True if `text` is one character. An input splits into characters, so a
-/// longer tape symbol could never come from an input.
+/// True if `text` is one character. Inputs split into characters, so a longer
+/// tape symbol could never come from an input.
 bool IsOneCharacter(std::string_view text) {
   return automata::InputSymbols(text).size() == 1;
 }
@@ -46,8 +46,8 @@ std::optional<std::size_t> ParseCount(std::string_view text) {
   return count;
 }
 
-/// True if `line` can only be the number of tapes: one positive integer that
-/// is not a state. Then the file has no F line, and F is empty.
+/// True if `line` contains a single positive integer that is not a state,
+/// identifying the number of tapes when the file omits F because it is empty.
 bool IsTapeCountLine(const Line& line, const SymbolSet& states) {
   return line.tokens.size() == 1 &&
          ParseCount(line.tokens.front().symbol.name()) &&
@@ -79,8 +79,8 @@ std::optional<std::size_t> ReadTapeCount(
   return count;
 }
 
-/// Reads the Σ line. Reports each symbol that is not in Γ. Γ is the next line,
-/// so the caller gives it with `tape_alphabet`.
+/// Reads the Σ line and reports each symbol outside Γ. Because Γ comes on the
+/// next line, the caller supplies it through `tape_alphabet`.
 std::vector<Symbol> CheckInputAlphabet(
     const Line* line,
     const SymbolSet& tape_alphabet,
@@ -105,9 +105,8 @@ std::vector<Symbol> CheckInputAlphabet(
   return alphabet;
 }
 
-/// Reports each tape symbol that is longer than one character. In the
-/// independent mode, also reports each tape symbol that a transition would
-/// read as a move.
+/// Reports tape symbols longer than one character and, in the independent
+/// mode, symbols that a transition can read as a move.
 void CheckTapeAlphabet(
     const Line* line,
     const Config& config,
@@ -140,9 +139,9 @@ void CheckTapeAlphabet(
   }
 }
 
-/// Reads the rules of a machine with N tapes. A rule starts with
-/// `from read1 .. readN to`. Then each tape gets an action. In the
-/// simultaneous mode, the action is a write and a move:
+/// Reads transitions for a machine with N tapes. Each transition starts with
+/// `from read1 .. readN to`, followed by one action per tape. In the
+/// simultaneous mode, each action combines a write and a move:
 ///
 /// ```text
 /// from  read1 .. readN  to  write1 move1 .. writeN moveN
@@ -170,8 +169,8 @@ class RuleParser {
         tape_alphabet_(tape_alphabet),
         diagnostics_(diagnostics) {}
 
-  /// Reads one rule and reports each bad field. The result is correct only if
-  /// the function reported nothing.
+  /// Reads one transition and reports each invalid field. The result is
+  /// meaningful only if the call reported nothing.
   std::optional<Transition> Parse(const Line& line) {
     if (line.tokens.size() != Arity()) {
       diag::Error(
@@ -250,8 +249,8 @@ class RuleParser {
     };
   }
 
-  /// A symbol of Γ is a write. Otherwise the token must be a move. Γ has no
-  /// move letters in this mode, so the order of the two tests does not matter.
+  /// An action writes a symbol from Γ or moves the head. Because Γ excludes
+  /// move letters in this mode, the two tests can run in either order.
   TapeAction ParseAction(Symbol read, const Token& action) {
     if (tape_alphabet_.contains(action.symbol)) {
       return {.read = read, .write = action.symbol, .move = HeadMove::kStay};

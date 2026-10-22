@@ -10,11 +10,11 @@
 
 namespace turing {
 
-/// A Turing machine, as its file gives it.
+/// A Turing machine as defined in its file.
 struct Definition {
   Config config;
   std::size_t num_tapes = 1;
-  /// Σ, in file order. An input must use only these symbols.
+  /// Σ in file order, containing all the symbols that an input can use.
   std::vector<Symbol> input_alphabet;
   Symbol start_state;
   Symbol blank;

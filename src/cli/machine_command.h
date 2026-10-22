@@ -20,13 +20,12 @@
 #include "diagnostics/source.h"
 #include "terminal/style.h"
 
-/// The parts that the npda and turing commands share. These are the options of
-/// the course statement, the source of the inputs, and the destination of the
-/// trace. They also include the form of each verdict and of the summary.
+/// The parts that the npda and turing commands share: the course statement's
+/// options, input sources, trace destination, and format of verdicts and
+/// summaries.
 namespace cli {
 
-/// The options of a machine command. `View` gives the trace views of the
-/// machine.
+/// The options of a machine command, with `View` supplying its trace views.
 template <typename View>
 struct MachineOptions {
   std::filesystem::path config;
@@ -41,8 +40,8 @@ struct MachineOptions {
 };
 
 /// Adds `-config`, `-trace`, `-trace-view`, `-trace-limit`, `-explain`, `-in`,
-/// `-out`, `-verbose`, and the input strings. The help page shows them in this
-/// order.
+/// `-out`, `-verbose`, and the input strings in the order shown on the help
+/// page.
 template <typename View>
 void AddMachineOptions(
     CLI::App& command,
@@ -123,8 +122,7 @@ void ReportError(std::string_view message);
     const std::filesystem::path& path
 );
 
-/// Writes the diagnostics to standard error. Writes nothing if there are no
-/// diagnostics.
+/// Writes the diagnostics to standard error, or nothing if there are none.
 void ReportDiagnostics(
     const diag::SourceFile& source,
     const diag::DiagnosticSet& diagnostics,
@@ -133,26 +131,15 @@ void ReportDiagnostics(
 
 /// Returns the inputs from the arguments, then from the `in` file.
 ///
-/// Files and the keyboard follow one rule: blank lines are skipped, and a
-/// line holding only `.` is the empty string, as in machine files. The
-/// keyboard is read only when `read_keyboard` is true and nothing else gave
-/// an input.
+/// Files and the keyboard use the same rules: blank lines are skipped, and a
+/// line with only `.` is the empty string, as in machine files. If neither
+/// source gives an input and `read_keyboard` is true, inputs come from the
+/// keyboard.
 ///
 /// # Errors
 ///
 /// A message naming the `in` file when it cannot be read.
 [[nodiscard]] std::expected<std::vector<std::string>, std::string>
-/// Returns the inputs from the arguments, and then the inputs from the `in`
-/// file.
-///
-/// Files and the keyboard use the same rules. The reader skips blank lines. A
-/// line with only `.` is the empty string, as in machine files. The reader uses
-/// the keyboard only if `read_keyboard` is true and no other source gave an
-/// input.
-///
-/// # Errors
-///
-/// A message with the name of the `in` file if the file cannot be read.
 CollectInputs(
     std::span<const std::string> arguments,
     const std::filesystem::path& in,
@@ -163,7 +150,7 @@ CollectInputs(
 /// standard output.
 class TraceOutput {
  public:
-  /// Opens `path`. If `path` is empty, uses standard output.
+  /// Opens `path`, or uses standard output if `path` is empty.
   ///
   /// # Errors
   ///

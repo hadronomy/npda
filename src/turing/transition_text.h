@@ -10,8 +10,8 @@
 namespace turing {
 
 /// Returns one field of all the tape actions, with a separator between them.
-/// For the reads of a rule with two tapes, the result is `a,b`. Moves use the
-/// letters of the file.
+/// For example, the reads of a transition with two tapes give `a,b`, while
+/// moves use the letters from the file.
 [[nodiscard]] std::string JoinReads(
     std::span<const TapeAction> tapes,
     std::string_view separator = ","
