@@ -11,28 +11,16 @@
 #include "automata/symbol.h"
 #include "terminal/style.h"
 
-/// Text forms for the output of all machines. A transition or a set of states
+/// Text forms for Turing machine output. A transition or a set of states
 /// has the same form in a header, a trace, and a verdict.
 namespace automata {
 
-/// Returns the symbols without spaces between them. Machine files write push
-/// strings in this form.
+/// Returns the symbols without spaces between them, in the form of an input
+/// string.
 template <std::ranges::input_range Symbols>
 [[nodiscard]] std::string Concat(Symbols&& symbols) {
   std::string text;
   for (const Symbol symbol : symbols) text += symbol.name();
-  return text;
-}
-
-/// Returns the symbols with a space between them. Thus, `Z0 A` stays two
-/// symbols.
-template <std::ranges::input_range Symbols>
-[[nodiscard]] std::string Spaced(Symbols&& symbols) {
-  std::string text;
-  for (const Symbol symbol : symbols) {
-    if (!text.empty()) text += ' ';
-    text += symbol.name();
-  }
   return text;
 }
 

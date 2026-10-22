@@ -1,0 +1,31 @@
+exit=0
+
+cc turing 0.2.0
+Run a Turing machine on input strings, or draw it
+
+Usage: cc turing -config FILE [OPTIONS] [INPUT...]
+
+ARGUMENTS
+---------
+  INPUT...    Strings to run. Without them and -in, the program reads the keyboard
+
+OPTIONS
+-------
+  -config FILE                    Machine definition file  [required]
+  -trace y|n                      Show how the machine runs each input  [default: y]
+  -trace-view detailed|compact    How the trace looks  [default: detailed]
+  -trace-limit N                  Configurations a trace shows per input  [default: 200]
+  -explain                        Explain every transition in words
+  -in FILE                        File with one input on each line. A line with only '.' is the empty string
+  -out FILE                       Write the trace to this file, not the screen
+  -verbose                        Show every repeated diagnostic instead of a summary
+  -graph FILE                     Draw the machine: .dot for Graphviz source, .svg or .png to render
+  -help, --help                   Show this help
+
+EXAMPLES
+--------
+  $ cc turing -config examples/turing/anbm.turing aabb abb
+  $ cc turing -config examples/turing/anbm.turing -trace-view compact aabb
+  $ cc turing -config examples/turing/anbm.turing -graph anbm.svg
+
+Learn more: https://github.com/hadronomy/npda

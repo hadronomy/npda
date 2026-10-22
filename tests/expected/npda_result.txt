@@ -1,8 +1,0 @@
-exit=0
-APf-1.txt · final state F = {q3} · q0 = q1 · Z0 = S · 5 transitions
-
-accept  aabb  δ1 δ2 δ3 δ4 δ5
-reject  aab
-reject  ε
-
-3 inputs · 1 accepted · 2 rejected

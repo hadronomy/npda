@@ -3,7 +3,6 @@
 #include <string>
 #include <string_view>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <catch2/catch_message.hpp>
@@ -13,9 +12,6 @@
 #include "automata/symbol.h"
 #include "diagnostics/diagnostic.h"
 #include "diagnostics/source.h"
-#include "npda/definition.h"
-#include "npda/machine.h"
-#include "npda/parser.h"
 #include "turing/machine.h"
 #include "turing/parser.h"
 #include "turing/transition.h"
@@ -33,75 +29,6 @@ bool HasCode(const diag::DiagnosticSet& diagnostics, std::string_view code) {
 
 turing::ParseResult ParseTuring(std::string text) {
   return turing::Parse(diag::SourceFile::From("test.turing", std::move(text)));
-}
-
-npda::ParseResult ParseNpda(std::string text) {
-  return npda::Parse(diag::SourceFile::From("test.npda", std::move(text)));
-}
-
-TEST_CASE(
-    "NPDA parser accepts each documented epsilon spelling",
-    "[parser][npda]"
-) {
-  const std::string epsilon =
-      GENERATE("-", ".", "ε", "λ", "eps", "epsilon", "lambda");
-  CAPTURE(epsilon);
-  const auto parsed =
-      ParseNpda("q f\na\nZ\nq\nZ\nf\nq " + epsilon + " Z f " + epsilon + "\n");
-  REQUIRE(parsed.machine.has_value());
-  CHECK(parsed.machine->Run({})->Accepted());
-}
-
-TEST_CASE("NPDA parser picks acceptance from the F line", "[parser][npda]") {
-  SECTION("An F line selects final-state acceptance") {
-    const auto parsed = ParseNpda("q f\na\nZ\nq\nZ\nf\nq a Z f Z\n");
-    REQUIRE(parsed.machine.has_value());
-    CHECK(
-        std::holds_alternative<npda::AcceptByFinalState>(
-            parsed.machine->definition().acceptance
-        )
-    );
-  }
-  SECTION("No F line selects empty-stack acceptance") {
-    const auto parsed = ParseNpda("q\na\nZ\nq\nZ\nq a Z q .\n");
-    REQUIRE(parsed.machine.has_value());
-    CHECK(
-        std::holds_alternative<npda::AcceptByEmptyStack>(
-            parsed.machine->definition().acceptance
-        )
-    );
-  }
-}
-
-TEST_CASE(
-    "NPDA parser splits push strings into stack symbols",
-    "[parser][npda]"
-) {
-  const auto parsed = ParseNpda("q\na\nZ AB\nq\nZ\nq a Z q ABZ\n");
-  REQUIRE(parsed.machine.has_value());
-  const auto& push = parsed.machine->definition().transitions.front().push;
-  REQUIRE(push.size() == 2);
-  CHECK(push[0].name() == "AB");
-  CHECK(push[1].name() == "Z");
-}
-
-TEST_CASE("NPDA parser requires a stack top from Γ", "[parser][npda]") {
-  const auto parsed = ParseNpda("q\na\nZ\nq\nZ\nq a . q Z\n");
-  CHECK_FALSE(parsed.machine.has_value());
-  CHECK(HasCode(parsed.diagnostics, "E0013"));
-}
-
-TEST_CASE("NPDA parser reports a missing section once", "[parser][npda]") {
-  const auto parsed = ParseNpda("q\na\nZ\nq\n");
-  CHECK_FALSE(parsed.machine.has_value());
-  REQUIRE(parsed.diagnostics.items.size() == 1);
-  CHECK(parsed.diagnostics.items.front().code == "E0001");
-}
-
-TEST_CASE("NPDA parser reports an empty document", "[parser][npda]") {
-  const auto parsed = ParseNpda("");
-  CHECK_FALSE(parsed.machine.has_value());
-  CHECK(parsed.diagnostics.HasErrors());
 }
 
 TEST_CASE("Turing parser returns an executable machine", "[parser][turing]") {

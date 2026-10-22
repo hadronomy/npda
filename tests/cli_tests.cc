@@ -34,51 +34,7 @@ TEST_CASE(
 ) {
   const auto fixture = GENERATE(
       OutputFixture{"help", {"-help"}},
-      OutputFixture{"npda_help", {"npda", "-help"}},
-      OutputFixture{
-          "npda_result",
-          {"npda",
-           "-config",
-           "examples/APf/APf-1.txt",
-           "-trace",
-           "n",
-           "aabb",
-           "aab",
-           "."}
-      },
-      OutputFixture{
-          "npda_detailed_trace",
-          {"npda",
-           "-config",
-           "examples/APf/APf-1.txt",
-           "-explain",
-           "aabb",
-           "aab"}
-      },
-      OutputFixture{
-          "npda_compact_trace",
-          {"npda",
-           "-config",
-           "examples/APv/APv-2.txt",
-           "-trace-view",
-           "compact",
-           "-trace-limit",
-           "8",
-           "0110"}
-      },
-      OutputFixture{
-          "npda_tree_trace",
-          {"npda",
-           "-config",
-           "examples/APv/APv-2.txt",
-           "-trace-view",
-           "tree",
-           "0110"}
-      },
-      OutputFixture{
-          "npda_diagnostics",
-          {"npda", "-config", "examples/APv/APv-jueves-1.txt", "a"}
-      },
+      OutputFixture{"turing_help", {"turing", "-help"}},
       OutputFixture{
           "turing_result",
           {"turing",
@@ -138,9 +94,6 @@ TEST_CASE(
           "turing_diagnostics",
           {"turing", "-config", "examples/turing/anbm_bad.turing", "a"}
       },
-      OutputFixture{"prf_counts", {"prf", "2", "3"}},
-      OutputFixture{"prf_tree", {"prf", "1", "2", "-trace", "tree"}},
-      OutputFixture{"prf_off", {"prf", "2", "3", "-trace", "off"}},
       OutputFixture{"explain", {"explain", "E0006"}},
       OutputFixture{"explain_unknown", {"explain", "BOGUS"}}
   );
@@ -165,7 +118,11 @@ TEST_CASE(
 
   SECTION("-in reads one input per line; '.' is the empty string") {
     const auto result = test_support::RunCli(
-        {"npda", "-config", "examples/APf/APf-1.txt", "-in", inputs.string()}
+        {"turing",
+         "-config",
+         "examples/turing/anbm.turing",
+         "-in",
+         inputs.string()}
     );
     REQUIRE(result.has_value());
     CHECK(result->exit_code == 0);
@@ -176,9 +133,9 @@ TEST_CASE(
   }
   SECTION("-out sends the trace to a file and keeps results on screen") {
     const auto result = test_support::RunCli(
-        {"npda",
+        {"turing",
          "-config",
-         "examples/APf/APf-1.txt",
+         "examples/turing/anbm.turing",
          "-trace",
          "y",
          "-in",
@@ -197,21 +154,31 @@ TEST_CASE(
   }
   SECTION("the trace shows by default") {
     const auto result = test_support::RunCli(
-        {"npda", "-config", "examples/APf/APf-1.txt", "aabb"}
+        {"turing", "-config", "examples/turing/anbm.turing", "aabb"}
     );
     REQUIRE(result.has_value());
     CHECK(result->standard_output.contains("trace aabb"));
   }
   SECTION("-trace n prints results only") {
     const auto result = test_support::RunCli(
-        {"npda", "-config", "examples/APf/APf-1.txt", "-trace", "n", "aabb"}
+        {"turing",
+         "-config",
+         "examples/turing/anbm.turing",
+         "-trace",
+         "n",
+         "aabb"}
     );
     REQUIRE(result.has_value());
     CHECK_FALSE(result->standard_output.contains("trace"));
   }
   SECTION("-trace takes only y or n") {
     const auto result = test_support::RunCli(
-        {"npda", "-config", "examples/APf/APf-1.txt", "-trace", "yes", "aabb"}
+        {"turing",
+         "-config",
+         "examples/turing/anbm.turing",
+         "-trace",
+         "yes",
+         "aabb"}
     );
     REQUIRE(result.has_value());
     CHECK(result->exit_code != 0);
@@ -219,9 +186,9 @@ TEST_CASE(
   }
 }
 
-TEST_CASE("CLI reads NPDA input from the keyboard", "[cli][io]") {
+TEST_CASE("CLI reads input from the keyboard", "[cli][io]") {
   const auto result = test_support::RunCli(
-      {"npda", "-config", "examples/APf/APf-1.txt"},
+      {"turing", "-config", "examples/turing/anbm.turing"},
       "aabb\n.\n"
   );
   REQUIRE(result.has_value());
@@ -229,21 +196,18 @@ TEST_CASE("CLI reads NPDA input from the keyboard", "[cli][io]") {
   CHECK(result->standard_output.contains("2 inputs · 1 accepted · 1 rejected"));
 }
 
-TEST_CASE(
-    "CLI exits with failure when a search cannot decide",
-    "[cli][limits]"
-) {
+TEST_CASE("CLI exits with failure when a run does not halt", "[cli][limits]") {
   test_support::TemporaryDirectory directory;
-  const auto path = directory.Path() / "loop.npda";
-  const auto pushes_forever = "q\na\nS\nq\nS\nq . S q SS\n";
-  test_support::WriteFile(path, pushes_forever);
+  const auto path = directory.Path() / "loop.turing";
+  const auto stays_forever = "q\na\na _\nq\n_\n1\nq a q a S\n";
+  test_support::WriteFile(path, stays_forever);
   const auto result = test_support::RunCli(
-      {"npda", "-config", path.string(), "-trace", "n", "a"}
+      {"turing", "-config", path.string(), "-trace", "n", "a"}
   );
   REQUIRE(result.has_value());
   CHECK(result->exit_code == 1);
   CHECK(result->standard_output.contains(
-      "unknown a  stopped after 100000 expansions"
+      "unknown a  still running after 100000 steps"
   ));
   CHECK(result->standard_output.contains("1 undecided"));
 }
@@ -252,23 +216,15 @@ TEST_CASE(
     "Every example runs without crashing and produces output",
     "[cli][corpus]"
 ) {
-  const auto directory =
-      GENERATE("examples/APf", "examples/APv", "examples/turing");
-  const bool is_turing = std::string_view(directory) == "examples/turing";
   std::size_t example_count = 0;
   for (const auto& entry : std::filesystem::directory_iterator(
-           test_support::SourceRoot() / directory
+           test_support::SourceRoot() / "examples/turing"
        )) {
-    if (entry.path().extension() != (is_turing ? ".turing" : ".txt")) continue;
+    if (entry.path().extension() != ".turing") continue;
     CAPTURE(entry.path());
     ++example_count;
     const auto result = test_support::RunCli(
-        {is_turing ? "turing" : "npda",
-         "-config",
-         entry.path().string(),
-         "-trace",
-         "y",
-         "aabb"}
+        {"turing", "-config", entry.path().string(), "-trace", "y", "aabb"}
     );
     REQUIRE(result.has_value());
     CHECK((result->exit_code == 0 || result->exit_code == 1));

@@ -39,15 +39,14 @@ void ReportError(
     std::string label
 );
 
-/// Reads the first lines that the two machine formats share, one line for each
-/// section:
+/// Reads the sections of a Turing machine file, one line for each section:
 ///
 /// ```text
 /// Q    states
 /// Σ    input alphabet
-/// Γ    stack or tape alphabet
+/// Γ    tape alphabet
 /// q0   start state
-/// Z0   one special Γ symbol: the initial stack symbol or the blank
+/// b    blank symbol
 /// F    accepting states
 /// ```
 ///
@@ -86,37 +85,6 @@ class Reader {
   /// Reads the next line as the F line. Reports E0009 for each token that is
   /// not a state, and keeps only the states.
   std::vector<Symbol> ReadAcceptingLine(const SymbolSet& states);
-
-  /// Reads the optional F line.
-  ///
-  /// A line is the F line only if each token is a state and the line is not a
-  /// rule. Thus, an error in the first rule gives a rule error, not an F error.
-  /// A line can be neither an F line nor a rule. If this line also does not
-  /// have the shape of a rule, the reader reports its unknown tokens and skips
-  /// it.
-  template <typename IsRule, typename HasRuleShape>
-  std::optional<std::vector<Symbol>> ReadAcceptingStates(
-      const SymbolSet& states,
-      IsRule is_rule,
-      HasRuleShape has_rule_shape
-  ) {
-    if (next_ == lines_.size()) return std::nullopt;
-    const Line& line = lines_[next_];
-    if (is_rule(line)) return std::nullopt;
-    std::vector<Symbol> accepting;
-    for (const auto& token : line.tokens) {
-      if (states.contains(token.symbol)) accepting.push_back(token.symbol);
-    }
-    if (accepting.size() == line.tokens.size()) {
-      ++next_;
-      return accepting;
-    }
-    if (!has_rule_shape(line)) {
-      ReportUnknownAcceptingStates(line, states);
-      ++next_;
-    }
-    return std::nullopt;
-  }
 
  private:
   const Line* Next(std::string_view section);
