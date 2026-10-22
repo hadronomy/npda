@@ -38,8 +38,8 @@ using terminal::Styled;
 using terminal::Table;
 using terminal::Tone;
 
-/// The number of cells that a trace draws on each side of a head. With this
-/// number, a trace shows a sweep, and two tapes fit next to each other.
+/// The number of cells drawn on each side of a head, chosen to show a sweep
+/// while keeping two tapes side by side.
 constexpr std::size_t kTraceRadius = 8;
 
 /// The width of the labels of the detailed view, from `state` to `reject`.

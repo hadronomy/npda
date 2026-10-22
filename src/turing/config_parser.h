@@ -14,8 +14,8 @@ struct ConfigParseResult {
 
 /// Reads the `# /// config` comment block of a Turing machine file.
 ///
-/// If the block does not give a key, the key keeps its `Config` default. An
-/// unknown key gives a warning. A bad line or a bad value gives an error.
+/// Omitted keys keep their `Config` defaults. For entries in the block, an
+/// unknown key gives a warning, while an invalid line or value gives an error.
 [[nodiscard]] ConfigParseResult ParseConfig(const diag::SourceFile& source);
 
 }  // namespace turing

@@ -22,15 +22,15 @@ struct Error {
 /// A deterministic Turing machine with one or more tapes.
 class Machine {
  public:
-  /// Makes a machine from `definition` after it examines the definition.
+  /// Checks `definition` and uses it to create a machine.
   ///
   /// # Errors
   ///
-  /// An `Error` if the machine has no tapes, or if a transition has the wrong
-  /// number of tape actions. An `Error` also if an action breaks the variant
-  /// of `config`: a write and a move in the independent mode, or S when
-  /// `allow_stay` is false. An `Error` also if a transition reads the same
-  /// symbols in the same state as an earlier transition.
+  /// An `Error` if the machine has no tapes, a transition has the wrong number
+  /// of tape actions, or two transitions read the same symbols in the same
+  /// state. Actions must also obey the variant in `config`: independent mode
+  /// permits either a write or a move on each tape, and `allow_stay = false`
+  /// forbids S moves.
   [[nodiscard]] static std::expected<Machine, Error> Create(
       Definition definition
   );
@@ -38,18 +38,18 @@ class Machine {
   // NOLINTNEXTLINE(readability-identifier-naming): Google style accessor.
   [[nodiscard]] const Definition& definition() const { return definition_; }
 
-  /// Returns the first symbol of `input` that is not in Σ. Returns nothing if
-  /// `input` uses only Σ.
+  /// Returns the first symbol of `input` outside Σ, or nothing if every symbol
+  /// belongs to Σ.
   [[nodiscard]] std::optional<Symbol> FindForeignSymbol(
       std::span<const Symbol> input
   ) const;
 
   /// Runs the machine on `input` until no transition applies.
   ///
-  /// The input starts on the first tape, under the head. The other tapes start
-  /// blank. The machine does not stop when it enters an accepting state: an
-  /// accepting state with transitions out of it keeps the machine running. Runs
-  /// do not share data. Thus, many runs can use one machine at the same time.
+  /// The input starts on the first tape under the head, while the other tapes
+  /// start blank. An accepting state stops the machine only when no transition
+  /// applies, so a run can continue through an accepting state. Because runs
+  /// do not share data, many runs can use one machine at the same time.
   ///
   /// # Errors
   ///

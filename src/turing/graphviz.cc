@@ -86,9 +86,9 @@ std::string EscapeHtml(std::string_view text) {
   return escaped;
 }
 
-/// The rules of one edge as an HTML label, one rule on each row. Graphviz puts
-/// a plain label on the edge line, so the line hides a blank written as `_`.
-/// The cell padding keeps each row clear of the line.
+/// An HTML label with one transition per row, padded to keep the text clear of
+/// the edge line. Graphviz places plain labels on that line, where it can hide
+/// a blank written as `_`.
 std::string EdgeLabel(const std::vector<std::string>& rules) {
   std::string rows;
   for (const auto& rule : rules) {

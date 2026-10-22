@@ -1,4 +1,4 @@
-# Machine 1 with errors, to show the diagnostics. Run it with:
+# Run this version of machine 1 to see diagnostics for its errors:
 #
 #   cc turing -config examples/turing/anbm_bad.turing
 

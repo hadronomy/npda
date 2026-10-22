@@ -6,8 +6,8 @@ namespace turing {
 enum class TapeDirection {
   /// The tape has no end on either side.
   kBidirectional,
-  /// The tape has a left end at the first cell of the input. A move to the
-  /// left from that cell keeps the head on the cell.
+  /// The tape has a left end at the first cell of the input, where a move to
+  /// the left keeps the head on that cell.
   kRightOnly,
 };
 
@@ -15,13 +15,13 @@ enum class TapeDirection {
 enum class OperationMode {
   /// The transition writes a symbol and then moves the head: `X R`.
   kSimultaneous,
-  /// The transition writes a symbol or moves the head, not both: `X` or `R`.
-  /// A write keeps the head on its cell. A move keeps the symbol of the cell.
+  /// The transition either writes a symbol with the head fixed (`X`) or moves
+  /// the head with the symbol unchanged (`R`).
   kIndependent,
 };
 
-/// The variant of the machine. The `# /// config` block of the file sets it.
-/// The defaults are the variant of the course statement.
+/// The machine variant, selected by the file's `# /// config` block, with
+/// defaults from the course statement.
 struct Config {
   TapeDirection tape_direction = TapeDirection::kBidirectional;
   OperationMode operation_mode = OperationMode::kSimultaneous;

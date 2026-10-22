@@ -10,11 +10,11 @@ _default:
 build *ARGS:
     xmake build {{ARGS}}
 
-# Build the project and run the tests. The arguments go to xmake test.
+# Build the project and run the tests, passing the arguments to xmake test.
 test *ARGS: build
     xmake test {{ARGS}}
 
-# Draw the graphs of the two machines of the Turing assignment. Needs Graphviz.
+# Draw the graphs of the two Turing assignment machines with Graphviz.
 graphs:
     just run turing -config examples/turing/anbm.turing -graph examples/turing/anbm.png
     just run turing -config examples/turing/count_replace.turing -graph examples/turing/count_replace.png
@@ -27,7 +27,7 @@ clean:
 format:
     find src include tests -type f \( -name '*.h' -o -name '*.cc' \) -print0 | xargs -0 "${CLANG_FORMAT:-clang-format}" -i
 
-# Find formatting errors. Do not change the files.
+# Find formatting errors without changing the files.
 format-check:
     find src include tests -type f \( -name '*.h' -o -name '*.cc' \) -print0 | xargs -0 "${CLANG_FORMAT:-clang-format}" --dry-run --Werror
 
@@ -45,7 +45,7 @@ sanitize:
 tar:
     cd .. && tar cvfz ./{{dir_name}}/{{project_name}}.tar.gz --exclude-from={{dir_name}}/.gitignore {{dir_name}}
 
-# Run the executable. Build it again only if the source changed. Paths in the
-# arguments are relative to the folder where you run just.
+# Run the executable, rebuilding it only if the source changed, with paths in
+# the arguments relative to the folder where you run just.
 run *ARGS:
     xmake run --workdir={{invocation_directory()}} {{bin_name}} {{ARGS}}

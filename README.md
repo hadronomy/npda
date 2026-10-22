@@ -27,32 +27,32 @@
 
 ## Docs
 
-This project simulates deterministic Turing machines with one tape or more.
-The assignment is in the
+This project simulates deterministic Turing machines with one or more tapes,
+as required by the assignment in the
 [Turing machine statement](/docs/CC_2627_Practica2.pdf).
 
 ### Turing Machine Assignment
 
-The statement asks for two machines. Each machine has a definition file for
-the simulator and an image of its graph:
+The statement asks for two machines, each with a definition file for the
+simulator and an image of its graph:
 
 | Machine | Definition | Graph |
 | --- | --- | --- |
 | 1. L = { aⁿbᵐ \| m ≥ n, n > 0 } | [`examples/turing/anbm.turing`](/examples/turing/anbm.turing) | [`examples/turing/anbm.png`](/examples/turing/anbm.png) |
 | 2. The number of b, a blank, and the number of a, with n = 1ⁿ | [`examples/turing/count_replace.turing`](/examples/turing/count_replace.turing) | [`examples/turing/count_replace.png`](/examples/turing/count_replace.png) |
 
-The comments of each definition file explain the algorithm and each state.
-Machine 2 writes `0` for a count of zero. Thus, `abbabaabb` gives
-`11111_1111`, `aa` gives `0_11`, and `bb` gives `11_0`. The head stops on the
-first symbol of the result.
+Each definition file includes comments that explain its algorithm and the role
+of each state. Machine 2 writes each count in unary, with `0` for a count of
+zero, so `abbabaabb` gives `11111_1111`, `aa` gives `0_11`, and `bb` gives
+`11_0`. Once the result is complete, the head stops on its first symbol.
 
-To draw the two graphs again, run `just graphs`. This command needs Graphviz.
+To draw the two graphs again, install Graphviz and run `just graphs`.
 
 #### Variants
 
-The statement has three rows of variants. The simulator has both options of
-each row. The config block of a file selects the options. If the file does not
-give an option, the simulator uses the default:
+The statement groups the variants into three pairs, and the simulator supports
+both options in each pair. A file selects its variant through the config block,
+with any omitted option taking the default shown below:
 
 | Row of the statement | Default | Other option | Config key |
 | --- | --- | --- | --- |
@@ -63,31 +63,32 @@ give an option, the simulator uses the default:
 The two machines of the assignment use the default variant.
 
 - **Simultaneous.** Each transition writes a symbol and then moves the head.
-- **Independent.** Each transition writes a symbol or moves the head, not
-  both. A write keeps the head on its cell. A move keeps the symbol of the
-  cell. With more tapes, each tape gets its own action.
-- **L and R.** A transition with `S` is an error. In the independent mode, a
-  write keeps the head on its cell, so a write is always legal.
+- **Independent.** Each transition either writes a symbol while the head stays
+  on its cell or moves the head while the symbol stays unchanged. With more
+  tapes, each tape gets its own action.
+- **L and R.** A transition with an `S` move is an error. In the independent
+  mode, a write remains legal because it keeps the head on its cell without a
+  move action.
 - **Infinite to the right.** The tape has a left end at the first cell of the
-  input. A move to the left from this cell keeps the head on the cell.
+  input, where a move to the left keeps the head on that cell.
 
 #### Runs
 
-At the start, the input is on the first tape, and the head is on the first
-symbol of the input. The other tapes are blank. The machine stops only when no
-transition applies. It accepts if it stops in a state of F. Thus, a state of F
-with transitions out of it does not stop the machine. The result of the run is
-on the first tape.
+At the start, the input is on the first tape with the head on its first symbol,
+while the other tapes are blank. The machine runs until no transition applies
+and accepts the input if it stops in a state of F, so entering a state of F
+does not stop the machine while a transition still applies. When the run ends,
+its result is on the first tape.
 
-If an input has a symbol that is not in Σ, the machine does not run, and the
-input is rejected. After 100000 steps, the run stops and the input is
-undecided.
+An input with a symbol outside Σ is rejected without a run. For inputs over Σ,
+the run stops after 100000 steps if the machine has not halted, leaving the
+input undecided.
 
 ### Turing Machine File Format
 
-The file format is the format of the statement. A comment starts with `#` and
-continues to the end of the line. Spaces divide the items on a line. The lines
-come in this order:
+Machine files use the format from the statement, with spaces between items and
+`#` to start a comment that continues to the end of the line. The lines come in
+this order:
 
 ```
 q0 q1 q2      # Q: states
@@ -100,14 +101,15 @@ q2            # F: accepting states
 q0 a q1 X R   # δ(q0, a) = (q1, X, R)
 ```
 
-After the number of tapes, each line is one transition. If F is empty, write
-no F line. The simulator reads the line after b as the number of tapes if it
-is one positive integer and not a state.
+Each line after the number of tapes defines one transition. If F is empty,
+omit its line: the simulator treats the line after b as the number of tapes
+when it contains a single positive integer that is not a state.
 
-The simulator makes sure that the definition obeys the formal definition:
+The simulator checks the file against the formal definition of a Turing
+machine:
 
 - s is in Q, and F has only states of Q.
-- b is in Γ and not in Σ. Each symbol of Σ is in Γ.
+- b is in Γ and not in Σ, and each symbol of Σ is in Γ.
 - Each symbol of Γ is one character.
 - Each transition uses states of Q and symbols of Γ, with one action for each
   tape.
@@ -115,12 +117,12 @@ The simulator makes sure that the definition obeys the formal definition:
 - The machine is deterministic: a state has only one transition for each
   read.
 
-Each error has a code and points to its position in the file. To show the
-meaning of a code and how to correct the error, run `cc explain <code>`.
+Each error points to its position in the file and includes a code that you can
+look up with `cc explain <code>` to learn what it means and how to correct it.
 
 #### The config block
 
-The config block selects the variant. It can be at any position in the file:
+The config block selects the variant and can appear anywhere in the file:
 
 ```
 # /// config
@@ -145,19 +147,20 @@ In the simultaneous mode, a transition for one tape has the form
 - `read` and `write` are tape symbols from Γ.
 - `move` is `L` (left), `R` (right), or `S` (stay).
 
-A transition for N tapes has the form
-`from read1 ... readN to write1 move1 ... writeN moveN`. It has one read symbol
-for each tape before `to`. After `to`, it has a write symbol and a move for
-each tape. This is a transition for two tapes:
+A transition for N tapes extends this form to
+`from read1 ... readN to write1 move1 ... writeN moveN`, with one read symbol
+per tape before `to` and one write symbol and move per tape after it. For
+example, a transition for two tapes looks like this:
 
 ```
 q0 a _ q0 a R a R
 ```
 
 In the independent mode, a transition has the form
-`from read1 ... readN to action1 ... actionN`. Each action is a symbol of Γ to
-write, or a move. Thus, in this mode, Γ cannot contain `L`, `R`, or `S`. These
-transitions move right on `1`, and write `1` on a blank:
+`from read1 ... readN to action1 ... actionN`, where each action is either a
+symbol of Γ to write or a move. To keep these actions distinct, Γ cannot
+contain the move letters `L`, `R`, or `S` in this mode. The following
+transitions move right on `1` and write `1` on a blank:
 
 ```
 q0 1 q0 R
@@ -168,17 +171,17 @@ q0 _ q1 1
 
 | File | What it shows |
 | --- | --- |
-| [`palindrome.turing`](/examples/turing/palindrome.turing) | Two tapes: the palindromes over {a, b} |
+| [`palindrome.turing`](/examples/turing/palindrome.turing) | Recognizes palindromes over {a, b} with two tapes |
 | [`successor.turing`](/examples/turing/successor.turing) | The independent mode: 1ⁿ → 1ⁿ⁺¹ |
-| [`simple_tm.turing`](/examples/turing/simple_tm.turing) | A tape with a left end, and no `S` |
-| [`example_1.turing`](/examples/turing/example_1.turing) | The example of the course: an odd number of 0 |
-| [`anbm_bad.turing`](/examples/turing/anbm_bad.turing) | The diagnostics for a definition with errors |
+| [`simple_tm.turing`](/examples/turing/simple_tm.turing) | Uses a tape with a left end and no `S` |
+| [`example_1.turing`](/examples/turing/example_1.turing) | Recognizes an odd number of 0, as in the course example |
+| [`anbm_bad.turing`](/examples/turing/anbm_bad.turing) | Shows diagnostics for a definition with errors |
 
 ## Requirements
 
-The project uses C++23 with usual headers and source files. It uses
-`std::expected`, ranges, `std::format`, and `std::print`. The build uses LLVM
-Clang 23 and libc++. The project does not use named C++ modules.
+The project uses C++23 features such as `std::expected`, ranges, `std::format`,
+and `std::print`, and builds with LLVM Clang 23 and libc++. Its code uses
+conventional headers and source files without named C++ modules.
 
 Install LLVM and xmake with the system package manager. On macOS:
 
@@ -189,10 +192,10 @@ brew install llvm xmake
 On Ubuntu 24.04, install LLVM 23 and its libc++ packages from apt.llvm.org.
 The CI workflow lists the necessary packages.
 
-Run `mise install` to get `just`. Xmake installs Catch2 for the tests and
-reproc++ for the CLI tests. Formatting needs
-clang-format 20 or later. CI uses clang-format 23. Graphviz is optional. Only
-the images of Turing machines need it.
+Run `mise install` to get `just`, then let xmake install Catch2 for the tests and
+reproc++ for the CLI tests during the build. Formatting requires clang-format
+20 or later, with CI using clang-format 23. Graphviz is optional unless you
+want to draw images of Turing machines.
 
 ## Build
 
@@ -200,8 +203,8 @@ the images of Turing machines need it.
 just build
 ```
 
-The command runs `xmake build`. To give options to xmake, add them after the
-command.
+The command runs `xmake build` and passes any options you add after the command
+to xmake.
 
 ## Usage
 
@@ -209,13 +212,13 @@ command.
 just run -help
 ```
 
-If the sources changed, this command builds the binary again. Then it runs the
-binary with the arguments. The examples below call the binary `cc`. Replace
-`cc` with `just run` or with the full path. Each command accepts `-help`.
+This command rebuilds the binary if the sources changed, then runs it with the
+given arguments. In the examples below, replace the binary name `cc` with
+`just run` or the full path to the binary. Each command accepts `-help`.
 
 > [!IMPORTANT]
-> The build writes the binary to `./build/<platform>/<arch>/<mode>/cc`. To
-> find the file, run `find build -name cc -type f`.
+> The build writes the binary to `./build/<platform>/<arch>/<mode>/cc`, which
+> you can find with `find build -name cc -type f`.
 
 ### Commands
 
@@ -224,35 +227,36 @@ binary with the arguments. The examples below call the binary `cc`. Replace
 | `cc turing -config <file> [options] [inputs...]` | Run a Turing machine, or draw it with `-graph`. |
 | `cc explain <code>` | Show the meaning of a diagnostic code and how to correct the problem. |
 
-The `turing` command accepts the options of the assignment statement, and some
-more:
+The `turing` command accepts the options from the assignment statement and adds
+options for traces, diagnostics, and graphs:
 
 | Option | Use |
 | --- | --- |
-| `-config <file>` | The machine definition. This option is necessary. |
+| `-config <file>` | Required path to the machine definition. |
 | `-trace y\|n` | Show how the machine runs each input. The default is `y`. |
-| `-trace-view <view>` | `detailed` or `compact`. The default is `detailed`. |
+| `-trace-view <view>` | Choose `detailed` (the default) or `compact`. |
 | `-trace-limit <n>` | Show a maximum of `n` configurations for each input. The default is 200. |
 | `-explain` | Explain each transition in words. |
-| `-in <file>` | Read one input from each line. The program skips blank lines. A line with only `.` is the empty string. |
-| `-out <file>` | Write the trace to this file. The results stay on the screen. |
-| `-verbose` | Show all of the diagnostics with the same code, not a summary. |
+| `-in <file>` | Read one input per line, skipping blank lines and treating a line with only `.` as the empty string. |
+| `-out <file>` | Write the trace to this file while the results stay on the screen. |
+| `-verbose` | Show every diagnostic with the same code instead of a summary. |
 | `-graph <file>` | Write the graph of the machine. See [Graphs](#graphs). |
 
-The inputs come from the command line and from `-in`. If these give no input,
-the program reads the keyboard until the end of the file (Ctrl-D).
+The program collects inputs from the command line and from `-in`. If neither
+source gives an input, it reads the keyboard until the end of the file
+(Ctrl-D).
 
-The exit status is 0 if the program accepts or rejects each input. The exit
-status is 1 if the definition has errors, if the program cannot read a file,
-or if an input stays undecided.
+The program exits with status 0 if it accepts or rejects each input, or with
+status 1 if the definition has errors, a file cannot be read, or an input stays
+undecided.
 
 ### Results
 
-Each input ends with one result line: `accept` or `reject`, the input, and the
-details. The details are the first tape and the number of steps.
-The tape starts at the first cell that is not blank and ends at the last one.
-The cell below the head is in brackets, for example `ab[c]d`. If the input
-has a symbol that is not in Σ, the details give this symbol.
+Each input ends with a result line that gives `accept` or `reject`, the input,
+and the first tape with the number of steps. The tape text spans the first
+through the last nonblank cell and marks the cell under the head with
+brackets, as in `ab[c]d`. If the input contains a symbol outside Σ, the details
+identify that symbol.
 
 ```console
 $ cc turing -config examples/turing/anbm.turing -trace n aabb aab abc
@@ -278,13 +282,12 @@ accept  bb         [1]1_0  14 steps
 
 ### Traces
 
-A trace starts with a list of the numbered transitions. The numbers, `δ1`,
-`δ2`, and more, follow the order of the file. Then the trace shows each step
-of the run. Each step writes in full the rule that gave it. Thus, you can read
-the trace from top to bottom.
+A trace starts with the transitions numbered `δ1`, `δ2`, and so on in file
+order, then shows each step of the run. Each step includes the full transition
+that produced it, so you can read the trace from top to bottom.
 
-The detailed view draws each step as a block. The block shows the state and
-each tape as cells. The `▲` mark is below the head.
+In the detailed view, each step occupies a block that shows the state and each
+tape as a row of cells, with `▲` below the head.
 
 ```console
 $ cc turing -config examples/turing/anbm.turing ab
@@ -297,8 +300,7 @@ $ cc turing -config examples/turing/anbm.turing ab
                   ▲
 ```
 
-The compact view shows one line for each step. It writes each tape as
-`ab[c]d`.
+The compact view fits each step on one line by writing each tape as `ab[c]d`.
 
 ```console
 $ cc turing -config examples/turing/anbm.turing -trace-view compact abb
@@ -311,18 +313,18 @@ trace abb
   ...
 ```
 
-In the independent mode, a rule shows one action for each tape, as the file
-writes it: `(q0, 1) → (q0, R)`.
+In the independent mode, each transition shows one action per tape in the same
+form as the file, for example `(q0, 1) → (q0, R)`.
 
 ### Graphs
 
-`-graph machine.dot` writes the Graphviz source of a Turing machine. With a
-different extension, for example `-graph machine.png`, the program draws the
-image with the Graphviz `dot` program. Graphviz must be installed.
+Use `-graph machine.dot` to write the Graphviz source of a Turing machine. With
+any other extension, such as `-graph machine.png`, the program draws the image
+in that format with the Graphviz `dot` program, which must be installed.
 
-Each edge has the label `reads / writes / moves`. In the independent mode, the
-label is `reads / actions`. With more tapes, commas divide the items of the
-tapes. The double circle is an accepting state.
+Each edge uses the label `reads / writes / moves`, or `reads / actions` in the
+independent mode. For machines with more tapes, commas separate the items for
+each tape within the label. Accepting states appear as double circles.
 
 ## Formatting and verification
 
@@ -332,15 +334,15 @@ just verify
 just sanitize
 ```
 
-`just format` formats the C++ headers and sources. `just format-check` finds
-formatting errors and does not change the files.
+Use `just format` to format the C++ headers and sources, or `just format-check`
+to find formatting errors without changing the files.
 
-`just verify` builds the project and finds formatting and layout errors. It
-compiles each header alone and runs the Catch2 domain tests and presentation
-tests. It also compares the full CLI output with the fixtures and runs all the
-examples. `just sanitize` runs the same steps in a debug build with
-AddressSanitizer and UndefinedBehaviorSanitizer. After this command, the debug
-build stays active.
+Along with formatting and layout checks, `just verify` builds the project,
+compiles each header alone, and runs the Catch2 domain and presentation tests.
+It also compares the full CLI output with the fixtures and runs all the
+examples. To run the same steps in a debug build with AddressSanitizer and
+UndefinedBehaviorSanitizer, use `just sanitize`, which leaves the debug build
+active afterward.
 
 To go back to a release build:
 
@@ -351,5 +353,4 @@ just verify
 
 ## License
 
-This project uses the MIT License. The [LICENSE](/LICENSE) file gives the
-details.
+This project uses the MIT License, whose terms are in [LICENSE](/LICENSE).

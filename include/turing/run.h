@@ -23,7 +23,7 @@ struct Configuration {
 struct Step {
   std::size_t number;
   const Configuration& configuration;
-  /// The transition that gave this configuration. Empty for the start
+  /// The transition that produced this configuration, or empty for the start
   /// configuration.
   std::optional<std::size_t> transition;
 };
@@ -36,8 +36,8 @@ struct RunOptions {
 };
 
 struct RunResult {
-  /// True if the machine halts in an accepting state. The machine halts only
-  /// when no transition applies, also in an accepting state.
+  /// True if the run ends in an accepting state. A run ends only when no
+  /// transition applies, so reaching an accepting state is not enough.
   bool accepted;
   std::size_t steps;
   Configuration halted;

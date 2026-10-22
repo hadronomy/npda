@@ -18,7 +18,7 @@ namespace parsing {
 using automata::Symbol;
 using SymbolSet = std::unordered_set<Symbol>;
 
-/// A word of a machine file. Spaces or tabs divide the words.
+/// A word in a machine file, separated from other words by spaces or tabs.
 struct Token {
   Symbol symbol;
   diag::SourceSpan span;
@@ -50,9 +50,10 @@ void ReportError(
 /// F    accepting states
 /// ```
 ///
-/// The caller reads the remaining lines, for example the transitions. The
-/// reader adds problems to the diagnostic set. Each read returns a usable value
-/// after a problem. Thus, one run reports as many errors as possible.
+/// The reader adds diagnostics as it reads and returns usable values after
+/// errors so that one run can report as many errors as possible. Once the
+/// sections are read, the caller reads the remaining lines, such as
+/// transitions.
 class Reader {
  public:
   Reader(const diag::SourceFile& source, diag::DiagnosticSet& diagnostics);
@@ -60,15 +61,14 @@ class Reader {
   /// Returns the lines that the reader did not read.
   [[nodiscard]] std::span<const Line> Rest() const;
 
-  /// Returns the next line, but does not read it. Returns null at the end of
-  /// the file.
+  /// Returns the next line without reading it, or null at the end of the file.
   [[nodiscard]] const Line* Peek() const;
 
-  /// Returns the span of the last line. If there are no lines, returns the end
-  /// of the file.
+  /// Returns the span of the last line, or the end of the file if there are no
+  /// lines.
   [[nodiscard]] diag::SourceSpan LastSpan() const;
 
-  /// Reads the tokens of the next line. At the end of the file, reports E0001.
+  /// Reads the tokens of the next line, reporting E0001 at the end of the file.
   SymbolSet ReadSet(std::string_view section);
 
   /// Reads the next line, which must have exactly one token.
@@ -82,8 +82,8 @@ class Reader {
       std::string_view role
   );
 
-  /// Reads the next line as the F line. Reports E0009 for each token that is
-  /// not a state, and keeps only the states.
+  /// Reads the next line as F, keeping only states and reporting E0009 for each
+  /// token that is not a state.
   std::vector<Symbol> ReadAcceptingLine(const SymbolSet& states);
 
  private:

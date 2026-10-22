@@ -1,11 +1,11 @@
 # Recognizes the palindromes over {a, b} with two tapes.
 #
 # q0  copies the input to tape 2.
-# q1  takes the head of tape 1 back to the start. The head of tape 2 stays on
-#     the last symbol of the copy.
-# q2  reads tape 1 forward and tape 2 backward. Two different symbols stop the
-#     machine.
-# q3  accepts. The input stays on tape 1.
+# q1  returns the head of tape 1 to the start while the head of tape 2 stays
+#     on the last symbol of the copy.
+# q2  compares tape 1 forward with tape 2 backward, stopping the machine if
+#     the symbols differ.
+# q3  accepts with the input preserved on tape 1.
 
 # Q
 q0 q1 q2 q3

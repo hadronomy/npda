@@ -43,8 +43,8 @@ std::expected<void, turing::Error> ExportGraph(
   return turing::RenderGraph(definition, path);
 }
 
-/// The first tape and the number of steps. The course expects the result on the
-/// first tape.
+/// The result on the first tape, as required by the course, and the number of
+/// steps.
 std::string Detail(
     const std::expected<turing::RunResult, turing::LimitReached>& result,
     automata::Symbol blank,

@@ -23,10 +23,10 @@ namespace {
 constexpr std::string_view kOpening = "# /// config";
 constexpr std::string_view kClosing = "# ///";
 
-/// A setting that the block can hold, and how to read its value.
+/// A config key and the information needed to read its value.
 struct Key {
   std::string_view name;
-  /// Stores `value` in `config`. Returns false if `value` is not correct.
+  /// Stores `value` in `config` if it is valid, or returns false otherwise.
   bool (*apply)(std::string_view value, Config& config);
   std::string_view code;
   std::string_view label;

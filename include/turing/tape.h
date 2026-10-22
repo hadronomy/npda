@@ -10,7 +10,7 @@ namespace turing {
 
 using automata::Symbol;
 
-/// A tape and its head. All of the cells outside `cells` hold the blank symbol.
+/// A tape and its head, with the blank symbol in all cells outside `cells`.
 struct Tape {
   std::deque<Symbol> cells;
   std::size_t head = 0;

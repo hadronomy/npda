@@ -1,10 +1,11 @@
 # /// config
 # operation_mode = independent
 # ///
-# Adds one to a number in unary: 1ⁿ → 1ⁿ⁺¹. The head stops on the first 1.
+# Adds one to a number in unary, 1ⁿ → 1ⁿ⁺¹, and stops with the head on the
+# first 1.
 #
-# In the independent mode, each transition writes a symbol or moves the head,
-# not both. Thus, a rule is `from read to action`.
+# Because each transition in the independent mode either writes a symbol or
+# moves the head, its form is `from read to action`.
 #
 # q0  moves right to the first blank and writes a 1 there.
 # q1  goes back left to the start.
