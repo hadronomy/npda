@@ -30,7 +30,7 @@
 This project simulates nondeterministic pushdown automata (NPDA), Turing
 machines, and primitive recursive functions. The assignments are in the
 [NPDA statement](/docs/CC_2627_Practica1.pdf) and the
-[Turing machine statement](/docs/CC_2526_Practica2.pdf).
+[Turing machine statement](/docs/CC_2627_Practica2.pdf).
 
 ### NPDA File Format
 
@@ -59,59 +59,119 @@ it finds a shortest one. After 100000 expansions, the search stops and the
 input is undecided. Thus, an ε-loop that pushes symbols cannot make the
 program run forever.
 
+### Turing Machine Assignment
+
+The statement asks for two machines. Each machine has a definition file for
+the simulator and an image of its graph:
+
+| Machine | Definition | Graph |
+| --- | --- | --- |
+| 1. L = { aⁿbᵐ \| m ≥ n, n > 0 } | [`examples/turing/anbm.turing`](/examples/turing/anbm.turing) | [`examples/turing/anbm.png`](/examples/turing/anbm.png) |
+| 2. The number of b, a blank, and the number of a, with n = 1ⁿ | [`examples/turing/count_replace.turing`](/examples/turing/count_replace.turing) | [`examples/turing/count_replace.png`](/examples/turing/count_replace.png) |
+
+The comments of each definition file explain the algorithm and each state.
+Machine 2 writes `0` for a count of zero. Thus, `abbabaabb` gives
+`11111_1111`, `aa` gives `0_11`, and `bb` gives `11_0`. The head stops on the
+first symbol of the result.
+
+To draw the two graphs again, run `just graphs`. This command needs Graphviz.
+
+#### Variants
+
+The statement has three rows of variants. The simulator has both options of
+each row. The config block of a file selects the options. If the file does not
+give an option, the simulator uses the default:
+
+| Row of the statement | Default | Other option | Config key |
+| --- | --- | --- | --- |
+| Write and move | Simultaneous | Independent | `operation_mode` |
+| Head moves | L, R, and S | L and R | `allow_stay` |
+| Tape | Infinite in both directions | Infinite to the right | `tape_direction` |
+
+The two machines of the assignment use the default variant.
+
+- **Simultaneous.** Each transition writes a symbol and then moves the head.
+- **Independent.** Each transition writes a symbol or moves the head, not
+  both. A write keeps the head on its cell. A move keeps the symbol of the
+  cell. With more tapes, each tape gets its own action.
+- **L and R.** A transition with `S` is an error. In the independent mode, a
+  write keeps the head on its cell, so a write is always legal.
+- **Infinite to the right.** The tape has a left end at the first cell of the
+  input. A move to the left from this cell keeps the head on the cell.
+
+#### Runs
+
+At the start, the input is on the first tape, and the head is on the first
+symbol of the input. The other tapes are blank. The machine stops only when no
+transition applies. It accepts if it stops in a state of F. Thus, a state of F
+with transitions out of it does not stop the machine. The result of the run is
+on the first tape.
+
+If an input has a symbol that is not in Σ, the machine does not run, and the
+input is rejected. After 100000 steps, the run stops and the input is
+undecided.
+
 ### Turing Machine File Format
 
-A Turing machine file gives the states, the symbols, the start state, the
-blank symbol, the optional accepting states, and the transition rules. A
-machine can have one tape or more. A comment starts with `#` and continues to
-the end of the line. Spaces divide the items on a line.
+The file format is the format of the statement. A comment starts with `#` and
+continues to the end of the line. Spaces divide the items on a line. The lines
+come in this order:
 
-The lines come in this order:
+```
+q0 q1 q2      # Q: states
+a b           # Σ: input alphabet
+a b X _       # Γ: tape alphabet, one character for each symbol
+q0            # s: start state
+_             # b: blank symbol
+q2            # F: accepting states
+1             # number of tapes
+q0 a q1 X R   # δ(q0, a) = (q1, X, R)
+```
 
-1. The states (Q)
-2. The input symbols (Σ)
-3. The tape symbols (Γ)
-4. The start state (q0)
-5. The blank symbol (b)
-6. The accepting states (F). This line is optional.
-7. The transitions, one on each line, until the end of the file
+After the number of tapes, each line is one transition. If F is empty, write
+no F line. The simulator reads the line after b as the number of tapes if it
+is one positive integer and not a state.
 
-> [!NOTE]
-> If the line after b has the shape of a transition, the parser reads it as a
-> transition. Otherwise, it reads the optional F line.
+The simulator makes sure that the definition obeys the formal definition:
+
+- s is in Q, and F has only states of Q.
+- b is in Γ and not in Σ. Each symbol of Σ is in Γ.
+- Each symbol of Γ is one character.
+- Each transition uses states of Q and symbols of Γ, with one action for each
+  tape.
+- Each move is legal in the variant of the file.
+- The machine is deterministic: a state has only one transition for each
+  read.
+
+Each error has a code and points to its position in the file. To show the
+meaning of a code and how to correct the error, run `cc explain <code>`.
 
 #### The config block
 
-The config block sets the number of tapes and other settings. It can be at any
-position in the file:
+The config block selects the variant. It can be at any position in the file:
 
 ```
 # /// config
-# num_tapes = 2
-# tape_direction = right-only
-# operation_mode = independent
+# tape_direction = bidirectional
+# operation_mode = simultaneous
 # allow_stay = true
 # ///
 ```
 
 | Key | Values |
 | --- | --- |
-| `num_tapes` | A positive integer. The default is 1. |
 | `tape_direction` | `bidirectional` (the default) or `right-only` |
-| `operation_mode` | `independent` (the default) or `simultaneous` |
+| `operation_mode` | `simultaneous` (the default) or `independent` |
 | `allow_stay` | `true` (the default) or `false` |
 
 #### Transitions
 
-A transition for one tape has the form `from read to write move`:
+In the simultaneous mode, a transition for one tape has the form
+`from read to write move`:
 
 - `from` and `to` are states from Q.
 - `read` and `write` are tape symbols from Γ.
 - `move` is `L` (left), `R` (right), or `S` (stay).
-
-```
-q0 0 q1 1 R
-```
 
 A transition for N tapes has the form
 `from read1 ... readN to write1 move1 ... writeN moveN`. It has one read symbol
@@ -119,54 +179,28 @@ for each tape before `to`. After `to`, it has a write symbol and a move for
 each tape. This is a transition for two tapes:
 
 ```
-q0 0 1 q1 1 R 1 R
+q0 a _ q0 a R a R
 ```
 
-#### Examples
-
-A machine with one tape:
-
-```
-# states
-q0 q1 qaccept
-# input alphabet
-0 1
-# tape alphabet
-0 1 _
-# start state
-q0
-# blank symbol
-_
-# accepting states
-qaccept
-# transitions
-q0 0 q1 1 R
-q1 1 qaccept 1 S
-```
-
-A machine with two tapes:
+In the independent mode, a transition has the form
+`from read1 ... readN to action1 ... actionN`. Each action is a symbol of Γ to
+write, or a move. Thus, in this mode, Γ cannot contain `L`, `R`, or `S`. These
+transitions move right on `1`, and write `1` on a blank:
 
 ```
-# /// config
-# num_tapes = 2
-# operation_mode = simultaneous
-# allow_stay = true
-# ///
-q0 q1 qf
-0 1
-0 1 _
-q0
-_
-qf
-# transitions: from r1 r2 to w1 m1 w2 m2
-q0 0 1 q1 1 R 1 R
-q1 _ _ qf _ S _ S
+q0 1 q0 R
+q0 _ q1 1
 ```
 
-> [!WARNING]
-> - All symbols in transitions must be in Γ.
-> - The q0 line and the b line must have exactly one item.
-> - The parser ignores comments, but it reads the lines of the config block.
+#### Other examples
+
+| File | What it shows |
+| --- | --- |
+| [`palindrome.turing`](/examples/turing/palindrome.turing) | Two tapes: the palindromes over {a, b} |
+| [`successor.turing`](/examples/turing/successor.turing) | The independent mode: 1ⁿ → 1ⁿ⁺¹ |
+| [`simple_tm.turing`](/examples/turing/simple_tm.turing) | A tape with a left end, and no `S` |
+| [`example_1.turing`](/examples/turing/example_1.turing) | The example of the course: an odd number of 0 |
+| [`anbm_bad.turing`](/examples/turing/anbm_bad.turing) | The diagnostics for a definition with errors |
 
 ## Requirements
 
@@ -184,7 +218,7 @@ On Ubuntu 24.04, install LLVM 23 and its libc++ packages from apt.llvm.org.
 The CI workflow lists the necessary packages.
 
 Run `mise install` to get `just`. Xmake installs Catch2 for the tests and
-reproc++ for the CLI tests. The tests do not need Python. Formatting needs
+reproc++ for the CLI tests. Formatting needs
 clang-format 20 or later. CI uses clang-format 23. Graphviz is optional. Only
 the images of Turing machines need it.
 
@@ -260,16 +294,29 @@ reject  aab
 
 For a Turing machine, the details are the first tape and the number of steps.
 The tape starts at the first cell that is not blank and ends at the last one.
-The cell below the head is in brackets, for example `ab[c]d`.
+The cell below the head is in brackets, for example `ab[c]d`. If the input
+has a symbol that is not in Σ, the details give this symbol.
 
 ```console
-$ cc turing -config examples/turing/anbm.turing -trace n aabb abb
-anbm.turing · q0 = q0 · b = _ · F = {qacc} · 1 tape · bidirectional · independent · stay allowed · 23 transitions
+$ cc turing -config examples/turing/anbm.turing -trace n aabb aab abc
+anbm.turing · q0 = q0 · b = _ · F = {q4} · 1 tape · bidirectional · simultaneous · stay allowed · 11 transitions
 
-reject  aabb  XXYY[_]  28 steps
-accept  abb   XYb[_]  15 steps
+accept  aabb  XXYY[_]  13 steps
+reject  aab   XXY[_]  7 steps
+reject  abc   c is not in Σ
 
-2 inputs · 1 accepted · 1 rejected
+3 inputs · 1 accepted · 2 rejected
+```
+
+```console
+$ cc turing -config examples/turing/count_replace.turing -trace n abbabaabb aa bb
+count_replace.turing · q0 = q0 · b = _ · F = {q15} · 1 tape · bidirectional · simultaneous · stay allowed · 33 transitions
+
+accept  abbabaabb  [1]1111_1111  74 steps
+accept  aa         [0]_11  13 steps
+accept  bb         [1]1_0  14 steps
+
+3 inputs · 3 accepted · 0 rejected
 ```
 
 ### Traces
@@ -347,13 +394,18 @@ trace 0110
 
 A Turing machine has only one path. Thus, its views show one step after the
 other. The detailed view draws each tape as cells, with a mark below the head.
-The compact view writes each tape as `ab[c]d`.
+The compact view writes each tape as `ab[c]d`. In the independent mode, a rule
+shows one action for each tape, as the file writes it: `(q0, 1) → (q0, R)`.
 
 ### Graphs
 
 `-graph machine.dot` writes the Graphviz source of a Turing machine. With a
-different extension, for example `-graph machine.svg`, the program draws the
+different extension, for example `-graph machine.png`, the program draws the
 image with the Graphviz `dot` program. Graphviz must be installed.
+
+Each edge has the label `reads / writes / moves`. In the independent mode, the
+label is `reads / actions`. With more tapes, commas divide the items of the
+tapes. The double circle is an accepting state.
 
 ## Formatting and verification
 

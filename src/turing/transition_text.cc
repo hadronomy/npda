@@ -54,4 +54,16 @@ std::string JoinMoves(
   });
 }
 
+std::string ActionText(const TapeAction& action) {
+  if (action.move == HeadMove::kStay) return std::string(action.write.name());
+  return std::string(1, ToChar(action.move));
+}
+
+std::string JoinActions(
+    std::span<const TapeAction> tapes,
+    std::string_view separator
+) {
+  return Join(tapes, separator, ActionText);
+}
+
 }  // namespace turing

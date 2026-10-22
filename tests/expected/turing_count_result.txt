@@ -1,0 +1,9 @@
+exit=0
+count_replace.turing · q0 = q0 · b = _ · F = {q15} · 1 tape · bidirectional · simultaneous · stay allowed · 33 transitions
+
+accept  abbabaabb  [1]1111_1111  74 steps
+accept  aa         [0]_11  13 steps
+accept  bb         [1]1_0  14 steps
+accept  ε          [0]_0  8 steps
+
+4 inputs · 4 accepted · 0 rejected

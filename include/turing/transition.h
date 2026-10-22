@@ -36,7 +36,9 @@ enum class HeadMove { kLeft, kRight, kStay };
   return std::nullopt;
 }
 
-/// What a transition does to one tape.
+/// What a transition does to one tape. In the independent mode, an action
+/// either writes or moves: a write has `move == kStay`, and a move has
+/// `write == read`.
 struct TapeAction {
   Symbol read;
   Symbol write;

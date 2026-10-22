@@ -3,13 +3,11 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
-#include <charconv>
 #include <cstddef>
 #include <format>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <system_error>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -47,15 +45,6 @@ std::string_view Unquote(std::string_view text) {
   return quoted ? text.substr(1, text.size() - 2) : text;
 }
 
-bool ApplyNumTapes(std::string_view value, Config& config) {
-  std::size_t tapes = 0;
-  const auto* end = value.data() + value.size();
-  const auto [last, error] = std::from_chars(value.data(), end, tapes);
-  if (error != std::errc() || last != end || tapes == 0) return false;
-  config.num_tapes = tapes;
-  return true;
-}
-
 bool ApplyTapeDirection(std::string_view value, Config& config) {
   value = Unquote(value);
   if (value == "bidirectional") {
@@ -88,13 +77,6 @@ bool ApplyAllowStay(std::string_view value, Config& config) {
 }
 
 constexpr std::array kKeys{
-    Key{
-        .name = "num_tapes",
-        .apply = ApplyNumTapes,
-        .code = "C0007",
-        .label = "expected positive integer",
-        .note = "num_tapes must be a positive integer (e.g., 1, 2, 3)",
-    },
     Key{
         .name = "tape_direction",
         .apply = ApplyTapeDirection,

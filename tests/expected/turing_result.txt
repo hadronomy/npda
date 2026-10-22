@@ -1,7 +1,12 @@
 exit=0
-anbm.turing · q0 = q0 · b = _ · F = {qacc} · 1 tape · bidirectional · independent · stay allowed · 23 transitions
+anbm.turing · q0 = q0 · b = _ · F = {q4} · 1 tape · bidirectional · simultaneous · stay allowed · 11 transitions
 
-reject  aabb  XXYY[_]  28 steps
-accept  abb   XYb[_]  15 steps
+accept  ab    XY[_]  5 steps
+accept  aabb  XXYY[_]  13 steps
+accept  abb   XYb[_]  6 steps
+reject  aab   XXY[_]  7 steps
+reject  ba    [b]a  0 steps
+reject  ε     [_]  0 steps
+reject  abc   c is not in Σ
 
-2 inputs · 1 accepted · 1 rejected
+7 inputs · 3 accepted · 4 rejected

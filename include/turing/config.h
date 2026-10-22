@@ -1,28 +1,31 @@
 #ifndef NPDA_TURING_CONFIG_H_
 #define NPDA_TURING_CONFIG_H_
 
-#include <cstddef>
-
 namespace turing {
 
 enum class TapeDirection {
   /// The tape has no end on either side.
   kBidirectional,
-  /// The tape has no end on the right. Transitions cannot move left.
+  /// The tape has a left end at the first cell of the input. A move to the
+  /// left from that cell keeps the head on the cell.
   kRightOnly,
 };
 
-/// The order in which a transition writes and moves on its tapes.
-///
-/// The write and the move on a tape change only that tape. Thus, both orders
-/// give the same configuration.
-enum class OperationMode { kSimultaneous, kIndependent };
+/// What one transition can do to each tape.
+enum class OperationMode {
+  /// The transition writes a symbol and then moves the head: `X R`.
+  kSimultaneous,
+  /// The transition writes a symbol or moves the head, not both: `X` or `R`.
+  /// A write keeps the head on its cell. A move keeps the symbol of the cell.
+  kIndependent,
+};
 
-/// The settings in the `# /// config` block of the file.
+/// The variant of the machine. The `# /// config` block of the file sets it.
+/// The defaults are the variant of the course statement.
 struct Config {
-  std::size_t num_tapes = 1;
   TapeDirection tape_direction = TapeDirection::kBidirectional;
-  OperationMode operation_mode = OperationMode::kIndependent;
+  OperationMode operation_mode = OperationMode::kSimultaneous;
+  /// If false, the only head moves are L and R.
   bool allow_stay = true;
 };
 

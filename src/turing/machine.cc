@@ -26,7 +26,7 @@ void Write(Tape& tape, Symbol symbol, Symbol blank) {
   tape.cells[tape.head] = symbol;
 }
 
-void Move(Tape& tape, HeadMove move, Symbol blank) {
+void Move(Tape& tape, HeadMove move, Symbol blank, TapeDirection direction) {
   switch (move) {
     case HeadMove::kRight:
       ++tape.head;
@@ -34,10 +34,10 @@ void Move(Tape& tape, HeadMove move, Symbol blank) {
     case HeadMove::kStay:
       return;
     case HeadMove::kLeft:
-      if (tape.head == 0) {
-        tape.cells.push_front(blank);
-      } else {
+      if (tape.head > 0) {
         --tape.head;
+      } else if (direction == TapeDirection::kBidirectional) {
+        tape.cells.push_front(blank);
       }
       return;
   }
@@ -45,13 +45,13 @@ void Move(Tape& tape, HeadMove move, Symbol blank) {
 
 void Apply(
     const Transition& transition,
-    Symbol blank,
+    const Definition& definition,
     Configuration& configuration
 ) {
   for (auto&& [tape, action] :
        std::views::zip(configuration.tapes, transition.tapes)) {
-    Write(tape, action.write, blank);
-    Move(tape, action.move, blank);
+    Write(tape, action.write, definition.blank);
+    Move(tape, action.move, definition.blank, definition.config.tape_direction);
   }
   configuration.state = transition.to;
 }
@@ -59,34 +59,36 @@ void Apply(
 std::expected<void, Error> CheckRule(
     const Transition& rule,
     std::size_t index,
-    const Config& config
+    const Definition& definition
 ) {
-  if (rule.tapes.size() != config.num_tapes) {
+  const auto& config = definition.config;
+  if (rule.tapes.size() != definition.num_tapes) {
     return std::unexpected(
         Error{std::format(
-            "rule #{} has {} tape actions, but the machine has {} tapes",
-            index,
+            "δ{} has {} tape actions, but the machine has {} tapes",
+            index + 1,
             rule.tapes.size(),
-            config.num_tapes
+            definition.num_tapes
         )}
     );
   }
   for (const auto& action : rule.tapes) {
-    if (!config.allow_stay && action.move == HeadMove::kStay) {
+    const bool moves = action.move != HeadMove::kStay;
+    if (config.operation_mode == OperationMode::kIndependent) {
+      if (moves && action.write != action.read) {
+        return std::unexpected(
+            Error{std::format(
+                "δ{} writes and moves on one tape, but the config sets "
+                "operation_mode = independent",
+                index + 1
+            )}
+        );
+      }
+    } else if (!config.allow_stay && !moves) {
       return std::unexpected(
           Error{std::format(
-              "rule #{} uses S, but the config sets allow_stay = false",
-              index
-          )}
-      );
-    }
-    if (config.tape_direction == TapeDirection::kRightOnly &&
-        action.move == HeadMove::kLeft) {
-      return std::unexpected(
-          Error{std::format(
-              "rule #{} uses L, but the config sets tape_direction = "
-              "right-only",
-              index
+              "δ{} uses S, but the config sets allow_stay = false",
+              index + 1
           )}
       );
     }
@@ -103,15 +105,14 @@ Machine::Machine(Definition definition) : definition_(std::move(definition)) {
 }
 
 std::expected<Machine, Error> Machine::Create(Definition definition) {
-  if (definition.config.num_tapes == 0) {
-    return std::unexpected(Error{"num_tapes must be positive"});
+  if (definition.num_tapes == 0) {
+    return std::unexpected(Error{"a machine needs at least one tape"});
   }
   Machine machine(std::move(definition));
   const auto& rules = machine.definition_.transitions;
   for (std::size_t index = 0; index < rules.size(); ++index) {
     const auto& rule = rules[index];
-    if (auto checked = CheckRule(rule, index, machine.definition_.config);
-        !checked) {
+    if (auto checked = CheckRule(rule, index, machine.definition_); !checked) {
       return std::unexpected(checked.error());
     }
     for (const auto earlier : machine.transitions_by_state_.at(rule.from)) {
@@ -125,9 +126,9 @@ std::expected<Machine, Error> Machine::Create(Definition definition) {
           )) {
         return std::unexpected(
             Error{std::format(
-                "rules #{} and #{} both read ({}) in state '{}'",
-                earlier,
-                index,
+                "δ{} and δ{} both read ({}) in state {}",
+                earlier + 1,
+                index + 1,
                 JoinReads(rule.tapes),
                 rule.from
             )}
@@ -136,6 +137,16 @@ std::expected<Machine, Error> Machine::Create(Definition definition) {
     }
   }
   return machine;
+}
+
+std::optional<Symbol> Machine::FindForeignSymbol(
+    std::span<const Symbol> input
+) const {
+  const auto foreign = std::ranges::find_if(input, [&](Symbol symbol) {
+    return !std::ranges::contains(definition_.input_alphabet, symbol);
+  });
+  if (foreign == input.end()) return std::nullopt;
+  return *foreign;
 }
 
 std::optional<std::size_t> Machine::FindTransition(
@@ -163,7 +174,7 @@ std::expected<RunResult, LimitReached> Machine::Run(
 ) const {
   Configuration current{
       .state = definition_.start_state,
-      .tapes = std::vector<Tape>(definition_.config.num_tapes)
+      .tapes = std::vector<Tape>(definition_.num_tapes)
   };
   current.tapes.front().cells.assign(input.begin(), input.end());
   std::optional<std::size_t> transition;
@@ -177,18 +188,19 @@ std::expected<RunResult, LimitReached> Machine::Run(
           }
       );
     }
-    const bool accepted =
-        std::ranges::contains(definition_.accepting_states, current.state);
-    transition = accepted ? std::nullopt : FindTransition(current);
+    transition = FindTransition(current);
     if (!transition) {
       return RunResult{
-          .accepted = accepted,
+          .accepted = std::ranges::contains(
+              definition_.accepting_states,
+              current.state
+          ),
           .steps = steps,
           .halted = std::move(current)
       };
     }
     if (steps == options.max_steps) return std::unexpected(LimitReached{steps});
-    Apply(definition_.transitions[*transition], definition_.blank, current);
+    Apply(definition_.transitions[*transition], definition_, current);
   }
 }
 

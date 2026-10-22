@@ -1,0 +1,23 @@
+exit=0
+successor.turing · q0 = q0 · b = _ · F = {q2} · 1 tape · bidirectional · independent · stay allowed · 4 transitions
+
+transitions
+  δ1  (q0, 1) → (q0, R)  read 1, move right, stay in q0
+  δ2  (q0, _) → (q1, 1)  read _, write 1, go to q1
+  δ3  (q1, 1) → (q1, L)  read 1, move left, stay in q1
+  δ4  (q1, _) → (q2, R)  read _, move right, go to q2
+
+trace 11
+  #   state  tape    by
+  #0  q0     [1]1
+  #1  q0     1[1]    δ1  (q0, 1) → (q0, R)
+  #2  q0     11[_]   δ1  (q0, 1) → (q0, R)
+  #3  q1     11[1]   δ2  (q0, _) → (q1, 1)
+  #4  q1     1[1]1   δ3  (q1, 1) → (q1, L)
+  #5  q1     [1]11   δ3  (q1, 1) → (q1, L)
+  #6  q1     [_]111  δ3  (q1, 1) → (q1, L)
+  #7  q2     [1]11   δ4  (q1, _) → (q2, R)  accept
+
+accept  11  [1]11  7 steps
+
+1 input · 1 accepted · 0 rejected

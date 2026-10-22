@@ -48,18 +48,22 @@ void ReportError(
 /// Γ    stack or tape alphabet
 /// q0   start state
 /// Z0   one special Γ symbol: the initial stack symbol or the blank
-/// F    accepting states, optional
+/// F    accepting states
 /// ```
 ///
-/// The caller reads the remaining lines, which are the transitions. The reader
-/// adds problems to the diagnostic set. Each read returns a usable value after
-/// a problem. Thus, one run reports as many errors as possible.
+/// The caller reads the remaining lines, for example the transitions. The
+/// reader adds problems to the diagnostic set. Each read returns a usable value
+/// after a problem. Thus, one run reports as many errors as possible.
 class Reader {
  public:
   Reader(const diag::SourceFile& source, diag::DiagnosticSet& diagnostics);
 
   /// Returns the lines that the reader did not read.
   [[nodiscard]] std::span<const Line> Rest() const;
+
+  /// Returns the next line, but does not read it. Returns null at the end of
+  /// the file.
+  [[nodiscard]] const Line* Peek() const;
 
   /// Returns the span of the last line. If there are no lines, returns the end
   /// of the file.
@@ -78,6 +82,10 @@ class Reader {
       std::string message,
       std::string_view role
   );
+
+  /// Reads the next line as the F line. Reports E0009 for each token that is
+  /// not a state, and keeps only the states.
+  std::vector<Symbol> ReadAcceptingLine(const SymbolSet& states);
 
   /// Reads the optional F line.
   ///

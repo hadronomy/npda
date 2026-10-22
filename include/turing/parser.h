@@ -19,9 +19,14 @@ struct ParseResult {
 
 /// Reads a Turing machine in the file format of the course.
 ///
-/// The file starts with an optional `# /// config` block. Then it has the lines
-/// Q, Σ, Γ, q0, and b, an optional F line, and one rule on each line. With N
-/// tapes, a rule is `from read1 .. readN to write1 move1 .. writeN moveN`.
+/// The file has the lines Q, Σ, Γ, q0, b, F, and the number of tapes N. Then
+/// it has one rule on each line. An optional `# /// config` comment block, at
+/// any position, sets the variant of the machine. With N tapes, a rule is
+/// `from read1 .. readN to write1 move1 .. writeN moveN`. In the independent
+/// mode, a rule is `from read1 .. readN to action1 .. actionN`.
+///
+/// If the line after b is one positive integer that is not a state, the file
+/// has no F line, and F is empty.
 [[nodiscard]] ParseResult Parse(const diag::SourceFile& source);
 
 }  // namespace turing

@@ -14,6 +14,11 @@ build *ARGS:
 test *ARGS: build
     xmake test {{ARGS}}
 
+# Draw the graphs of the two machines of the Turing assignment. Needs Graphviz.
+graphs:
+    just run turing -config examples/turing/anbm.turing -graph examples/turing/anbm.png
+    just run turing -config examples/turing/count_replace.turing -graph examples/turing/count_replace.png
+
 # Remove the build files.
 clean:
     xmake clean
@@ -40,6 +45,7 @@ sanitize:
 tar:
     cd .. && tar cvfz ./{{dir_name}}/{{project_name}}.tar.gz --exclude-from={{dir_name}}/.gitignore {{dir_name}}
 
-# Run the executable. Build it again only if the source changed.
+# Run the executable. Build it again only if the source changed. Paths in the
+# arguments are relative to the folder where you run just.
 run *ARGS:
-    xmake run {{bin_name}} {{ARGS}}
+    xmake run --workdir={{invocation_directory()}} {{bin_name}} {{ARGS}}

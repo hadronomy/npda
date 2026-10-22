@@ -1,50 +1,29 @@
 exit=0
-anbm.turing · q0 = q0 · b = _ · F = {qacc} · 1 tape · bidirectional · independent · stay allowed · 23 transitions
+anbm.turing · q0 = q0 · b = _ · F = {q4} · 1 tape · bidirectional · simultaneous · stay allowed · 11 transitions
 
 transitions
-  δ1   (q0, a)        → (qScanA, a, R)
-  δ2   (qScanA, a)    → (qScanA, a, R)
-  δ3   (qScanA, b)    → (qScanB, b, R)
-  δ4   (qScanB, b)    → (qScanB, b, R)
-  δ5   (qScanB, _)    → (qRewind, _, L)
-  δ6   (qRewind, a)   → (qRewind, a, L)
-  δ7   (qRewind, b)   → (qRewind, b, L)
-  δ8   (qRewind, X)   → (qRewind, X, L)
-  δ9   (qRewind, Y)   → (qRewind, Y, L)
-  δ10  (qRewind, _)   → (qFindA, _, R)
-  δ11  (qFindA, X)    → (qFindA, X, R)
-  δ12  (qFindA, Y)    → (qFindA, Y, R)
-  δ13  (qFindA, a)    → (qFindB, X, R)
-  δ14  (qFindA, b)    → (qacc, b, R)
-  δ15  (qFindB, a)    → (qFindB, a, R)
-  δ16  (qFindB, X)    → (qFindB, X, R)
-  δ17  (qFindB, Y)    → (qFindB, Y, R)
-  δ18  (qFindB, b)    → (qBackLeft, Y, L)
-  δ19  (qBackLeft, a) → (qBackLeft, a, L)
-  δ20  (qBackLeft, b) → (qBackLeft, b, L)
-  δ21  (qBackLeft, X) → (qBackLeft, X, L)
-  δ22  (qBackLeft, Y) → (qBackLeft, Y, L)
-  δ23  (qBackLeft, _) → (qFindA, _, R)
+  δ1   (q0, a) → (q1, X, R)
+  δ2   (q0, Y) → (q3, Y, R)
+  δ3   (q1, a) → (q1, a, R)
+  δ4   (q1, Y) → (q1, Y, R)
+  δ5   (q1, b) → (q2, Y, L)
+  δ6   (q2, a) → (q2, a, L)
+  δ7   (q2, Y) → (q2, Y, L)
+  δ8   (q2, X) → (q0, X, R)
+  δ9   (q3, Y) → (q3, Y, R)
+  δ10  (q3, b) → (q3, b, R)
+  δ11  (q3, _) → (q4, _, S)
 
 trace abb
-  #    state      tape    by
-  #0   q0         [a]bb
-  #1   qScanA     a[b]b   δ1   (q0, a)        → (qScanA, a, R)
-  #2   qScanB     ab[b]   δ3   (qScanA, b)    → (qScanB, b, R)
-  #3   qScanB     abb[_]  δ4   (qScanB, b)    → (qScanB, b, R)
-  #4   qRewind    ab[b]   δ5   (qScanB, _)    → (qRewind, _, L)
-  #5   qRewind    a[b]b   δ7   (qRewind, b)   → (qRewind, b, L)
-  #6   qRewind    [a]bb   δ7   (qRewind, b)   → (qRewind, b, L)
-  #7   qRewind    [_]abb  δ6   (qRewind, a)   → (qRewind, a, L)
-  #8   qFindA     [a]bb   δ10  (qRewind, _)   → (qFindA, _, R)
-  #9   qFindB     X[b]b   δ13  (qFindA, a)    → (qFindB, X, R)
-  #10  qBackLeft  [X]Yb   δ18  (qFindB, b)    → (qBackLeft, Y, L)
-  #11  qBackLeft  [_]XYb  δ21  (qBackLeft, X) → (qBackLeft, X, L)
-  #12  qFindA     [X]Yb   δ23  (qBackLeft, _) → (qFindA, _, R)
-  #13  qFindA     X[Y]b   δ11  (qFindA, X)    → (qFindA, X, R)
-  #14  qFindA     XY[b]   δ12  (qFindA, Y)    → (qFindA, Y, R)
-  #15  qacc       XYb[_]  δ14  (qFindA, b)    → (qacc, b, R)       accept
+  #   state  tape    by
+  #0  q0     [a]bb
+  #1  q1     X[b]b   δ1   (q0, a) → (q1, X, R)
+  #2  q2     [X]Yb   δ5   (q1, b) → (q2, Y, L)
+  #3  q0     X[Y]b   δ8   (q2, X) → (q0, X, R)
+  #4  q3     XY[b]   δ2   (q0, Y) → (q3, Y, R)
+  #5  q3     XYb[_]  δ10  (q3, b) → (q3, b, R)
+  #6  q4     XYb[_]  δ11  (q3, _) → (q4, _, S)  accept
 
-accept  abb  XYb[_]  15 steps
+accept  abb  XYb[_]  6 steps
 
 1 input · 1 accepted · 0 rejected

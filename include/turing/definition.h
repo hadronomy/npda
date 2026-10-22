@@ -1,6 +1,7 @@
 #ifndef NPDA_TURING_DEFINITION_H_
 #define NPDA_TURING_DEFINITION_H_
 
+#include <cstddef>
 #include <vector>
 
 #include "automata/symbol.h"
@@ -12,6 +13,9 @@ namespace turing {
 /// A Turing machine, as its file gives it.
 struct Definition {
   Config config;
+  std::size_t num_tapes = 1;
+  /// Σ, in file order. An input must use only these symbols.
+  std::vector<Symbol> input_alphabet;
   Symbol start_state;
   Symbol blank;
   std::vector<Symbol> accepting_states;

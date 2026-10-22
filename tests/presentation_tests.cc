@@ -21,6 +21,7 @@
 #include "prf/trace_render.h"
 #include "support/files.h"
 #include "terminal/style.h"
+#include "turing/config.h"
 #include "turing/definition.h"
 #include "turing/graphviz.h"
 #include "turing/machine.h"
@@ -240,6 +241,8 @@ turing::Definition Sweep() {
   const auto blank = Intern("_");
   return {
       .config = {},
+      .num_tapes = 1,
+      .input_alphabet = {a},
       .start_state = q,
       .blank = blank,
       .accepting_states = {Intern("f")},
@@ -274,8 +277,28 @@ TEST_CASE(
   CHECK(turing::FormatTape(tape, blank, kPlain, 0) == "…[b]…");
   CHECK(turing::FormatTape({}, blank, kPlain) == "[_]");
   CHECK(
-      turing::FormatTransition(Sweep().transitions[0], kPlain) ==
-      "(q, a) → (q, a, R)"
+      turing::FormatTransition(
+          Sweep().transitions[0],
+          turing::OperationMode::kSimultaneous,
+          kPlain
+      ) == "(q, a) → (q, a, R)"
+  );
+  const turing::TapeAction write{
+      .read = a,
+      .write = Intern("x"),
+      .move = turing::HeadMove::kStay
+  };
+  const turing::TapeAction move{
+      .read = a,
+      .write = a,
+      .move = turing::HeadMove::kLeft
+  };
+  CHECK(
+      turing::FormatTransition(
+          {.from = Intern("q"), .tapes = {write, move}, .to = Intern("f")},
+          turing::OperationMode::kIndependent,
+          kPlain
+      ) == "(q, a, a) → (f, x, L)"
   );
 }
 
@@ -316,7 +339,9 @@ TEST_CASE(
   CHECK(output.contains("#1  by δ1  (q, a) → (q, a, R)\n"));
   CHECK(output.contains("    tape    │ a │ _ │\n"));
   CHECK(output.contains("                  ▲\n"));
-  CHECK(output.contains("    accept  halted in final state f\n"));
+  CHECK(
+      output.contains("    accept  no transition reads (_) in final state f\n")
+  );
 }
 
 TEST_CASE(
@@ -363,6 +388,8 @@ TEST_CASE(
 turing::Definition EmptyTuring(std::string_view start) {
   return {
       .config = {},
+      .num_tapes = 1,
+      .input_alphabet = {},
       .start_state = Intern(start),
       .blank = Intern("_"),
       .accepting_states = {},

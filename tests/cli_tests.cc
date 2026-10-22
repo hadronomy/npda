@@ -86,8 +86,25 @@ TEST_CASE(
            "examples/turing/anbm.turing",
            "-trace",
            "n",
+           "ab",
            "aabb",
-           "abb"}
+           "abb",
+           "aab",
+           "ba",
+           ".",
+           "abc"}
+      },
+      OutputFixture{
+          "turing_count_result",
+          {"turing",
+           "-config",
+           "examples/turing/count_replace.turing",
+           "-trace",
+           "n",
+           "abbabaabb",
+           "aa",
+           "bb",
+           "."}
       },
       OutputFixture{
           "turing_detailed_trace",
@@ -106,6 +123,20 @@ TEST_CASE(
            "-trace-view",
            "compact",
            "abb"}
+      },
+      OutputFixture{
+          "turing_independent_trace",
+          {"turing",
+           "-config",
+           "examples/turing/successor.turing",
+           "-trace-view",
+           "compact",
+           "-explain",
+           "11"}
+      },
+      OutputFixture{
+          "turing_diagnostics",
+          {"turing", "-config", "examples/turing/anbm_bad.turing", "a"}
       },
       OutputFixture{"prf_counts", {"prf", "2", "3"}},
       OutputFixture{"prf_tree", {"prf", "1", "2", "-trace", "tree"}},

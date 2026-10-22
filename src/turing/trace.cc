@@ -92,7 +92,7 @@ std::string_view MoveName(HeadMove move) {
   return "stay";
 }
 
-std::string Explain(const Transition& transition) {
+std::string Explain(const Transition& transition, OperationMode mode) {
   std::string text;
   for (std::size_t tape = 0; tape < transition.tapes.size(); ++tape) {
     const auto& action = transition.tapes[tape];
@@ -100,6 +100,12 @@ std::string Explain(const Transition& transition) {
       text += std::format("{}Tape {}: ", tape == 0 ? "" : ". ", tape + 1);
     }
     text += std::format("read {}", action.read);
+    if (mode == OperationMode::kIndependent) {
+      text += action.move == HeadMove::kStay
+                  ? std::format(", write {}", action.write)
+                  : std::format(", {}", MoveName(action.move));
+      continue;
+    }
     if (action.write != action.read) {
       text += std::format(", write {}", action.write);
     }
@@ -111,10 +117,12 @@ std::string Explain(const Transition& transition) {
   return text + std::format(", go to {}", transition.to);
 }
 
-RuleText Split(const Transition& transition) {
+RuleText Split(const Transition& transition, OperationMode mode) {
   std::string result(transition.to.name());
   for (const auto& action : transition.tapes) {
-    result += std::format(", {}, {}", action.write, ToChar(action.move));
+    result += mode == OperationMode::kIndependent
+                  ? std::format(", {}", ActionText(action))
+                  : std::format(", {}, {}", action.write, ToChar(action.move));
   }
   return {
       .condition = std::format(
@@ -129,7 +137,7 @@ RuleText Split(const Transition& transition) {
 std::vector<RuleText> SplitAll(const Definition& definition) {
   std::vector<RuleText> rules;
   for (const auto& transition : definition.transitions) {
-    rules.push_back(Split(transition));
+    rules.push_back(Split(transition, definition.config.operation_mode));
   }
   return rules;
 }
@@ -216,26 +224,25 @@ class TraceWriter {
   }
 
   [[nodiscard]] std::string TapeName(std::size_t tape) const {
-    if (definition_->config.num_tapes == 1) return "tape";
+    if (definition_->num_tapes == 1) return "tape";
     return std::format("tape {}", tape + 1);
   }
 
-  /// The reason why the machine halted at `configuration`.
+  /// The reason why the machine halted at `configuration`: no transition
+  /// applies.
   [[nodiscard]] std::string HaltReason(
       const Configuration& configuration,
       bool accepted
   ) const {
-    if (accepted) {
-      return std::format("halted in final state {}", configuration.state);
-    }
     std::string reads;
     for (const auto& tape : configuration.tapes) {
       if (!reads.empty()) reads += ", ";
       reads += ReadHead(tape, definition_->blank).name();
     }
     return std::format(
-        "no transition reads ({}) in state {}",
+        "no transition reads ({}) in {} {}",
         reads,
+        accepted ? "final state" : "state",
         configuration.state
     );
   }
@@ -270,7 +277,10 @@ class TraceWriter {
               "",
               style_.Paint(
                   Tone::kMuted,
-                  Explain(definition_->transitions[*record.transition])
+                  Explain(
+                      definition_->transitions[*record.transition],
+                      definition_->config.operation_mode
+                  )
               )
           );
         }
@@ -338,7 +348,7 @@ class TraceWriter {
         style_.Span(Tone::kMuted, "#"),
         style_.Span(Tone::kMuted, "state"),
     };
-    for (std::size_t tape = 0; tape < definition_->config.num_tapes; ++tape) {
+    for (std::size_t tape = 0; tape < definition_->num_tapes; ++tape) {
       header.push_back(style_.Span(Tone::kMuted, TapeName(tape)));
     }
     header.push_back(style_.Span(Tone::kMuted, "by"));
@@ -388,8 +398,8 @@ std::string Describe(const Definition& definition, const Style& style) {
       std::format("F = {}", automata::FormatSet(definition.accepting_states)),
       std::format(
           "{} {}",
-          config.num_tapes,
-          config.num_tapes == 1 ? "tape" : "tapes"
+          definition.num_tapes,
+          definition.num_tapes == 1 ? "tape" : "tapes"
       ),
       config.tape_direction == TapeDirection::kBidirectional ? "bidirectional"
                                                              : "right-only",
@@ -406,8 +416,12 @@ std::string Describe(const Definition& definition, const Style& style) {
   return text;
 }
 
-std::string FormatTransition(const Transition& transition, const Style& style) {
-  const auto text = Split(transition);
+std::string FormatTransition(
+    const Transition& transition,
+    OperationMode mode,
+    const Style& style
+) {
+  const auto text = Split(transition, mode);
   return std::format(
       "{} {} {}",
       text.condition,
@@ -446,7 +460,7 @@ void WriteTransitions(
   std::vector<std::string> notes;
   if (explain) {
     for (const auto& transition : definition.transitions) {
-      notes.push_back(Explain(transition));
+      notes.push_back(Explain(transition, definition.config.operation_mode));
     }
   }
   automata::WriteTransitionList(out, SplitAll(definition), notes, style);

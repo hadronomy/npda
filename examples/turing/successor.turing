@@ -1,0 +1,31 @@
+# /// config
+# operation_mode = independent
+# ///
+# Adds one to a number in unary: 1ⁿ → 1ⁿ⁺¹. The head stops on the first 1.
+#
+# In the independent mode, each transition writes a symbol or moves the head,
+# not both. Thus, a rule is `from read to action`.
+#
+# q0  moves right to the first blank and writes a 1 there.
+# q1  goes back left to the start.
+# q2  accepts.
+
+# Q
+q0 q1 q2
+# Σ
+1
+# Γ
+1 _
+# q0
+q0
+# b
+_
+# F
+q2
+# number of tapes
+1
+# δ: from read to action
+q0 1 q0 R
+q0 _ q1 1
+q1 1 q1 L
+q1 _ q2 R

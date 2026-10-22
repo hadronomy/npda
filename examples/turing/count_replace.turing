@@ -1,116 +1,84 @@
-# /// config
-# num_tapes = 2
-# tape_direction = "bidirectional"
-# operation_mode = "simultaneous"
-# allow_stay = true
-# ///
+# Machine 2: replaces a string of a and b with the number of b, a blank, and
+# the number of a. A number n is 1ⁿ, and 0 is the number zero. The head stops
+# on the first symbol of the result.
+#
+#   abbabaabb  →  11111_1111
+#   aa         →  0_11
+#   bb         →  11_0
+#
+# First the machine sorts the input to bᵏaᵐ. Each b that comes after an a goes
+# left to the start of the run of a. Then it writes the result:
+#
+#   k > 0, m > 0   b → 1, the first a → _, the other a → 1, one more 1 at the
+#                  end. Thus, the a block keeps m ones.
+#   k > 0, m = 0   b → 1, then _ and 0.
+#   k = 0, m > 0   a → 1, then 0 and _ to the left of the ones.
+#   k = 0, m = 0   0, _, and 0.
+#
+# Sort:
+# q0   reads the b at the start.
+# q1   reads the run of a after the b.
+# q2   carries a b left, to the start of the run of a.
+# q3   writes the b on the first a of the run.
+# q4   goes back to the start.
+# Write the result:
+# q5   selects one of the four cases.
+# q6   changes b to 1. The first a becomes the separator.
+# q7   changes a to 1 and adds one more 1 at the end.
+# q8   writes 0 for the a.
+# q9   changes a to 1 when there is no b.
+# q10  goes back to the left of the ones.
+# q11  skips the separator when the input is empty.
+# q12  writes 0 for the b.
+# q13  goes left over the count of a.
+# q14  goes left over the count of b.
+# q15  accepts, with the head on the first symbol of the result.
 
-# Q (states)
-qI1 qI2 qI3 qIBack qS qIncAL qIncAR qIncBR qIncBL qRew1 qRew1L qPrepL qPrepL2 qCopyL qCopyR qFinish qFinish2 qAcc
-
-# Σ (input alphabet)
+# Q
+q0 q1 q2 q3 q4 q5 q6 q7 q8 q9 q10 q11 q12 q13 q14 q15
+# Σ
 a b
-
-# Γ (tape alphabet)
-a b 1 * _
-
-# q0 (start state)
-qI1
-
-# b (blank symbol)
+# Γ
+a b 1 0 _
+# q0
+q0
+# b
 _
-
-# F (accepting states)
-qAcc
-
-# Transiciones multi-cinta (N=2): from r1 r2 to w1 m1 w2 m2
-
-# Inicialización de la cinta 2 como "1 * 1"
-qI1 a _ qI2 a S 1 R
-qI1 b _ qI2 b S 1 R
-qI1 _ _ qI2 _ S 1 R
-
-qI2 a _ qI3 a S * R
-qI2 b _ qI3 b S * R
-qI2 _ _ qI3 _ S * R
-
-qI3 a _ qIBack a S 1 L
-qI3 b _ qIBack b S 1 L
-qI3 _ _ qIBack _ S 1 L
-
-# Volver con la cabeza de la cinta 2 a '*'
-qIBack a 1 qIBack a S 1 L
-qIBack b 1 qIBack b S 1 L
-qIBack _ 1 qIBack _ S 1 L
-qIBack a * qS a S * S
-qIBack b * qS b S * S
-qIBack _ * qS _ S * S
-
-# Escaneo de la entrada en cinta 1
-qS a * qIncAL a S * L
-qS b * qIncBR b S * R
-qS _ * qRew1 _ S * S
-
-# Rebobinar cinta 1 hasta el blanco izquierdo real de la entrada
-qRew1 _ * qRew1L _ L * S
-qRew1 a * qRew1L a L * S
-qRew1 b * qRew1L b L * S
-qRew1L a * qRew1L a L * S
-qRew1L b * qRew1L b L * S
-qRew1L _ * qPrepL _ R * S
-
-# Incrementar conteo de 'a' (añadir '1' a la izquierda de '*')
-qIncAL a 1 qIncAL a S 1 L
-qIncAL a _ qIncAR a S 1 R
-qIncAR a 1 qIncAR a S 1 R
-qIncAR a * qS a R * S
-
-# Incrementar conteo de 'b' (añadir '1' a la derecha de '*')
-qIncBR b 1 qIncBR b S 1 R
-qIncBR b _ qIncBL b S 1 L
-qIncBL b 1 qIncBL b S 1 L
-qIncBL b * qS b R * S
-
-# Preparar: mover cabeza de cinta 2 al primer '1' del bloque izquierdo
-qPrepL a * qPrepL2 a S * L
-qPrepL b * qPrepL2 b S * L
-qPrepL _ * qPrepL2 _ S * L
-
-qPrepL2 a 1 qPrepL2 a S 1 L
-qPrepL2 b 1 qPrepL2 b S 1 L
-qPrepL2 _ 1 qPrepL2 _ S 1 L
-qPrepL2 a _ qCopyL a S _ R
-qPrepL2 b _ qCopyL b S _ R
-qPrepL2 _ _ qCopyL _ S _ R
-
-# Copiar bloque izquierdo de '1's a la cinta 1 (sobrescribe a/b/_/1 con 1)
-qCopyL a 1 qCopyL 1 R 1 R
-qCopyL b 1 qCopyL 1 R 1 R
-qCopyL _ 1 qCopyL 1 R 1 R
-qCopyL 1 1 qCopyL 1 R 1 R
-
-# Al encontrar '*' en cinta 2, escribir '*' en cinta 1 (separador temporal) y pasar al bloque derecho
-qCopyL a * qCopyR * R * R
-qCopyL b * qCopyR * R * R
-qCopyL _ * qCopyR * R * R
-qCopyL 1 * qCopyR * R * R
-
-# Copiar bloque derecho de '1's a la cinta 1 (sobrescribe a/b/_/1 con 1)
-qCopyR a 1 qCopyR 1 R 1 R
-qCopyR b 1 qCopyR 1 R 1 R
-qCopyR _ 1 qCopyR 1 R 1 R
-qCopyR 1 1 qCopyR 1 R 1 R
-
-# Fin del bloque derecho (cinta 2 lee '_'): pasar a fase de rebobinado final
-qCopyR a _ qFinish a L _ S
-qCopyR b _ qFinish b L _ S
-qCopyR _ _ qFinish _ L _ S
-qCopyR 1 _ qFinish 1 L _ S
-
-# Rebobinar: mover a la izquierda hasta convertir el separador '*' a '_' y seguir al blanco izquierdo
-qFinish 1 _ qFinish 1 L _ S
-qFinish * _ qFinish2 _ L _ S
-
-# Tras convertir '*', seguir a la izquierda hasta el blanco izquierdo y dejar la cabeza en el primer '1'
-qFinish2 1 _ qFinish2 1 L _ S
-qFinish2 _ _ qAcc _ R _ S
+# F
+q15
+# number of tapes
+1
+# δ: from read to write move
+q0 b q0 b R
+q0 a q1 a R
+q0 _ q4 _ L
+q1 a q1 a R
+q1 b q2 a L
+q1 _ q4 _ L
+q2 a q2 a L
+q2 b q3 b R
+q2 _ q3 _ R
+q3 a q1 b R
+q4 a q4 a L
+q4 b q4 b L
+q4 _ q5 _ R
+q5 b q6 1 R
+q5 a q9 1 R
+q5 _ q11 0 R
+q6 b q6 1 R
+q6 a q7 _ R
+q6 _ q8 _ R
+q7 a q7 1 R
+q7 _ q13 1 L
+q8 _ q13 0 L
+q9 a q9 1 R
+q9 _ q10 _ L
+q10 1 q10 1 L
+q10 _ q12 _ L
+q11 _ q8 _ R
+q12 _ q15 0 S
+q13 1 q13 1 L
+q13 _ q14 _ L
+q14 1 q14 1 L
+q14 0 q14 0 L
+q14 _ q15 _ R

@@ -78,6 +78,10 @@ std::span<const Line> Reader::Rest() const {
   return std::span(lines_).subspan(next_);
 }
 
+const Line* Reader::Peek() const {
+  return next_ == lines_.size() ? nullptr : &lines_[next_];
+}
+
 diag::SourceSpan Reader::LastSpan() const {
   return lines_.empty() ? end_of_file_ : lines_.back().span;
 }
@@ -122,6 +126,17 @@ std::optional<Token> Reader::ReadSingle(
     );
   }
   return line->tokens.front();
+}
+
+std::vector<Symbol> Reader::ReadAcceptingLine(const SymbolSet& states) {
+  std::vector<Symbol> accepting;
+  const Line* line = Next("F");
+  if (line == nullptr) return accepting;
+  ReportUnknownAcceptingStates(*line, states);
+  for (const auto& token : line->tokens) {
+    if (states.contains(token.symbol)) accepting.push_back(token.symbol);
+  }
+  return accepting;
 }
 
 void Reader::ReportUnknownAcceptingStates(

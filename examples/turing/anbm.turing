@@ -1,54 +1,39 @@
-# States (Q)
-q0 qScanA qScanB qRewind qFindA qFindB qBackLeft qacc
+# Machine 1: L = { aⁿbᵐ | m ≥ n, n > 0 }
+#
+# Each round marks the first free a as X and the first free b as Y. When no
+# free a is left, the rest of the tape must hold only Y and b.
+#
+# q0  marks the next a. If the next cell is Y, all of the a are marked. At the
+#     start, a b or a blank stops the machine: n = 0.
+# q1  goes right to the first free b and marks it. A blank stops the machine:
+#     m < n.
+# q2  goes back left to the last X.
+# q3  checks that only Y and b come before the blank. An a stops the machine.
+# q4  accepts.
 
-# Input alphabet (Σ)
+# Q
+q0 q1 q2 q3 q4
+# Σ
 a b
-
-# Tape alphabet (Γ)
+# Γ
 a b X Y _
-
-# Start state (q0)
+# q0
 q0
-
-# Blank symbol (b)
+# b
 _
-
-# Accepting states (F)
-qacc
-
-# Transitions (from read to write move)
-
-# Phase 1: Validate shape a^+ b^+ and rewind to start
-q0 a qScanA a R
-
-qScanA a qScanA a R
-qScanA b qScanB b R
-
-qScanB b qScanB b R
-qScanB _ qRewind _ L
-
-qRewind a qRewind a L
-qRewind b qRewind b L
-qRewind X qRewind X L
-qRewind Y qRewind Y L
-qRewind _ qFindA _ R
-
-# Phase 2: Pair each a with a b; then check m > n
-# Find next unmarked 'a'; if we encounter an unmarked 'b' first, accept (m > n)
-qFindA X qFindA X R
-qFindA Y qFindA Y R
-qFindA a qFindB X R
-qFindA b qacc b R
-
-# From marked 'a' (X), find next unmarked 'b' and mark it (Y)
-qFindB a qFindB a R
-qFindB X qFindB X R
-qFindB Y qFindB Y R
-qFindB b qBackLeft Y L
-
-# Return to the left end and repeat
-qBackLeft a qBackLeft a L
-qBackLeft b qBackLeft b L
-qBackLeft X qBackLeft X L
-qBackLeft Y qBackLeft Y L
-qBackLeft _ qFindA _ R
+# F
+q4
+# number of tapes
+1
+# δ: from read to write move
+q0 a q1 X R
+q0 Y q3 Y R
+q1 a q1 a R
+q1 Y q1 Y R
+q1 b q2 Y L
+q2 a q2 a L
+q2 Y q2 Y L
+q2 X q0 X R
+q3 Y q3 Y R
+q3 b q3 b R
+q3 _ q4 _ S

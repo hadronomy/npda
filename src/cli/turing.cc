@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <format>
 #include <memory>
+#include <optional>
 #include <print>
 #include <string>
 
@@ -143,40 +144,35 @@ int RunTuring(const TuringOptions& options) {
   Tally tally;
   for (const auto& text : *inputs) {
     const auto input = automata::InputSymbols(text);
-    const auto result = machine_options.trace
-                            ? turing::TraceRun(
-                                  machine,
-                                  input,
-                                  kMaxSteps,
-                                  trace_options,
-                                  trace->Stream(),
-                                  trace->style()
-                              )
-                            : machine.Run(input, {.max_steps = kMaxSteps});
-    const auto verdict = VerdictOf(result);
-    std::println(
-        "{}",
-        FormatVerdict(
-            verdict,
-            text,
-            width,
-            Detail(result, definition.blank, style),
-            style
-        )
-    );
+    // An input with a symbol outside Σ is not a word of the machine, so the
+    // machine does not run on it.
+    const auto foreign = machine.FindForeignSymbol(input);
+    std::optional<std::expected<turing::RunResult, turing::LimitReached>>
+        result;
+    if (!foreign) {
+      result = machine_options.trace
+                   ? turing::TraceRun(
+                         machine,
+                         input,
+                         kMaxSteps,
+                         trace_options,
+                         trace->Stream(),
+                         trace->style()
+                     )
+                   : machine.Run(input, {.max_steps = kMaxSteps});
+    }
+    const auto verdict = result ? VerdictOf(*result) : Verdict::kReject;
+    const auto line = [&](const Style& line_style) {
+      const auto detail = result ? Detail(*result, definition.blank, line_style)
+                                 : line_style.Paint(
+                                       Tone::kMuted,
+                                       std::format("{} is not in Σ", *foreign)
+                                   );
+      return FormatVerdict(verdict, text, width, detail, line_style);
+    };
+    std::println("{}", line(style));
     if (trace->IsFile()) {
-      const auto& file_style = trace->style();
-      std::println(
-          trace->Stream(),
-          "{}",
-          FormatVerdict(
-              verdict,
-              text,
-              width,
-              Detail(result, definition.blank, file_style),
-              file_style
-          )
-      );
+      std::println(trace->Stream(), "{}", line(trace->style()));
     }
     tally.Add(verdict);
   }

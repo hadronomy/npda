@@ -1,15 +1,16 @@
 # /// config
-# num_tapes = 1
+# tape_direction = right-only
 # allow_stay = false
 # ///
-# Simple Turing Machine that accepts all strings
+# Accepts each string over {a, b}: the head goes right to the first blank.
+# The machine never moves left, so a tape with a left end is enough.
 q0 q1
 a b
 a b _
 q0
 _
 q1
-# Transitions - just move right until blank, then accept
+1
 q0 a q0 a R
 q0 b q0 b R
 q0 _ q1 _ R

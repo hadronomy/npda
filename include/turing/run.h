@@ -36,8 +36,8 @@ struct RunOptions {
 };
 
 struct RunResult {
-  /// True if the machine halts in an accepting state. A machine halts if it is
-  /// in an accepting state or if no transition applies.
+  /// True if the machine halts in an accepting state. The machine halts only
+  /// when no transition applies, also in an accepting state.
   bool accepted;
   std::size_t steps;
   Configuration halted;

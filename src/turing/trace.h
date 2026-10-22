@@ -10,6 +10,7 @@
 
 #include "automata/symbol.h"
 #include "terminal/style.h"
+#include "turing/config.h"
 #include "turing/definition.h"
 #include "turing/machine.h"
 #include "turing/run.h"
@@ -46,9 +47,12 @@ struct TraceOptions {
 );
 
 /// Returns a rule: `(q0, a) → (q1, X, R)`. With more tapes, the condition has
-/// one read for each tape. The result has one write and one move for each tape.
+/// one read for each tape. The result has one write and one move for each
+/// tape. In the independent mode, the result has one action for each tape:
+/// `(q0, a) → (q1, X)` or `(q0, a) → (q1, R)`.
 [[nodiscard]] std::string FormatTransition(
     const Transition& transition,
+    OperationMode mode,
     const terminal::Style& style
 );
 

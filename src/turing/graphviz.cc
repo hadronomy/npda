@@ -46,12 +46,58 @@ std::string Quote(std::string_view text) {
   return quoted + '"';
 }
 
-std::string RuleLabel(const Transition& transition) {
+/// `reads / writes / moves`, or `reads / actions` in the independent mode.
+std::string RuleLabel(const Transition& transition, OperationMode mode) {
+  if (mode == OperationMode::kIndependent) {
+    return std::format(
+        "{} / {}",
+        JoinReads(transition.tapes),
+        JoinActions(transition.tapes)
+    );
+  }
   return std::format(
       "{} / {} / {}",
       JoinReads(transition.tapes),
       JoinWrites(transition.tapes),
       JoinMoves(transition.tapes)
+  );
+}
+
+std::string EscapeHtml(std::string_view text) {
+  std::string escaped;
+  for (const char character : text) {
+    switch (character) {
+      case '&':
+        escaped += "&amp;";
+        break;
+      case '<':
+        escaped += "&lt;";
+        break;
+      case '>':
+        escaped += "&gt;";
+        break;
+      case '"':
+        escaped += "&quot;";
+        break;
+      default:
+        escaped += character;
+    }
+  }
+  return escaped;
+}
+
+/// The rules of one edge as an HTML label, one rule on each row. Graphviz puts
+/// a plain label on the edge line, so the line hides a blank written as `_`.
+/// The cell padding keeps each row clear of the line.
+std::string EdgeLabel(const std::vector<std::string>& rules) {
+  std::string rows;
+  for (const auto& rule : rules) {
+    rows += std::format("<TR><TD>{}</TD></TR>", EscapeHtml(rule));
+  }
+  return std::format(
+      "<<TABLE BORDER=\"0\" CELLBORDER=\"0\" CELLSPACING=\"0\" "
+      "CELLPADDING=\"3\">{}</TABLE>>",
+      rows
   );
 }
 
@@ -80,7 +126,9 @@ std::string ToDot(const Definition& definition) {
       edges.push_back({transition.from, transition.to, {}});
       edge = std::prev(edges.end());
     }
-    edge->labels.push_back(RuleLabel(transition));
+    edge->labels.push_back(
+        RuleLabel(transition, definition.config.operation_mode)
+    );
   }
   for (const auto state : definition.accepting_states) add_state(state);
 
@@ -88,7 +136,8 @@ std::string ToDot(const Definition& definition) {
   std::string dot =
       "digraph TM {\n"
       "  graph [bgcolor=\"#FFFFFF\", splines=true, overlap=false, pad=0.15, "
-      "nodesep=0.35, ranksep=0.6, dpi=300];\n"
+      "nodesep=0.35, ranksep=0.6, dpi=300, fontname=\"Helvetica\", "
+      "fontcolor=\"#263238\"];\n"
       "  rankdir=LR;\n"
       "  node [fontname=\"Helvetica\", shape=circle, style=filled, "
       "color=\"#455A64\", fillcolor=\"#ECEFF1\", fontcolor=\"#263238\", "
@@ -101,8 +150,9 @@ std::string ToDot(const Definition& definition) {
       "  label={};\n",
       Quote(
           std::format(
-              "{} tape(s), {}, {}, stay {}, blank {}",
-              config.num_tapes,
+              "{} {}, {}, {}, stay {}, blank {}",
+              definition.num_tapes,
+              definition.num_tapes == 1 ? "tape" : "tapes",
               config.tape_direction == TapeDirection::kBidirectional
                   ? "bidirectional"
                   : "right-only",
@@ -130,16 +180,11 @@ std::string ToDot(const Definition& definition) {
     }
   }
   for (const auto& edge : edges) {
-    std::string label;
-    for (const auto& rule : edge.labels) {
-      if (!label.empty()) label += '\n';
-      label += rule;
-    }
     dot += std::format(
         "  {} -> {} [label={}];\n",
         Quote(edge.from.name()),
         Quote(edge.to.name()),
-        Quote(label)
+        EdgeLabel(edge.labels)
     );
   }
   return dot + "}\n";

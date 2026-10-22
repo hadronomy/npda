@@ -1,18 +1,26 @@
 #include "turing/parser.h"
 
+#include <algorithm>
+#include <charconv>
 #include <cstddef>
 #include <format>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <system_error>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "automata/symbol.h"
 #include "diagnostics/diagnostic.h"
 #include "diagnostics/source.h"
 #include "parsing/reader.h"
+#include "turing/config.h"
 #include "turing/config_parser.h"
 #include "turing/machine.h"
 #include "turing/transition.h"
+#include "turing/transition_text.h"
 
 namespace turing {
 
@@ -22,119 +30,262 @@ using parsing::Line;
 using parsing::SymbolSet;
 using parsing::Token;
 
-/// Reads the rules of a machine with N tapes. A rule has 3N + 2 tokens:
+constexpr std::string_view kTapesSection = "number of tapes";
+
+/// True if `text` is one character. An input splits into characters, so a
+/// longer tape symbol could never come from an input.
+bool IsOneCharacter(std::string_view text) {
+  return automata::InputSymbols(text).size() == 1;
+}
+
+std::optional<std::size_t> ParseCount(std::string_view text) {
+  std::size_t count = 0;
+  const auto* end = text.data() + text.size();
+  const auto [last, error] = std::from_chars(text.data(), end, count);
+  if (error != std::errc() || last != end || count == 0) return std::nullopt;
+  return count;
+}
+
+/// True if `line` can only be the number of tapes: one positive integer that
+/// is not a state. Then the file has no F line, and F is empty.
+bool IsTapeCountLine(const Line& line, const SymbolSet& states) {
+  return line.tokens.size() == 1 &&
+         ParseCount(line.tokens.front().symbol.name()) &&
+         !states.contains(line.tokens.front().symbol);
+}
+
+std::optional<std::size_t> ReadTapeCount(
+    parsing::Reader& reader,
+    diag::DiagnosticSet& diagnostics
+) {
+  const Line* line = reader.Peek();
+  const auto token = reader.ReadSingle(
+      kTapesSection,
+      "E0022",
+      "invalid number of tapes line",
+      "the number of tapes"
+  );
+  if (!token || line->tokens.size() != 1) return std::nullopt;
+  const auto count = ParseCount(token->symbol.name());
+  if (!count) {
+    parsing::ReportError(
+        diagnostics,
+        "E0022",
+        "invalid number of tapes line",
+        token->span,
+        "expected a positive integer"
+    );
+  }
+  return count;
+}
+
+/// Reads the Σ line. Reports each symbol that is not in Γ. Γ is the next line,
+/// so the caller gives it with `tape_alphabet`.
+std::vector<Symbol> CheckInputAlphabet(
+    const Line* line,
+    const SymbolSet& tape_alphabet,
+    diag::DiagnosticSet& diagnostics
+) {
+  std::vector<Symbol> alphabet;
+  if (line == nullptr) return alphabet;
+  for (const auto& token : line->tokens) {
+    if (!tape_alphabet.contains(token.symbol)) {
+      parsing::ReportError(
+          diagnostics,
+          "E0021",
+          "input symbol not in Γ",
+          token.span,
+          "this symbol is not listed in Γ"
+      );
+    }
+    if (!std::ranges::contains(alphabet, token.symbol)) {
+      alphabet.push_back(token.symbol);
+    }
+  }
+  return alphabet;
+}
+
+/// Reports each tape symbol that is longer than one character. In the
+/// independent mode, also reports each tape symbol that a transition would
+/// read as a move.
+void CheckTapeAlphabet(
+    const Line* line,
+    const Config& config,
+    diag::DiagnosticSet& diagnostics
+) {
+  if (line == nullptr) return;
+  for (const auto& token : line->tokens) {
+    const auto name = token.symbol.name();
+    if (!IsOneCharacter(name)) {
+      parsing::ReportError(
+          diagnostics,
+          "E0020",
+          "tape symbol must be one character",
+          token.span,
+          "write one character"
+      );
+    }
+    const auto move = ParseHeadMove(name);
+    const bool is_move =
+        move && (*move != HeadMove::kStay || config.allow_stay);
+    if (config.operation_mode == OperationMode::kIndependent && is_move) {
+      diag::Error("E0024", "tape symbol is also a move")
+          .Label(token.span, "a transition would read this symbol as a move")
+          .Note(
+              "In the independent mode, an action is a symbol or a move. "
+              "Rename the symbol, or set operation_mode = simultaneous."
+          )
+          .Emit(diagnostics);
+    }
+  }
+}
+
+/// Reads the rules of a machine with N tapes. A rule starts with
+/// `from read1 .. readN to`. Then each tape gets an action. In the
+/// simultaneous mode, the action is a write and a move:
 ///
 /// ```text
 /// from  read1 .. readN  to  write1 move1 .. writeN moveN
 /// ```
 ///
-/// With one tape, this is the usual `from read to write move`.
+/// In the independent mode, the action is a write or a move:
+///
+/// ```text
+/// from  read1 .. readN  to  action1 .. actionN
+/// ```
+///
+/// With one tape, the simultaneous form is the usual `from read to write move`.
 class RuleParser {
  public:
   RuleParser(
       std::size_t num_tapes,
+      const Config& config,
       const SymbolSet& states,
       const SymbolSet& tape_alphabet,
       diag::DiagnosticSet& diagnostics
   )
       : num_tapes_(num_tapes),
+        config_(config),
         states_(states),
         tape_alphabet_(tape_alphabet),
         diagnostics_(diagnostics) {}
-
-  [[nodiscard]] std::size_t Arity() const { return 3 * num_tapes_ + 2; }
-
-  /// Returns true if the line is a correct rule. Reports nothing.
-  [[nodiscard]] bool Matches(const Line& line) const {
-    if (line.tokens.size() != Arity()) return false;
-    const Fields fields = Split(line);
-    if (!states_.contains(fields.from.symbol) ||
-        !states_.contains(fields.to.symbol)) {
-      return false;
-    }
-    for (std::size_t tape = 0; tape < num_tapes_; ++tape) {
-      if (!tape_alphabet_.contains(fields.Read(tape).symbol) ||
-          !tape_alphabet_.contains(fields.Write(tape).symbol) ||
-          !ParseHeadMove(fields.Move(tape).symbol.name())) {
-        return false;
-      }
-    }
-    return true;
-  }
 
   /// Reads one rule and reports each bad field. The result is correct only if
   /// the function reported nothing.
   std::optional<Transition> Parse(const Line& line) {
     if (line.tokens.size() != Arity()) {
-      parsing::ReportError(
-          diagnostics_,
+      diag::Error(
           "E0010",
-          std::format("transition must have {} parts", Arity()),
-          line.span,
-          num_tapes_ == 1 ? "expected: from read to write move"
-                          : "expected: from read1..readN to write1 move1 .. "
-                            "writeN moveN"
-      );
+          std::format("transition must have {} parts", Arity())
+      )
+          .Label(line.span, std::format("expected: {}", Shape()))
+          .Emit(diagnostics_);
       return std::nullopt;
     }
-    const Fields fields = Split(line);
-    CheckState(fields.from, "E0011", "unknown 'from' state");
-    CheckState(fields.to, "E0014", "unknown 'to' state");
-    Transition rule{
-        .from = fields.from.symbol,
-        .tapes = {},
-        .to = fields.to.symbol
-    };
+    const auto& tokens = line.tokens;
+    const Token& from = tokens.front();
+    const Token& to = tokens[num_tapes_ + 1];
+    CheckState(from, "E0011", "unknown 'from' state");
+    CheckState(to, "E0014", "unknown 'to' state");
+    Transition rule{.from = from.symbol, .tapes = {}, .to = to.symbol};
     for (std::size_t tape = 0; tape < num_tapes_; ++tape) {
-      CheckSymbol(fields.Read(tape), "E0012", "unknown read symbol");
-      CheckSymbol(fields.Write(tape), "E0015", "unknown write symbol");
-      const Token& move = fields.Move(tape);
-      const auto head_move = ParseHeadMove(move.symbol.name());
-      if (!head_move) {
-        parsing::ReportError(
-            diagnostics_,
-            "E0019",
-            "invalid move direction",
-            move.span,
-            "must be L, R, or S"
-        );
-      }
+      const Token& read = tokens[1 + tape];
+      CheckSymbol(read, "E0012", "unknown read symbol");
       rule.tapes.push_back(
-          {.read = fields.Read(tape).symbol,
-           .write = fields.Write(tape).symbol,
-           .move = head_move.value_or(HeadMove::kStay)}
+          config_.operation_mode == OperationMode::kSimultaneous
+              ? ParseWriteAndMove(
+                    read.symbol,
+                    tokens[num_tapes_ + 2 + 2 * tape],
+                    tokens[num_tapes_ + 3 + 2 * tape]
+                )
+              : ParseAction(read.symbol, tokens[num_tapes_ + 2 + tape])
       );
     }
     return rule;
   }
 
  private:
-  struct Fields {
-    const std::vector<Token>& tokens;
-    std::size_t num_tapes;
-    const Token& from;
-    const Token& to;
+  [[nodiscard]] std::size_t Arity() const {
+    const std::size_t per_tape =
+        config_.operation_mode == OperationMode::kSimultaneous ? 3 : 2;
+    return per_tape * num_tapes_ + 2;
+  }
 
-    [[nodiscard]] const Token& Read(std::size_t tape) const {
-      return tokens[1 + tape];
+  [[nodiscard]] std::string_view Shape() const {
+    const bool one = num_tapes_ == 1;
+    if (config_.operation_mode == OperationMode::kSimultaneous) {
+      return one ? "from read to write move"
+                 : "from read1 .. readN to write1 move1 .. writeN moveN";
     }
+    return one ? "from read to action"
+               : "from read1 .. readN to action1 .. actionN";
+  }
 
-    [[nodiscard]] const Token& Write(std::size_t tape) const {
-      return tokens[num_tapes + 2 + 2 * tape];
+  [[nodiscard]] std::string_view Moves() const {
+    return config_.allow_stay ? "L, R, or S" : "L or R";
+  }
+
+  TapeAction ParseWriteAndMove(
+      Symbol read,
+      const Token& write,
+      const Token& move
+  ) {
+    CheckSymbol(write, "E0015", "unknown write symbol");
+    const auto head_move = ParseHeadMove(move.symbol.name());
+    if (!head_move) {
+      parsing::ReportError(
+          diagnostics_,
+          "E0019",
+          "invalid move direction",
+          move.span,
+          std::format("must be {}", Moves())
+      );
+    } else if (*head_move == HeadMove::kStay) {
+      CheckStayAllowed(move);
     }
-
-    [[nodiscard]] const Token& Move(std::size_t tape) const {
-      return tokens[num_tapes + 3 + 2 * tape];
-    }
-  };
-
-  [[nodiscard]] Fields Split(const Line& line) const {
     return {
-        .tokens = line.tokens,
-        .num_tapes = num_tapes_,
-        .from = line.tokens.front(),
-        .to = line.tokens[num_tapes_ + 1]
+        .read = read,
+        .write = write.symbol,
+        .move = head_move.value_or(HeadMove::kStay)
     };
+  }
+
+  /// A symbol of Γ is a write. Otherwise the token must be a move. Γ has no
+  /// move letters in this mode, so the order of the two tests does not matter.
+  TapeAction ParseAction(Symbol read, const Token& action) {
+    if (tape_alphabet_.contains(action.symbol)) {
+      return {.read = read, .write = action.symbol, .move = HeadMove::kStay};
+    }
+    const auto head_move = ParseHeadMove(action.symbol.name());
+    if (!head_move) {
+      diag::Error("E0025", "invalid tape action")
+          .Label(action.span, "not a Γ symbol or a move")
+          .Note(
+              std::format(
+                  "An action writes a Γ symbol or moves the head: {}.",
+                  Moves()
+              )
+          )
+          .Emit(diagnostics_);
+    } else if (*head_move == HeadMove::kStay) {
+      CheckStayAllowed(action);
+    }
+    return {
+        .read = read,
+        .write = read,
+        .move = head_move.value_or(HeadMove::kStay)
+    };
+  }
+
+  void CheckStayAllowed(const Token& move) {
+    if (config_.allow_stay) return;
+    parsing::ReportError(
+        diagnostics_,
+        "E0023",
+        "move not allowed",
+        move.span,
+        "the config sets allow_stay = false"
+    );
   }
 
   void CheckState(const Token& token, std::string code, std::string message) {
@@ -160,10 +311,41 @@ class RuleParser {
   }
 
   std::size_t num_tapes_;
+  const Config& config_;
   const SymbolSet& states_;
   const SymbolSet& tape_alphabet_;
   diag::DiagnosticSet& diagnostics_;
 };
+
+/// Reports each rule that reads the same symbols in the same state as an
+/// earlier rule. `lines[i]` is the line of `transitions[i]`.
+void CheckDeterminism(
+    const std::vector<Transition>& transitions,
+    const std::vector<const Line*>& lines,
+    diag::DiagnosticSet& diagnostics
+) {
+  std::unordered_map<std::string, std::size_t> first_rule;
+  for (std::size_t index = 0; index < transitions.size(); ++index) {
+    const auto& rule = transitions[index];
+    // Tokens have no spaces, so a space cannot make two keys equal.
+    const auto key =
+        std::format("{} {}", rule.from, JoinReads(rule.tapes, " "));
+    const auto [earlier, inserted] = first_rule.try_emplace(key, index);
+    if (inserted) continue;
+    diag::Error("E0016", "nondeterministic transitions")
+        .Label(
+            lines[index]->span,
+            std::format(
+                "δ{} already reads ({}) in state {}",
+                earlier->second + 1,
+                JoinReads(rule.tapes, ", "),
+                rule.from
+            )
+        )
+        .Note("A state can have only one transition for each read.")
+        .Emit(diagnostics);
+  }
+}
 
 }  // namespace
 
@@ -175,8 +357,13 @@ ParseResult Parse(const diag::SourceFile& source) {
   };
   parsing::Reader reader(source, result.diagnostics);
   const auto states = reader.ReadSet("Q");
-  const auto input_alphabet = reader.ReadSet("Σ");
+  const Line* input_line = reader.Peek();
+  reader.ReadSet("Σ");
+  const Line* tape_line = reader.Peek();
   const auto tape_alphabet = reader.ReadSet("Γ");
+  const auto input_alphabet =
+      CheckInputAlphabet(input_line, tape_alphabet, result.diagnostics);
+  CheckTapeAlphabet(tape_line, config, result.diagnostics);
 
   const auto start =
       reader.ReadSingle("q0", "E0005", "invalid q0 line", "the start state");
@@ -204,7 +391,7 @@ ParseResult Parse(const diag::SourceFile& source) {
         "this symbol is not listed in Γ"
     );
   }
-  if (blank && input_alphabet.contains(blank->symbol)) {
+  if (blank && std::ranges::contains(input_alphabet, blank->symbol)) {
     parsing::ReportError(
         result.diagnostics,
         "E0018",
@@ -214,25 +401,37 @@ ParseResult Parse(const diag::SourceFile& source) {
     );
   }
 
-  RuleParser rules(config.num_tapes, states, tape_alphabet, result.diagnostics);
-  auto accepting = reader.ReadAcceptingStates(
-      states,
-      [&](const Line& line) { return rules.Matches(line); },
-      [&](const Line& line) { return line.tokens.size() == rules.Arity(); }
-  );
-  std::vector<Transition> transitions;
-  for (const Line& line : reader.Rest()) {
-    if (auto rule = rules.Parse(line)) transitions.push_back(*std::move(rule));
+  std::vector<Symbol> accepting;
+  if (const Line* line = reader.Peek();
+      line != nullptr && !IsTapeCountLine(*line, states)) {
+    accepting = reader.ReadAcceptingLine(states);
   }
+  const auto num_tapes = ReadTapeCount(reader, result.diagnostics);
+  // Without the number of tapes, the length of a rule is not known.
+  if (!num_tapes) return result;
+
+  RuleParser
+      rules(*num_tapes, config, states, tape_alphabet, result.diagnostics);
+  std::vector<Transition> transitions;
+  std::vector<const Line*> rule_lines;
+  for (const Line& line : reader.Rest()) {
+    if (auto rule = rules.Parse(line)) {
+      transitions.push_back(*std::move(rule));
+      rule_lines.push_back(&line);
+    }
+  }
+  CheckDeterminism(transitions, rule_lines, result.diagnostics);
 
   if (result.diagnostics.HasErrors() || !start || !blank) return result;
-  auto machine = Machine::Create(
-      {.config = config,
-       .start_state = start->symbol,
-       .blank = blank->symbol,
-       .accepting_states = std::move(accepting).value_or(std::vector<Symbol>{}),
-       .transitions = std::move(transitions)}
-  );
+  auto machine = Machine::Create({
+      .config = config,
+      .num_tapes = *num_tapes,
+      .input_alphabet = input_alphabet,
+      .start_state = start->symbol,
+      .blank = blank->symbol,
+      .accepting_states = std::move(accepting),
+      .transitions = std::move(transitions),
+  });
   if (!machine) {
     parsing::ReportError(
         result.diagnostics,
