@@ -29,8 +29,9 @@
 
 This project simulates nondeterministic pushdown automata (NPDA), Turing
 machines, and primitive recursive functions, as required by the assignments in
-the [NPDA statement](/docs/CC_2627_Practica1.pdf) and the
-[Turing machine statement](/docs/CC_2627_Practica2.pdf).
+the [NPDA statement](/docs/CC_2627_Practica1.pdf), the
+[Turing machine statement](/docs/CC_2627_Practica2.pdf), and the
+[primitive recursive function statement](/docs/CC_2627_Practica3.pdf).
 
 ### NPDA File Format
 
