@@ -1,17 +1,18 @@
 exit=0
 pow(2, 3) = 8
+100 function calls
 
   calls  function
-     23  P_2^3
+     23  P₃³
      15  S
-     14  C(S∘[P_2^3])
-      9  P_3^3
-      6  C(add∘[P_2^3, P_3^3])
+     14  S ∘ P₃³
+      9  P₁³
+      9  P₃³ × P₁³
+      6  P₁¹
       6  add
-      6  id
-      4  Z^1
-      3  C(mul∘[P_2^3, P_3^3])
+      6  add ∘ (P₃³ × P₁³)
+      4  Z
       3  mul
-      1  C(S∘[Z^1])
+      3  mul ∘ (P₃³ × P₁³)
+      1  S ∘ Z
       1  pow
-     91  total

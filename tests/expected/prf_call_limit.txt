@@ -1,0 +1,2 @@
+exit=1
+error: pow(2, 30) needs more than 100 000 calls. Increase -max-calls to let it run longer.

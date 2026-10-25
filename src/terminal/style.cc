@@ -100,7 +100,9 @@ std::size_t PrefixBytes(std::string_view text, std::size_t columns) {
 }  // namespace
 
 Style::Style(bool color, bool unicode)
-    : color_(color), glyphs_(unicode ? &kUnicode : &kAscii) {}
+    : color_(color),
+      unicode_(unicode),
+      glyphs_(unicode ? &kUnicode : &kAscii) {}
 
 Style Style::For(OutputStream stream) {
   const Capabilities& capabilities = CapabilitiesFor(stream);

@@ -1,0 +1,22 @@
+exit=0
+
+cc prf 0.2.0
+Compute x^y as a primitive recursive function
+
+Usage: cc prf -x N -y N [OPTIONS]
+
+OPTIONS
+-------
+  -x N                      The base, a natural number  [required]
+  -y N                      The exponent, a natural number  [required]
+  -trace counts|tree|off    What to show below the result: the calls of each function, a tree of the calls, or nothing  [default: counts]
+  -trace-limit N            Calls the tree shows  [default: 200]
+  -max-calls N              Calls after which the evaluation stops with an error  [default: 1000000000]
+  -help, --help             Show this help
+
+EXAMPLES
+--------
+  $ cc prf -x 2 -y 3
+  $ cc prf -x 2 -y 2 -trace tree
+
+Learn more: https://github.com/hadronomy/npda

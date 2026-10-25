@@ -138,9 +138,27 @@ TEST_CASE(
           "turing_diagnostics",
           {"turing", "-config", "examples/turing/anbm_bad.turing", "a"}
       },
-      OutputFixture{"prf_counts", {"prf", "2", "3"}},
-      OutputFixture{"prf_tree", {"prf", "1", "2", "-trace", "tree"}},
-      OutputFixture{"prf_off", {"prf", "2", "3", "-trace", "off"}},
+      OutputFixture{"prf_help", {"prf", "-help"}},
+      OutputFixture{"prf_counts", {"prf", "-x", "2", "-y", "3"}},
+      OutputFixture{
+          "prf_tree",
+          {"prf", "-x", "1", "-y", "2", "-trace", "tree"}
+      },
+      OutputFixture{
+          "prf_tree_limit",
+          {"prf", "-x", "2", "-y", "3", "-trace", "tree", "-trace-limit", "4"}
+      },
+      OutputFixture{"prf_off", {"prf", "-x", "2", "-y", "3", "-trace", "off"}},
+      OutputFixture{"prf_overflow", {"prf", "-x", "2", "-y", "64"}},
+      OutputFixture{
+          "prf_call_limit",
+          {"prf", "-x", "2", "-y", "30", "-max-calls", "100000"}
+      },
+      OutputFixture{
+          "prf_large",
+          {"prf", "-x", "2", "-y", "20", "-trace", "off"}
+      },
+      OutputFixture{"prf_missing_exponent", {"prf", "-x", "2"}},
       OutputFixture{"explain", {"explain", "E0006"}},
       OutputFixture{"explain_unknown", {"explain", "BOGUS"}}
   );

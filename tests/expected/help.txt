@@ -13,14 +13,14 @@ COMMANDS
 --------
   npda       Run a pushdown automaton (APf or APv) on input strings
   turing     Run a Turing machine on input strings, or draw it
-  prf        Compute base^exponent as a primitive recursive function
+  prf        Compute x^y as a primitive recursive function
   explain    Say what an error code means and how to fix it
 
 EXAMPLES
 --------
   $ cc npda -config examples/APf/APf-1.txt aabb aab
   $ cc turing -config examples/turing/anbm.turing -trace-view compact aabb
-  $ cc prf 2 3 -trace tree
+  $ cc prf -x 2 -y 3 -trace tree
   $ cc explain E0007
 
 Learn more: https://github.com/hadronomy/npda

@@ -207,6 +207,170 @@ q0 _ q1 1
 | [`example_1.turing`](/examples/turing/example_1.turing) | Recognizes an odd number of 0, as in the course example |
 | [`anbm_bad.turing`](/examples/turing/anbm_bad.turing) | Shows diagnostics for a definition with errors |
 
+### Primitive Recursive Function Assignment
+
+The statement asks for a program that computes the power function xʸ as a
+primitive recursive function. To meet this requirement, the program builds xʸ
+from the basic functions through combination, composition, and primitive
+recursion. The `prf` command evaluates this function with x and y from the `-x`
+and `-y` options, then prints the result and the number of function calls:
+
+```console
+$ cc prf -x 2 -y 3 -trace off
+pow(2, 3) = 8
+100 function calls
+```
+
+#### Definitions
+
+The program uses the notation of the course slides (Tema 1), in which a
+function f: ℕⁿ → ℕᵐ takes n natural numbers and returns m natural numbers.
+The program builds its functions from the following basic functions and
+operations:
+
+| Function | Definition |
+| --- | --- |
+| Zero | Z(x) = 0 |
+| Successor | S(x) = x + 1 |
+| Projection | Pᵢⁿ(x₁, …, xₙ) = xᵢ, with n ≥ 1 and 1 ≤ i ≤ n |
+| Combination | (f × g)(X) = (f(X), g(X)) |
+| Composition | (f ∘ g)(X) = f(g(X)) |
+| Primitive recursion | f(X, 0) = g(X) and f(X, S(y)) = h(X, y, f(X, y)) |
+
+Combination builds a tuple of values, and composition turns that tuple into
+the arguments of another function, so the slides' f ∘ (g₁, …, gₘ) is
+f ∘ (g₁ × … × gₘ) here. From these parts, the program builds addition,
+multiplication, and the power function, each by recursion on its last
+argument:
+
+```
+add(x, 0)    = P₁¹(x)                                = x
+add(x, S(y)) = (S ∘ P₃³)(x, y, add(x, y))            = S(add(x, y))
+mul(x, 0)    = Z(x)                                  = 0
+mul(x, S(y)) = (add ∘ (P₃³ × P₁³))(x, y, mul(x, y))  = add(mul(x, y), x)
+pow(x, 0)    = (S ∘ Z)(x)                            = 1
+pow(x, S(y)) = (mul ∘ (P₃³ × P₁³))(x, y, pow(x, y))  = mul(pow(x, y), x)
+```
+
+The slides call f(X, 0) = g(X) the limit equation and f(X, S(y)) =
+h(X, y, f(X, y)) the recursion equation. In the recursion equation, h takes
+the recursive term f(X, y) as its last argument, but the slides leave open how
+h passes its arguments to other functions.
+
+Because each recursion runs on its last argument, the steps of `mul` and `pow`
+pass the previous value first. Each step of `pow` thus runs `mul` for x steps,
+rather than one step per unit of the previous power. If both steps were
+reversed to `add(x, mul(x, y))` and `mul(x, pow(x, y))`, both inner recursions
+would run on the previous values, so the calls of `pow` would grow with x²ʸ
+instead of xʸ, and 2²³ would need about 5·10¹³ calls instead of 5·10⁷.
+
+Because `pow(x, 0)` starts from S ∘ Z, its value is 1 even when x is 0, so
+`pow(0, 0)` is 1.
+
+#### Design
+
+The builders in [`include/prf/function.h`](/include/prf/function.h) follow the
+structure of the mathematical definitions, so the code for `mul` directly
+expresses its definition:
+
+```cpp
+// mul(x, 0)    = Z(x)
+// mul(x, S(y)) = (add ∘ (P₃³ × P₁³))(x, y, mul(x, y))
+return Recursion(
+    Zero(),
+    Composition(
+        Addition(),
+        Combination(Projection<3, 3>(), Projection<1, 3>())
+    ),
+    "mul"
+);
+```
+
+Each builder returns an `Fn<N, M>`, the type of a function f: ℕᴺ → ℕᴹ, so the
+compiler checks that the parts fit. For composition f ∘ g, this check requires
+f to take as many arguments as g returns results. It also rejects projections
+such as `Projection<4, 3>()`. Because C++ operators have fixed meanings and
+none represents ∘, each operation uses a named builder.
+
+Each `Fn` refers to an object of a `prf::Function` subclass, which supplies the
+function's name and evaluates it. The basic subclasses represent zero, the
+successor, and the projections, while the other three hold the functions that
+each operation joins. These objects never change after construction, so larger
+functions can share them.
+
+During evaluation, each call receives a `prf::Trace`, which counts calls and
+stops evaluation at its call limit. The trace can also record the call count
+for each function or the tree of calls, depending on its mode.
+
+#### Calls
+
+Each application counts as one call, whether it applies a basic function or
+one that an operation builds. Thus, `(S ∘ P₃³)(x, y, z)` makes three calls:
+one to the composition, one to `P₃³`, and one to `S`. To check the total for
+`pow`, the tests compare many values of x and y against a formula derived from
+these definitions.
+
+The `-trace` option selects what the command shows below the result:
+
+| Option | Shows |
+| --- | --- |
+| `-trace counts` | The call count for each function, most calls first (the default). |
+| `-trace tree` | A tree of all the calls, each with its arguments and results. |
+| `-trace off` | Nothing more than the result and the number of calls. |
+
+```console
+$ cc prf -x 2 -y 3
+pow(2, 3) = 8
+100 function calls
+
+  calls  function
+     23  P₃³
+     15  S
+     14  S ∘ P₃³
+      9  P₁³
+      9  P₃³ × P₁³
+      6  P₁¹
+      6  add
+      6  add ∘ (P₃³ × P₁³)
+      4  Z
+      3  mul
+      3  mul ∘ (P₃³ × P₁³)
+      1  S ∘ Z
+      1  pow
+```
+
+By default, the tree shows the first 200 calls in the order in which they
+occur. To change how many calls it shows, use `-trace-limit`:
+
+```console
+$ cc prf -x 2 -y 3 -trace tree -trace-limit 4
+pow(2, 3) = 8
+100 function calls
+
+├─ (S ∘ Z)(2) = 1
+│  ├─ Z(2) = 0
+│  └─ S(0) = 1
+└─ (mul ∘ (P₃³ × P₁³))(2, 0, 1) = 2
+
+  … The trace does not show 95 more calls. Increase -trace-limit to show them.
+```
+
+#### Limits
+
+The program stores natural numbers in 64 bits, so it rejects powers that do
+not fit, such as 2⁶⁴, before evaluation. Even powers that fit can need too many
+calls, because the functions count in steps of one and the number of calls
+grows with xʸ. For example, 2⁶³ needs about 10¹⁹ calls.
+
+To limit evaluation time, the program stops with an error after
+1 000 000 000 calls, which takes 5 to 7 seconds. This limit allows powers up to
+2²⁷, 3¹⁷, and 10⁸. To change it, use `-max-calls`:
+
+```console
+$ cc prf -x 2 -y 30 -max-calls 100000
+error: pow(2, 30) needs more than 100 000 calls. Increase -max-calls to let it run longer.
+```
+
 ## Requirements
 
 The project uses C++23 features such as `std::expected`, ranges, `std::format`,
@@ -256,7 +420,7 @@ given arguments. In the examples below, replace the binary name `cc` with
 | --- | --- |
 | `cc npda -config <file> [options] [inputs...]` | Run a pushdown automaton. |
 | `cc turing -config <file> [options] [inputs...]` | Run a Turing machine, or draw it with `-graph`. |
-| `cc prf <base> <exponent> [-trace counts\|tree\|off]` | Compute the power function as a primitive recursive function. |
+| `cc prf -x <n> -y <n> [-trace counts\|tree\|off] [-trace-limit <n>] [-max-calls <n>]` | Compute xʸ as a primitive recursive function. |
 | `cc explain <code>` | Show the meaning of a diagnostic code and how to correct the problem. |
 
 The `npda` and `turing` commands accept the options from the assignment
@@ -281,7 +445,8 @@ source gives an input, it reads the keyboard until the end of the file
 A successful command exits with status 0, which for `npda` and `turing` means
 that the program accepts or rejects every input. Errors in the command line or
 a definition, or files that the program cannot read, instead give status 1.
-The program also uses status 1 when an input stays undecided.
+The program also uses status 1 when an input stays undecided or `prf` cannot
+compute the power.
 
 ### Results
 

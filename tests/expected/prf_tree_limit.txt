@@ -1,0 +1,10 @@
+exit=0
+pow(2, 3) = 8
+100 function calls
+
+├─ (S ∘ Z)(2) = 1
+│  ├─ Z(2) = 0
+│  └─ S(0) = 1
+└─ (mul ∘ (P₃³ × P₁³))(2, 0, 1) = 2
+
+  … The trace does not show 95 more calls. Increase -trace-limit to show them.

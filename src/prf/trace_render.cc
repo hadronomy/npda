@@ -4,14 +4,16 @@
 #include <cstddef>
 #include <cstdint>
 #include <format>
+#include <map>
 #include <ostream>
 #include <print>
 #include <span>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
+#include "automata/text.h"
+#include "prf/function.h"
 #include "prf/trace.h"
 #include "terminal/style.h"
 
@@ -22,23 +24,12 @@ namespace {
 using terminal::Style;
 using terminal::Tone;
 
-/// Exponentiation makes deep trees. Below this depth, the tree shows a count in
-/// place of a subtree.
-constexpr std::size_t kMaxDepth = 20;
-
-std::size_t CountCalls(const TraceNode& node) {
-  std::size_t calls = 0;
-  for (const auto& child : node.children) calls += 1 + CountCalls(*child);
-  return calls;
-}
-
-std::string FormatCall(const TraceNode& node, const Style& style) {
-  std::string text = std::format(
-      "{}({})",
-      style.Paint(Tone::kStrong, node.name),
-      JoinArguments(node.args)
-  );
-  if (node.result) text += std::format(" = {}", *node.result);
+std::string JoinValues(std::span<const Natural> values, const Style& style) {
+  std::string text;
+  for (const auto value : values) {
+    if (!text.empty()) text += ", ";
+    text += style.Number(value);
+  }
   return text;
 }
 
@@ -46,96 +37,109 @@ void WriteChildren(
     std::ostream& out,
     const TraceNode& node,
     const std::string& indent,
-    std::size_t depth,
     const Style& style
 ) {
   const auto& glyphs = style.glyphs();
   for (std::size_t index = 0; index < node.children.size(); ++index) {
     const TraceNode& child = *node.children[index];
     const bool last = index + 1 == node.children.size();
+    const auto results = child.results.value_or(Tuple{});
     std::println(
         out,
         "{}{}{}",
         indent,
         style.Paint(Tone::kMuted, last ? glyphs.tree_last : glyphs.tree_branch),
-        FormatCall(child, style)
+        FormatCall(*child.function, child.arguments, results, style)
     );
-    const auto child_indent =
-        indent + style.Paint(Tone::kMuted, last ? "   " : glyphs.tree_pipe);
-    if (depth < kMaxDepth) {
-      WriteChildren(out, child, child_indent, depth + 1, style);
-    } else if (const auto hidden = CountCalls(child); hidden > 0) {
-      std::println(
-          out,
-          "{}{}",
-          child_indent,
-          style.Paint(
-              Tone::kMuted,
-              std::format("{} {} deeper calls hidden", glyphs.ellipsis, hidden)
-          )
-      );
-    }
+    WriteChildren(
+        out,
+        child,
+        indent + style.Paint(Tone::kMuted, last ? "   " : glyphs.tree_pipe),
+        style
+    );
   }
 }
 
 void WriteCounts(std::ostream& out, const Trace& trace, const Style& style) {
-  std::vector<std::pair<std::string_view, std::uint64_t>> counts(
-      trace.counts().begin(),
-      trace.counts().end()
+  // Separate function objects can have the same name, such as Z, so their
+  // counts share one row.
+  const auto notation = NotationFor(style);
+  std::map<std::string, std::uint64_t> by_name;
+  for (const auto& [function, count] : trace.counts()) {
+    by_name[function->Name(notation)] += count;
+  }
+  std::vector<std::pair<std::string, std::uint64_t>> rows(
+      by_name.begin(),
+      by_name.end()
   );
-  std::ranges::sort(counts, [](const auto& left, const auto& right) {
-    return left.second != right.second ? left.second > right.second
-                                       : left.first < right.first;
+  std::ranges::stable_sort(rows, [](const auto& left, const auto& right) {
+    return left.second > right.second;
   });
-  const auto total = trace.TotalCalls();
-  const auto width = std::max<std::size_t>(std::to_string(total).size(), 5);
+  const auto width = std::max<std::size_t>(
+      terminal::DisplayWidth(style.Number(trace.Calls())),
+      5
+  );
   std::println(
       out,
       "\n  {}  {}",
       style.Paint(Tone::kMuted, terminal::PadLeft("calls", width)),
       style.Paint(Tone::kMuted, "function")
   );
-  for (const auto& [name, count] : counts) {
+  for (const auto& [name, count] : rows) {
     std::println(
         out,
         "  {}  {}",
-        terminal::PadLeft(std::to_string(count), width),
+        terminal::PadLeft(style.Number(count), width),
         name
     );
   }
-  std::println(
-      out,
-      "  {}  {}",
-      style.Paint(
-          Tone::kStrong,
-          terminal::PadLeft(std::to_string(total), width)
-      ),
-      style.Paint(Tone::kStrong, "total")
-  );
+}
+
+void WriteTree(std::ostream& out, const Trace& trace, const Style& style) {
+  std::println(out);
+  // The result line shows the top-level call, so the tree starts with its
+  // children.
+  for (const auto& root : trace.roots()) WriteChildren(out, *root, "", style);
+  if (const auto hidden = trace.HiddenCalls(); hidden > 0) {
+    std::println(out);
+    automata::WriteHiddenNotice(out, hidden, "call", style);
+  }
 }
 
 }  // namespace
 
-std::string JoinArguments(std::span<const std::uint64_t> arguments) {
-  std::string text;
-  for (const auto argument : arguments) {
-    if (!text.empty()) text += ", ";
-    text += std::to_string(argument);
+Notation NotationFor(const Style& style) {
+  return style.unicode() ? Notation::kUnicode : Notation::kAscii;
+}
+
+std::string FormatCall(
+    const Function& function,
+    std::span<const Natural> arguments,
+    std::span<const Natural> results,
+    const Style& style
+) {
+  auto text = std::format(
+      "{}({})",
+      style.Paint(Tone::kStrong, function.Operand(NotationFor(style))),
+      JoinValues(arguments, style)
+  );
+  if (results.size() == 1) {
+    text += std::format(" = {}", style.Number(results.front()));
+  } else if (!results.empty()) {
+    text += std::format(" = ({})", JoinValues(results, style));
   }
   return text;
 }
 
 void WriteTrace(std::ostream& out, const Trace& trace, const Style& style) {
   switch (trace.mode()) {
-    case Trace::Mode::kOff:
+    case TraceMode::kOff:
       return;
-    case Trace::Mode::kCounts:
+    case TraceMode::kCounts:
       WriteCounts(out, trace, style);
       return;
-    case Trace::Mode::kTree:
-      for (const auto& root : trace.roots()) {
-        WriteChildren(out, *root, "", 1, style);
-      }
+    case TraceMode::kTree:
+      WriteTree(out, trace, style);
       return;
   }
 }

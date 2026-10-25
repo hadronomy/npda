@@ -78,7 +78,7 @@ int Main(int argc, char** argv) {
   app.footer(Join({
       "cc npda -config examples/APf/APf-1.txt aabb aab",
       "cc turing -config examples/turing/anbm.turing -trace-view compact aabb",
-      "cc prf 2 3 -trace tree",
+      "cc prf -x 2 -y 3 -trace tree",
       "cc explain E0007",
   }));
   if (argc == 1) {

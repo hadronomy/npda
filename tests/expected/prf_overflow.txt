@@ -1,0 +1,2 @@
+exit=1
+error: pow(2, 64) does not fit in 64 bits

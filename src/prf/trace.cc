@@ -2,11 +2,13 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <expected>
+#include <format>
 #include <memory>
 #include <span>
-#include <string>
-#include <string_view>
 #include <utility>
+
+#include "prf/function.h"
 
 namespace prf {
 
@@ -25,41 +27,59 @@ Trace::Scope& Trace::Scope::operator=(Scope&& other) noexcept {
 
 Trace::Scope::~Scope() { Leave(); }
 
-void Trace::Scope::SetResult(std::uint64_t result) const {
-  if (node_) node_->result = result;
+void Trace::Scope::SetResults(std::span<const Natural> results) const {
+  if (node_) node_->results.emplace(results.begin(), results.end());
 }
 
 void Trace::Scope::Leave() {
   if (trace_ && node_) {
-    if (trace_->stack_.empty()) std::abort();
-    trace_->stack_.pop_back();
-    trace_ = nullptr;
-    node_ = nullptr;
+    // Scopes close in the reverse order of their calls, so the innermost open
+    // call is this one.
+    if (trace_->open_.empty() || trace_->open_.back() != node_) std::abort();
+    trace_->open_.pop_back();
   }
+  trace_ = nullptr;
+  node_ = nullptr;
 }
 
-Trace::Scope Trace::Enter(
-    std::string_view name,
-    std::span<const std::uint64_t> arguments
+std::expected<Trace::Scope, Error> Trace::Enter(
+    const Function& function,
+    std::span<const Natural> arguments
 ) {
-  if (mode_ != Mode::kOff) ++counts_[std::string(name)];
-  if (mode_ != Mode::kTree) return Scope(*this, nullptr);
+  if (calls_ == options_.max_calls) {
+    return std::unexpected(
+        Error{std::format(
+            "the evaluation needs more than {} calls",
+            options_.max_calls
+        )}
+    );
+  }
+  ++calls_;
+  switch (options_.mode) {
+    case TraceMode::kOff:
+      return Scope(*this, nullptr);
+    case TraceMode::kCounts:
+      ++counts_[&function];
+      return Scope(*this, nullptr);
+    case TraceMode::kTree:
+      break;
+  }
+  // Because callers precede callees in call order, keeping the first calls
+  // also keeps all their callers, while omitted calls have no retained callees.
+  if (kept_ == options_.tree_limit) return Scope(*this, nullptr);
+  ++kept_;
   auto node = std::make_unique<TraceNode>();
-  node->name = name;
-  node->args.assign(arguments.begin(), arguments.end());
-  auto* current = node.get();
-  if (stack_.empty())
-    roots_.push_back(std::move(node));
-  else
-    stack_.back()->children.push_back(std::move(node));
-  stack_.push_back(current);
-  return Scope(*this, current);
+  node->function = &function;
+  node->arguments.assign(arguments.begin(), arguments.end());
+  auto* kept = node.get();
+  auto& siblings = open_.empty() ? roots_ : open_.back()->children;
+  siblings.push_back(std::move(node));
+  open_.push_back(kept);
+  return Scope(*this, kept);
 }
 
-std::uint64_t Trace::TotalCalls() const {
-  std::uint64_t calls = 0;
-  for (const auto& [name, count] : counts_) calls += count;
-  return calls;
+std::uint64_t Trace::HiddenCalls() const {
+  return options_.mode == TraceMode::kTree ? calls_ - kept_ : 0;
 }
 
 }  // namespace prf

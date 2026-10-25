@@ -101,13 +101,19 @@ class Style {
   /// fewer stay whole in either form: `1000`.
   [[nodiscard]] std::string Number(std::uint64_t value) const;
 
-  // NOLINTNEXTLINE(readability-identifier-naming): Google style accessor.
+  // NOLINTBEGIN(readability-identifier-naming): Google style accessors.
   [[nodiscard]] const Glyphs& glyphs() const { return *glyphs_; }
+
+  /// Whether the destination supports Unicode, consistent with its glyphs.
+  [[nodiscard]] bool unicode() const { return unicode_; }
+
+  // NOLINTEND(readability-identifier-naming)
 
  private:
   Style(bool color, bool unicode);
 
   bool color_;
+  bool unicode_;
   const Glyphs* glyphs_;
 };
 

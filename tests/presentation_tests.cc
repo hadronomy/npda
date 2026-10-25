@@ -1,5 +1,4 @@
 #include <cstddef>
-#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <sstream>
@@ -345,30 +344,58 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "PRF traces count calls or draw the call tree",
+    "PRF trace output shows call counts or a call tree",
     "[presentation][prf]"
 ) {
-  const auto power = prf::CreatePowerFunction();
-  REQUIRE(power.has_value());
-  SECTION("Counts put the busiest function first and end with the total") {
-    prf::Trace trace(prf::Trace::Mode::kCounts);
-    REQUIRE(
-        (*power)->Evaluate(std::vector<std::uint64_t>{2, 3}, trace).has_value()
-    );
+  const auto power = prf::Power();
+  const auto write = [&](prf::TraceOptions options,
+                         const terminal::Style& style) {
+    prf::Trace trace(options);
+    REQUIRE(power.Evaluate({2, 3}, trace).has_value());
     std::ostringstream out;
-    prf::WriteTrace(out, trace, kPlain);
-    CHECK(out.str().contains("   23  P_2^3\n"));
-    CHECK(out.str().ends_with("   91  total\n"));
+    prf::WriteTrace(out, trace, style);
+    return out.str();
+  };
+  SECTION("Counts share a row for each name, with the largest count first") {
+    const auto output = write({.mode = prf::TraceMode::kCounts}, kPlain);
+    CHECK(output.starts_with("\n  calls  function\n     23  P₃³\n"));
+    CHECK(output.contains("      4  Z\n"));
+    CHECK(output.ends_with("      1  pow\n"));
   }
   SECTION("The tree starts below the top-level call") {
-    prf::Trace trace(prf::Trace::Mode::kTree);
-    REQUIRE(
-        (*power)->Evaluate(std::vector<std::uint64_t>{1, 1}, trace).has_value()
+    const auto output = write({.mode = prf::TraceMode::kTree}, kPlain);
+    CHECK(output.starts_with("\n├─ (S ∘ Z)(2) = 1\n"));
+    CHECK(output.contains("(P₃³ × P₁³)(2, 0, 1) = (1, 2)\n"));
+    CHECK_FALSE(output.contains("pow("));
+  }
+  SECTION("The tree reports how many calls it does not show") {
+    const auto output =
+        write({.mode = prf::TraceMode::kTree, .tree_limit = 3}, kPlain);
+    CHECK(output.contains("└─ (S ∘ Z)(2) = 1\n   └─ Z(2) = 0\n"));
+    CHECK(output.ends_with(
+        "does not show 97 more calls. Increase -trace-limit "
+        "to show them.\n"
+    ));
+  }
+  SECTION("A call shows one result alone and more results in parentheses") {
+    CHECK(
+        prf::FormatCall(
+            power.function(),
+            prf::Tuple{2, 3},
+            prf::Tuple{8},
+            kPlain
+        ) == "pow(2, 3) = 8"
     );
-    std::ostringstream out;
-    prf::WriteTrace(out, trace, kPlain);
-    CHECK(out.str().starts_with("├─ C(S∘[Z^1])(1) = 1\n"));
-    CHECK_FALSE(out.str().contains("pow("));
+    const auto pair =
+        prf::Combination(prf::Projection<2, 2>(), prf::Projection<1, 2>());
+    CHECK(
+        prf::FormatCall(
+            pair.function(),
+            prf::Tuple{4, 9},
+            prf::Tuple{9, 4},
+            kPlain
+        ) == "(P₂² × P₁²)(4, 9) = (9, 4)"
+    );
   }
 }
 
