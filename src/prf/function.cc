@@ -8,10 +8,12 @@
 #include <format>
 #include <limits>
 #include <memory>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "prf/trace.h"
 
@@ -41,6 +43,17 @@ std::string Subscript(std::size_t number, Notation notation) {
 std::string Superscript(std::size_t number, Notation notation) {
   return notation == Notation::kUnicode ? Digits(number, true)
                                         : std::format("^{}", number);
+}
+
+/// Names `count` arguments for an equation: `x` alone, or `x₁, x₂, x₃`.
+std::string Variables(std::size_t count, Notation notation) {
+  if (count == 1) return "x";
+  std::string text;
+  for (std::size_t index = 1; index <= count; ++index) {
+    if (index != 1) text += ", ";
+    text += "x" + Subscript(index, notation);
+  }
+  return text;
 }
 
 class ZeroFunction final : public Function {
@@ -123,6 +136,10 @@ class CombinationFunction final : public Function {
  private:
   bool IsCompound() const override { return true; }
 
+  std::vector<const Function*> Parts() const override {
+    return {first_.get(), second_.get()};
+  }
+
   std::expected<void, Error> DoApply(
       std::span<const Natural> arguments,
       std::span<Natural> results,
@@ -158,6 +175,10 @@ class CompositionFunction final : public Function {
 
  private:
   bool IsCompound() const override { return true; }
+
+  std::vector<const Function*> Parts() const override {
+    return {outer_.get(), inner_.get()};
+  }
 
   std::expected<void, Error> DoApply(
       std::span<const Natural> arguments,
@@ -206,6 +227,31 @@ class RecursionFunction final : public Function {
   }
 
  private:
+  std::vector<const Function*> Parts() const override {
+    return {base_.get(), step_.get()};
+  }
+
+  std::vector<Equation> OwnEquations(Notation notation) const override {
+    if (name_.empty()) return {};
+    // In f(X, 0) = g(X) and f(X, S(y)) = h(X, y, f(X, y)), X is absent when
+    // the recursion has no parameters.
+    const auto fixed = Variables(Arity() - 1, notation);
+    const auto with = [&](std::string_view last) {
+      return fixed.empty() ? std::string(last)
+                           : std::format("{}, {}", fixed, last);
+    };
+    return {
+        {.left = std::format("{}({})", name_, with("0")),
+         .right = std::format("{}({})", base_->Operand(notation), fixed)},
+        {.left = std::format("{}({})", name_, with("S(y)")),
+         .right = std::format(
+             "{}({})",
+             step_->Operand(notation),
+             with(std::format("y, {}({})", name_, with("y")))
+         )},
+    };
+  }
+
   /// Computes f(X, 0), f(X, 1), and so on up to f(X, y) in a loop, with each
   /// value in h's last argument. This arrangement lets all steps share one
   /// buffer for (X, y, f(X, y)).
@@ -244,6 +290,21 @@ class RecursionFunction final : public Function {
 
 std::string Function::Operand(Notation notation) const {
   return IsCompound() ? std::format("({})", Name(notation)) : Name(notation);
+}
+
+std::vector<Equation> Function::Definition(Notation notation) const {
+  std::set<std::string> seen;
+  std::vector<Equation> equations;
+  // Once a name is in `seen`, its equations and those of its parts are
+  // already included, so another occurrence needs no traversal.
+  const auto collect = [&](this const auto& self, const Function& function) {
+    auto own = function.OwnEquations(notation);
+    if (!own.empty() && !seen.insert(function.Name(notation)).second) return;
+    equations.insert(equations.end(), own.begin(), own.end());
+    for (const Function* part : function.Parts()) self(*part);
+  };
+  collect(*this);
+  return equations;
 }
 
 std::expected<void, Error> Function::Apply(

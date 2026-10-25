@@ -24,6 +24,14 @@ namespace prf {
     const terminal::Style& style
 );
 
+/// Writes the equations that define `function`, one on each line, with their
+/// `=` signs in one column.
+void WriteDefinition(
+    std::ostream& out,
+    const Function& function,
+    const terminal::Style& style
+);
+
 /// Writes the recorded trace after a blank line, without the total call count,
 /// or nothing if the trace is off.
 ///

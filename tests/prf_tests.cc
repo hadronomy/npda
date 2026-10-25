@@ -181,6 +181,46 @@ TEST_CASE("PRF names use the notation of the course", "[prf][names]") {
   CHECK(unnamed.function().Name(Notation::kUnicode) == "R(P₁¹, P₃³)");
 }
 
+TEST_CASE(
+    "PRF definitions list equations for each named recursion once, outermost "
+    "first",
+    "[prf][names]"
+) {
+  const auto definition =
+      prf::Power().function().Definition(Notation::kUnicode);
+  REQUIRE(definition.size() == 6);
+  CHECK(definition[0].left == "pow(x, 0)");
+  CHECK(definition[0].right == "(S ∘ Z)(x)");
+  CHECK(definition[1].left == "pow(x, S(y))");
+  CHECK(definition[1].right == "(mul ∘ (P₃³ × P₁³))(x, y, pow(x, y))");
+  CHECK(definition[2].left == "mul(x, 0)");
+  CHECK(definition[4].left == "add(x, 0)");
+  CHECK(definition[5].right == "(S ∘ P₃³)(x, y, add(x, y))");
+
+  const auto sum3 = prf::Composition(
+      prf::Addition(),
+      prf::Combination(
+          prf::Composition(
+              prf::Addition(),
+              prf::Combination(prf::Projection<1, 3>(), prf::Projection<2, 3>())
+          ),
+          prf::Projection<3, 3>()
+      )
+  );
+  // add appears twice in sum3, but its two equations appear once.
+  CHECK(sum3.function().Definition(Notation::kUnicode).size() == 2);
+  const auto unnamed =
+      prf::Recursion(prf::Projection<1, 1>(), prf::Projection<3, 3>());
+  CHECK(unnamed.function().Definition(Notation::kUnicode).empty());
+
+  const auto first =
+      prf::Recursion(prf::Projection<1, 2>(), prf::Projection<1, 4>(), "first");
+  const auto equations = first.function().Definition(Notation::kAscii);
+  REQUIRE(equations.size() == 2);
+  CHECK(equations[1].left == "first(x_1, x_2, S(y))");
+  CHECK(equations[1].right == "P_1^4(x_1, x_2, y, first(x_1, x_2, y))");
+}
+
 TEST_CASE("PRF successor reports an overflow", "[prf][validation]") {
   prf::Trace trace({.mode = prf::TraceMode::kTree});
   const auto successor = prf::Successor();

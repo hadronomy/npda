@@ -46,6 +46,12 @@ struct Error {
 /// The notation for indices and operators in names: `S ∘ P₃³` or `S o P_3^3`.
 enum class Notation { kUnicode, kAscii };
 
+/// One equation of a definition: `pow(x, 0) = (S ∘ Z)(x)`.
+struct Equation {
+  std::string left;
+  std::string right;
+};
+
 /// A primitive recursive function with runtime arity and output count:
 /// f: ℕⁿ → ℕᵐ with n = `Arity()` and m = `Outputs()`.
 ///
@@ -71,6 +77,11 @@ class Function {
   /// parentheses around compositions and combinations, as in `(S ∘ Z)`.
   /// Other names remain unchanged.
   [[nodiscard]] std::string Operand(Notation notation) const;
+
+  /// Returns the equations for this function and its named parts, outermost
+  /// first, with each name once. For `pow`, these are its limit and recursion
+  /// equations, followed by those of `mul` and `add`.
+  [[nodiscard]] std::vector<Equation> Definition(Notation notation) const;
 
  protected:
   Function(std::size_t arity, std::size_t outputs)
@@ -101,6 +112,16 @@ class Function {
   /// Whether the name is an expression of ∘ or ×, which needs parentheses as
   /// an operand.
   [[nodiscard]] virtual bool IsCompound() const { return false; }
+
+  [[nodiscard]] virtual std::vector<const Function*> Parts() const {
+    return {};
+  }
+
+  /// The equations that define this function under its own name, or none if
+  /// its name is an expression of its parts.
+  [[nodiscard]] virtual std::vector<Equation> OwnEquations(Notation) const {
+    return {};
+  }
 
   virtual std::expected<void, Error> DoApply(
       std::span<const Natural> arguments,

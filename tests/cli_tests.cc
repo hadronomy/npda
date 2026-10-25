@@ -158,6 +158,10 @@ TEST_CASE(
           "prf_large",
           {"prf", "-x", "2", "-y", "20", "-trace", "off"}
       },
+      OutputFixture{
+          "prf_definition",
+          {"prf", "-x", "2", "-y", "3", "-definition", "-trace", "off"}
+      },
       OutputFixture{"prf_missing_exponent", {"prf", "-x", "2"}},
       OutputFixture{"explain", {"explain", "E0006"}},
       OutputFixture{"explain_unknown", {"explain", "BOGUS"}}

@@ -377,6 +377,15 @@ TEST_CASE(
         "to show them.\n"
     ));
   }
+  SECTION("A definition aligns its equations") {
+    std::ostringstream out;
+    prf::WriteDefinition(out, power.function(), kPlain);
+    CHECK(out.str().starts_with(
+        "pow(x, 0)    = (S ∘ Z)(x)\n"
+        "pow(x, S(y)) = (mul ∘ (P₃³ × P₁³))(x, y, pow(x, y))\n"
+    ));
+    CHECK(out.str().ends_with("add(x, S(y)) = (S ∘ P₃³)(x, y, add(x, y))\n"));
+  }
   SECTION("A call shows one result alone and more results in parentheses") {
     CHECK(
         prf::FormatCall(

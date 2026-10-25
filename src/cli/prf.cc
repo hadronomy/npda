@@ -26,6 +26,7 @@ struct PrfOptions {
   prf::Natural base = 0;
   prf::Natural exponent = 0;
   prf::TraceMode trace = prf::TraceMode::kCounts;
+  bool definition = false;
   std::size_t trace_limit = 200;
   /// A call takes 5 to 7 ns, so a run stops after 5 to 7 s at this limit.
   /// Without a limit, powers such as 2⁶³ take centuries because they need
@@ -79,6 +80,10 @@ int RunPrf(const PrfOptions& options) {
     return 1;
   }
   const auto style = terminal::Style::For(terminal::OutputStream::kStdout);
+  if (options.definition) {
+    prf::WriteDefinition(std::cout, power.function(), style);
+    std::println();
+  }
   std::println(
       "{}",
       prf::FormatCall(power.function(), arguments, *result, style)
@@ -99,7 +104,9 @@ void RegisterPrf(CLI::App& app, int& exit_code) {
       app,
       "prf",
       "Compute x^y as a primitive recursive function",
-      {"cc prf -x 2 -y 3", "cc prf -x 2 -y 2 -trace tree"}
+      {"cc prf -x 2 -y 3",
+       "cc prf -x 2 -y 3 -definition -trace off",
+       "cc prf -x 2 -y 2 -trace tree"}
   );
   auto options = std::make_shared<PrfOptions>();
   command.add_option("-x", options->base, "The base, a natural number")
@@ -108,6 +115,11 @@ void RegisterPrf(CLI::App& app, int& exit_code) {
   command.add_option("-y", options->exponent, "The exponent, a natural number")
       ->required()
       ->type_name("N");
+  command.add_flag(
+      "-definition",
+      options->definition,
+      "Show the equations that define pow before the result"
+  );
   command
       .add_option(
           "-trace",

@@ -252,6 +252,23 @@ pow(x, 0)    = (S ∘ Z)(x)                            = 1
 pow(x, S(y)) = (mul ∘ (P₃³ × P₁³))(x, y, pow(x, y))  = mul(pow(x, y), x)
 ```
 
+The `-definition` flag prints these equations before the result. Because the
+program writes them from the function objects that it evaluates, they always
+match the code:
+
+```console
+$ cc prf -x 2 -y 3 -definition -trace off
+pow(x, 0)    = (S ∘ Z)(x)
+pow(x, S(y)) = (mul ∘ (P₃³ × P₁³))(x, y, pow(x, y))
+mul(x, 0)    = Z(x)
+mul(x, S(y)) = (add ∘ (P₃³ × P₁³))(x, y, mul(x, y))
+add(x, 0)    = P₁¹(x)
+add(x, S(y)) = (S ∘ P₃³)(x, y, add(x, y))
+
+pow(2, 3) = 8
+100 function calls
+```
+
 The slides call f(X, 0) = g(X) the limit equation and f(X, S(y)) =
 h(X, y, f(X, y)) the recursion equation. In the recursion equation, h takes
 the recursive term f(X, y) as its last argument, but the slides leave open how
@@ -420,7 +437,7 @@ given arguments. In the examples below, replace the binary name `cc` with
 | --- | --- |
 | `cc npda -config <file> [options] [inputs...]` | Run a pushdown automaton. |
 | `cc turing -config <file> [options] [inputs...]` | Run a Turing machine, or draw it with `-graph`. |
-| `cc prf -x <n> -y <n> [-trace counts\|tree\|off] [-trace-limit <n>] [-max-calls <n>]` | Compute xʸ as a primitive recursive function. |
+| `cc prf -x <n> -y <n> [-definition] [-trace counts\|tree\|off] [-trace-limit <n>] [-max-calls <n>]` | Compute xʸ as a primitive recursive function. |
 | `cc explain <code>` | Show the meaning of a diagnostic code and how to correct the problem. |
 
 The `npda` and `turing` commands accept the options from the assignment

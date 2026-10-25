@@ -131,6 +131,27 @@ std::string FormatCall(
   return text;
 }
 
+void WriteDefinition(
+    std::ostream& out,
+    const Function& function,
+    const Style& style
+) {
+  const auto equations = function.Definition(NotationFor(style));
+  std::size_t width = 0;
+  for (const auto& equation : equations) {
+    width = std::max(width, terminal::DisplayWidth(equation.left));
+  }
+  for (const auto& equation : equations) {
+    std::println(
+        out,
+        "{} {} {}",
+        terminal::PadRight(equation.left, width),
+        style.Paint(Tone::kMuted, "="),
+        equation.right
+    );
+  }
+}
+
 void WriteTrace(std::ostream& out, const Trace& trace, const Style& style) {
   switch (trace.mode()) {
     case TraceMode::kOff:
