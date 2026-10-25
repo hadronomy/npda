@@ -1,8 +1,10 @@
 exit=0
 pow(x, 0)    = (S ∘ Z)(x)
 pow(x, S(y)) = (mul ∘ (P₃³ × P₁³))(x, y, pow(x, y))
+
 mul(x, 0)    = Z(x)
 mul(x, S(y)) = (add ∘ (P₃³ × P₁³))(x, y, mul(x, y))
+
 add(x, 0)    = P₁¹(x)
 add(x, S(y)) = (S ∘ P₃³)(x, y, add(x, y))
 

@@ -24,6 +24,12 @@ enum class Tone {
   /// Names that the reader types or follows: commands, options, and
   /// transitions.
   kAccent,
+  /// Names of a second kind beside `kAccent`, in a hue of their own, such as
+  /// the projections beside the other basic functions.
+  kSecondary,
+  /// A name that the text defines, wherever it appears, such as `pow` on both
+  /// sides of its own equations.
+  kDefined,
   /// The name of the program.
   kBrand,
   kGood,

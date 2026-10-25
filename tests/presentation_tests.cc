@@ -374,12 +374,14 @@ TEST_CASE(
         "to show them.\n"
     ));
   }
-  SECTION("A definition aligns its equations") {
+  SECTION("A definition groups its equations and aligns them") {
     std::ostringstream out;
     prf::WriteDefinition(out, power.function(), kPlain);
     CHECK(out.str().starts_with(
         "pow(x, 0)    = (S ∘ Z)(x)\n"
         "pow(x, S(y)) = (mul ∘ (P₃³ × P₁³))(x, y, pow(x, y))\n"
+        "\n"
+        "mul(x, 0)    = Z(x)\n"
     ));
     CHECK(out.str().ends_with("add(x, S(y)) = (S ∘ P₃³)(x, y, add(x, y))\n"));
   }

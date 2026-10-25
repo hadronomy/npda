@@ -71,6 +71,10 @@ std::string_view Code(Tone tone) {
       return "1;33";
     case Tone::kAccent:
       return "36";
+    case Tone::kSecondary:
+      return "35";
+    case Tone::kDefined:
+      return "1;33";
     case Tone::kBrand:
       return "1;35";
     case Tone::kGood:

@@ -2,6 +2,7 @@
 #include <concepts>
 #include <cstddef>
 #include <limits>
+#include <vector>
 
 #include <catch2/catch_message.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -170,32 +171,66 @@ TEST_CASE("PRF names use the notation of the course", "[prf][names]") {
   );
   const auto unnamed =
       prf::Recursion(prf::Projection<1, 1>(), prf::Projection<3, 3>());
-  CHECK(prf::Power().function().Name(Notation::kUnicode) == "pow");
-  CHECK(one.function().Name(Notation::kUnicode) == "S ∘ Z");
-  CHECK(one.function().Operand(Notation::kUnicode) == "(S ∘ Z)");
-  CHECK(step.function().Name(Notation::kUnicode) == "mul ∘ (P₃³ × P₁³)");
-  CHECK(step.function().Name(Notation::kAscii) == "mul o (P_3^3 x P_1^3)");
-  CHECK(
-      prf::Projection<12, 13>().function().Name(Notation::kUnicode) == "P₁₂¹³"
+  const auto name = [](const auto& function, Notation notation) {
+    return prf::Text(function.function().Name(notation));
+  };
+  CHECK(name(prf::Power(), Notation::kUnicode) == "pow");
+  CHECK(name(one, Notation::kUnicode) == "S ∘ Z");
+  CHECK(prf::Text(one.function().Operand(Notation::kUnicode)) == "(S ∘ Z)");
+  CHECK(name(step, Notation::kUnicode) == "mul ∘ (P₃³ × P₁³)");
+  CHECK(name(step, Notation::kAscii) == "mul o (P_3^3 x P_1^3)");
+  CHECK(name(prf::Projection<12, 13>(), Notation::kUnicode) == "P₁₂¹³");
+  CHECK(name(unnamed, Notation::kUnicode) == "R(P₁¹, P₃³)");
+}
+
+TEST_CASE("PRF names tag each piece with its role", "[prf][names]") {
+  const auto step = prf::Composition(
+      prf::Multiplication(),
+      prf::Combination(prf::Projection<3, 3>(), prf::Projection<1, 3>())
   );
-  CHECK(unnamed.function().Name(Notation::kUnicode) == "R(P₁¹, P₃³)");
+  using prf::Role;
+  const std::vector<prf::Token> expected{
+      {Role::kNamed, "mul"},
+      {Role::kPlain, " "},
+      {Role::kOperator, "∘"},
+      {Role::kPlain, " "},
+      {Role::kPlain, "("},
+      {Role::kProjection, "P₃³"},
+      {Role::kPlain, " "},
+      {Role::kOperator, "×"},
+      {Role::kPlain, " "},
+      {Role::kProjection, "P₁³"},
+      {Role::kPlain, ")"},
+  };
+  const auto actual = step.function().Name(Notation::kUnicode);
+  REQUIRE(actual.size() == expected.size());
+  for (std::size_t index = 0; index < expected.size(); ++index) {
+    CAPTURE(index);
+    CHECK(actual[index].role == expected[index].role);
+    CHECK(actual[index].text == expected[index].text);
+  }
 }
 
 TEST_CASE(
-    "PRF definitions list equations for each named recursion once, outermost "
-    "first",
+    "PRF definitions give each named recursion once, outermost first",
     "[prf][names]"
 ) {
-  const auto definition =
-      prf::Power().function().Definition(Notation::kUnicode);
-  REQUIRE(definition.size() == 6);
-  CHECK(definition[0].left == "pow(x, 0)");
-  CHECK(definition[0].right == "(S ∘ Z)(x)");
-  CHECK(definition[1].left == "pow(x, S(y))");
-  CHECK(definition[1].right == "(mul ∘ (P₃³ × P₁³))(x, y, pow(x, y))");
-  CHECK(definition[2].left == "mul(x, 0)");
-  CHECK(definition[4].left == "add(x, 0)");
-  CHECK(definition[5].right == "(S ∘ P₃³)(x, y, add(x, y))");
+  const auto text = [](const prf::Equation& equation) {
+    return prf::Text(equation.left) + " = " + prf::Text(equation.right);
+  };
+  const auto definitions =
+      prf::Power().function().Definitions(Notation::kUnicode);
+  REQUIRE(definitions.size() == 3);
+  CHECK(text(definitions[0].limit) == "pow(x, 0) = (S ∘ Z)(x)");
+  CHECK(
+      text(definitions[0].recursion) ==
+      "pow(x, S(y)) = (mul ∘ (P₃³ × P₁³))(x, y, pow(x, y))"
+  );
+  CHECK(text(definitions[1].limit) == "mul(x, 0) = Z(x)");
+  CHECK(
+      text(definitions[2].recursion) ==
+      "add(x, S(y)) = (S ∘ P₃³)(x, y, add(x, y))"
+  );
 
   const auto sum3 = prf::Composition(
       prf::Addition(),
@@ -207,18 +242,20 @@ TEST_CASE(
           prf::Projection<3, 3>()
       )
   );
-  // add appears twice in sum3, but its two equations appear once.
-  CHECK(sum3.function().Definition(Notation::kUnicode).size() == 2);
+  // add appears twice in sum3, but its definition appears once.
+  CHECK(sum3.function().Definitions(Notation::kUnicode).size() == 1);
   const auto unnamed =
       prf::Recursion(prf::Projection<1, 1>(), prf::Projection<3, 3>());
-  CHECK(unnamed.function().Definition(Notation::kUnicode).empty());
+  CHECK(unnamed.function().Definitions(Notation::kUnicode).empty());
 
   const auto first =
       prf::Recursion(prf::Projection<1, 2>(), prf::Projection<1, 4>(), "first");
-  const auto equations = first.function().Definition(Notation::kAscii);
-  REQUIRE(equations.size() == 2);
-  CHECK(equations[1].left == "first(x_1, x_2, S(y))");
-  CHECK(equations[1].right == "P_1^4(x_1, x_2, y, first(x_1, x_2, y))");
+  const auto numbered = first.function().Definitions(Notation::kAscii);
+  REQUIRE(numbered.size() == 1);
+  CHECK(
+      text(numbered[0].recursion) ==
+      "first(x_1, x_2, S(y)) = P_1^4(x_1, x_2, y, first(x_1, x_2, y))"
+  );
 }
 
 TEST_CASE("PRF successor reports an overflow", "[prf][validation]") {

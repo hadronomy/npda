@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <utility>
@@ -46,10 +47,44 @@ struct Error {
 /// The notation for indices and operators in names: `S ∘ P₃³` or `S o P_3^3`.
 enum class Notation { kUnicode, kAscii };
 
-/// One equation of a definition: `pow(x, 0) = (S ∘ Z)(x)`.
+/// What a piece of a name is, so that a reader can tell the pieces apart.
+enum class Role {
+  /// Parentheses, commas, variables, and numbers.
+  kPlain,
+  /// A function that a recursion names, such as `add`.
+  kNamed,
+  /// A basic function that computes a value: Z or S.
+  kBasic,
+  /// A projection, which only routes one of its arguments.
+  kProjection,
+  /// An operator of the notation: ∘, ×, or R.
+  kOperator,
+};
+
+struct Token {
+  Role role;
+  std::string text;
+};
+
+/// Text in the notation of the course, such as `(S ∘ P₃³)(x, y, add(x, y))`,
+/// with each piece tagged by its role.
+using Expression = std::vector<Token>;
+
+/// Returns the text of `expression` without its roles.
+[[nodiscard]] std::string Text(const Expression& expression);
+
+/// One equation, `pow(x, 0) = (S ∘ Z)(x)`.
 struct Equation {
-  std::string left;
-  std::string right;
+  Expression left;
+  Expression right;
+};
+
+/// The two equations of a function that a recursion defines under a name.
+struct Definition {
+  /// f(X, 0) = g(X), which the slides call the limit equation.
+  Equation limit;
+  /// f(X, S(y)) = h(X, y, f(X, y)), the recursion equation.
+  Equation recursion;
 };
 
 /// A primitive recursive function with runtime arity and output count:
@@ -71,17 +106,17 @@ class Function {
 
   /// Returns the name in the notation of the course: `S`, `P₃³`,
   /// `add ∘ (P₃³ × P₁³)`.
-  [[nodiscard]] virtual std::string Name(Notation notation) const = 0;
+  [[nodiscard]] virtual Expression Name(Notation notation) const = 0;
 
   /// Returns the name for use in a call or as an operand of ∘ and ×, with
   /// parentheses around compositions and combinations, as in `(S ∘ Z)`.
   /// Other names remain unchanged.
-  [[nodiscard]] std::string Operand(Notation notation) const;
+  [[nodiscard]] Expression Operand(Notation notation) const;
 
-  /// Returns the equations for this function and its named parts, outermost
-  /// first, with each name once. For `pow`, these are its limit and recursion
-  /// equations, followed by those of `mul` and `add`.
-  [[nodiscard]] std::vector<Equation> Definition(Notation notation) const;
+  /// Returns the definitions of this function and of the named functions in
+  /// its parts, outermost first and each name once: `pow`, then `mul` and
+  /// `add`.
+  [[nodiscard]] std::vector<Definition> Definitions(Notation notation) const;
 
  protected:
   Function(std::size_t arity, std::size_t outputs)
@@ -117,10 +152,12 @@ class Function {
     return {};
   }
 
-  /// The equations that define this function under its own name, or none if
-  /// its name is an expression of its parts.
-  [[nodiscard]] virtual std::vector<Equation> OwnEquations(Notation) const {
-    return {};
+  /// The definition of this function under its own name, or none if its name
+  /// is an expression of its parts.
+  [[nodiscard]] virtual std::optional<Definition> OwnDefinition(
+      Notation
+  ) const {
+    return std::nullopt;
   }
 
   virtual std::expected<void, Error> DoApply(

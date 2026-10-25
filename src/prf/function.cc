@@ -8,6 +8,7 @@
 #include <format>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <set>
 #include <span>
 #include <string>
@@ -56,11 +57,39 @@ std::string Variables(std::size_t count, Notation notation) {
   return text;
 }
 
+Expression Plain(std::string text) { return {{Role::kPlain, std::move(text)}}; }
+
+Expression operator+(Expression left, const Expression& right) {
+  left.insert(left.end(), right.begin(), right.end());
+  return left;
+}
+
+/// Returns `left ∘ right` or `left × right` with the operator for `notation`.
+Expression Binary(
+    const Function& left,
+    std::string_view unicode,
+    std::string_view ascii,
+    const Function& right,
+    Notation notation
+) {
+  return left.Operand(notation) + Plain(" ") +
+         Expression{
+             {Role::kOperator,
+              std::string(notation == Notation::kUnicode ? unicode : ascii)}
+         } +
+         Plain(" ") + right.Operand(notation);
+}
+
+/// Returns `function(arguments)`.
+Expression Call(Expression function, const Expression& arguments) {
+  return std::move(function) + Plain("(") + arguments + Plain(")");
+}
+
 class ZeroFunction final : public Function {
  public:
   ZeroFunction() : Function(1, 1) {}
 
-  std::string Name(Notation) const override { return "Z"; }
+  Expression Name(Notation) const override { return {{Role::kBasic, "Z"}}; }
 
  private:
   std::expected<void, Error> DoApply(
@@ -77,7 +106,7 @@ class SuccessorFunction final : public Function {
  public:
   SuccessorFunction() : Function(1, 1) {}
 
-  std::string Name(Notation) const override { return "S"; }
+  Expression Name(Notation) const override { return {{Role::kBasic, "S"}}; }
 
  private:
   std::expected<void, Error> DoApply(
@@ -100,8 +129,11 @@ class ProjectionFunction final : public Function {
   ProjectionFunction(std::size_t index, std::size_t arity)
       : Function(arity, 1), index_(index) {}
 
-  std::string Name(Notation notation) const override {
-    return "P" + Subscript(index_, notation) + Superscript(Arity(), notation);
+  Expression Name(Notation notation) const override {
+    return {
+        {Role::kProjection,
+         "P" + Subscript(index_, notation) + Superscript(Arity(), notation)}
+    };
   }
 
  private:
@@ -124,13 +156,8 @@ class CombinationFunction final : public Function {
         first_(std::move(first)),
         second_(std::move(second)) {}
 
-  std::string Name(Notation notation) const override {
-    return std::format(
-        "{} {} {}",
-        first_->Operand(notation),
-        notation == Notation::kUnicode ? "×" : "x",
-        second_->Operand(notation)
-    );
+  Expression Name(Notation notation) const override {
+    return Binary(*first_, "×", "x", *second_, notation);
   }
 
  private:
@@ -164,13 +191,8 @@ class CompositionFunction final : public Function {
         outer_(std::move(outer)),
         inner_(std::move(inner)) {}
 
-  std::string Name(Notation notation) const override {
-    return std::format(
-        "{} {} {}",
-        outer_->Operand(notation),
-        notation == Notation::kUnicode ? "∘" : "o",
-        inner_->Operand(notation)
-    );
+  Expression Name(Notation notation) const override {
+    return Binary(*outer_, "∘", "o", *inner_, notation);
   }
 
  private:
@@ -217,12 +239,11 @@ class RecursionFunction final : public Function {
         step_(std::move(step)),
         name_(std::move(name)) {}
 
-  std::string Name(Notation notation) const override {
-    if (!name_.empty()) return name_;
-    return std::format(
-        "R({}, {})",
-        base_->Name(notation),
-        step_->Name(notation)
+  Expression Name(Notation notation) const override {
+    if (!name_.empty()) return {{Role::kNamed, name_}};
+    return Call(
+        {{Role::kOperator, "R"}},
+        base_->Name(notation) + Plain(", ") + step_->Name(notation)
     );
   }
 
@@ -231,24 +252,27 @@ class RecursionFunction final : public Function {
     return {base_.get(), step_.get()};
   }
 
-  std::vector<Equation> OwnEquations(Notation notation) const override {
-    if (name_.empty()) return {};
+  std::optional<Definition> OwnDefinition(Notation notation) const override {
+    if (name_.empty()) return std::nullopt;
     // In f(X, 0) = g(X) and f(X, S(y)) = h(X, y, f(X, y)), X is absent when
     // the recursion has no parameters.
     const auto fixed = Variables(Arity() - 1, notation);
-    const auto with = [&](std::string_view last) {
-      return fixed.empty() ? std::string(last)
-                           : std::format("{}, {}", fixed, last);
+    const auto with = [&](Expression last) {
+      return fixed.empty() ? last : Plain(fixed + ", ") + last;
     };
-    return {
-        {.left = std::format("{}({})", name_, with("0")),
-         .right = std::format("{}({})", base_->Operand(notation), fixed)},
-        {.left = std::format("{}({})", name_, with("S(y)")),
-         .right = std::format(
-             "{}({})",
-             step_->Operand(notation),
-             with(std::format("y, {}({})", name_, with("y")))
-         )},
+    const auto name = Name(notation);
+    const auto successor = Call({{Role::kBasic, "S"}}, Plain("y"));
+    return Definition{
+        .limit =
+            {.left = Call(name, with(Plain("0"))),
+             .right = Call(base_->Operand(notation), Plain(fixed))},
+        .recursion = {
+            .left = Call(name, with(successor)),
+            .right = Call(
+                step_->Operand(notation),
+                with(Plain("y, ") + Call(name, with(Plain("y"))))
+            )
+        },
     };
   }
 
@@ -288,23 +312,30 @@ class RecursionFunction final : public Function {
 
 }  // namespace
 
-std::string Function::Operand(Notation notation) const {
-  return IsCompound() ? std::format("({})", Name(notation)) : Name(notation);
+std::string Text(const Expression& expression) {
+  std::string text;
+  for (const auto& token : expression) text += token.text;
+  return text;
 }
 
-std::vector<Equation> Function::Definition(Notation notation) const {
+Expression Function::Operand(Notation notation) const {
+  return IsCompound() ? Plain("(") + Name(notation) + Plain(")")
+                      : Name(notation);
+}
+
+std::vector<Definition> Function::Definitions(Notation notation) const {
   std::set<std::string> seen;
-  std::vector<Equation> equations;
-  // Once a name is in `seen`, its equations and those of its parts are
+  std::vector<Definition> definitions;
+  // Once a name is in `seen`, its definition and those of its parts are
   // already included, so another occurrence needs no traversal.
   const auto collect = [&](this const auto& self, const Function& function) {
-    auto own = function.OwnEquations(notation);
-    if (!own.empty() && !seen.insert(function.Name(notation)).second) return;
-    equations.insert(equations.end(), own.begin(), own.end());
+    auto own = function.OwnDefinition(notation);
+    if (own && !seen.insert(Text(function.Name(notation))).second) return;
+    if (own) definitions.push_back(*std::move(own));
     for (const Function* part : function.Parts()) self(*part);
   };
   collect(*this);
-  return equations;
+  return definitions;
 }
 
 std::expected<void, Error> Function::Apply(

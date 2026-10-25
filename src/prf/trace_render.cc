@@ -24,6 +24,33 @@ namespace {
 using terminal::Style;
 using terminal::Tone;
 
+/// Paints each piece of `expression` in the hue of its role, so that the
+/// defined names, the functions that compute, the projections that route
+/// arguments, and the operators that join them read apart at a glance.
+std::string Paint(const Expression& expression, const Style& style) {
+  std::string text;
+  for (const auto& token : expression) {
+    switch (token.role) {
+      case Role::kPlain:
+        text += token.text;
+        break;
+      case Role::kNamed:
+        text += style.Paint(Tone::kDefined, token.text);
+        break;
+      case Role::kBasic:
+        text += style.Paint(Tone::kAccent, token.text);
+        break;
+      case Role::kProjection:
+        text += style.Paint(Tone::kSecondary, token.text);
+        break;
+      case Role::kOperator:
+        text += style.Paint(Tone::kMuted, token.text);
+        break;
+    }
+  }
+  return text;
+}
+
 std::string JoinValues(std::span<const Natural> values, const Style& style) {
   std::string text;
   for (const auto value : values) {
@@ -64,14 +91,15 @@ void WriteCounts(std::ostream& out, const Trace& trace, const Style& style) {
   // Separate function objects can have the same name, such as Z, so their
   // counts share one row.
   const auto notation = NotationFor(style);
-  std::map<std::string, std::uint64_t> by_name;
+  std::map<std::string, std::pair<Expression, std::uint64_t>> by_name;
   for (const auto& [function, count] : trace.counts()) {
-    by_name[function->Name(notation)] += count;
+    auto name = function->Name(notation);
+    auto& row = by_name[Text(name)];
+    row.first = std::move(name);
+    row.second += count;
   }
-  std::vector<std::pair<std::string, std::uint64_t>> rows(
-      by_name.begin(),
-      by_name.end()
-  );
+  std::vector<std::pair<Expression, std::uint64_t>> rows;
+  for (auto& [text, row] : by_name) rows.push_back(std::move(row));
   std::ranges::stable_sort(rows, [](const auto& left, const auto& right) {
     return left.second > right.second;
   });
@@ -90,7 +118,7 @@ void WriteCounts(std::ostream& out, const Trace& trace, const Style& style) {
         out,
         "  {}  {}",
         terminal::PadLeft(style.Number(count), width),
-        name
+        Paint(name, style)
     );
   }
 }
@@ -120,7 +148,7 @@ std::string FormatCall(
 ) {
   auto text = std::format(
       "{}({})",
-      style.Paint(Tone::kStrong, function.Operand(NotationFor(style))),
+      Paint(function.Operand(NotationFor(style)), style),
       JoinValues(arguments, style)
   );
   if (results.size() == 1) {
@@ -136,19 +164,28 @@ void WriteDefinition(
     const Function& function,
     const Style& style
 ) {
-  const auto equations = function.Definition(NotationFor(style));
+  const auto definitions = function.Definitions(NotationFor(style));
   std::size_t width = 0;
-  for (const auto& equation : equations) {
-    width = std::max(width, terminal::DisplayWidth(equation.left));
+  for (const auto& definition : definitions) {
+    for (const auto* equation : {&definition.limit, &definition.recursion}) {
+      width = std::max(width, terminal::DisplayWidth(Text(equation->left)));
+    }
   }
-  for (const auto& equation : equations) {
-    std::println(
-        out,
-        "{} {} {}",
-        terminal::PadRight(equation.left, width),
-        style.Paint(Tone::kMuted, "="),
-        equation.right
-    );
+  for (std::size_t index = 0; index < definitions.size(); ++index) {
+    // A blank line between definitions keeps each pair of equations together.
+    if (index != 0) std::println(out);
+    const auto& definition = definitions[index];
+    for (const auto* equation : {&definition.limit, &definition.recursion}) {
+      const auto padding = width - terminal::DisplayWidth(Text(equation->left));
+      std::println(
+          out,
+          "{}{} {} {}",
+          Paint(equation->left, style),
+          std::string(padding, ' '),
+          style.Paint(Tone::kMuted, "="),
+          Paint(equation->right, style)
+      );
+    }
   }
 }
 

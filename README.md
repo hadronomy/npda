@@ -244,8 +244,10 @@ argument:
 ```
 add(x, 0)    = P₁¹(x)                                = x
 add(x, S(y)) = (S ∘ P₃³)(x, y, add(x, y))            = S(add(x, y))
+
 mul(x, 0)    = Z(x)                                  = 0
 mul(x, S(y)) = (add ∘ (P₃³ × P₁³))(x, y, mul(x, y))  = add(mul(x, y), x)
+
 pow(x, 0)    = (S ∘ Z)(x)                            = 1
 pow(x, S(y)) = (mul ∘ (P₃³ × P₁³))(x, y, pow(x, y))  = mul(pow(x, y), x)
 ```
@@ -258,14 +260,24 @@ match the code:
 $ cc prf -x 2 -y 3 -definition -trace off
 pow(x, 0)    = (S ∘ Z)(x)
 pow(x, S(y)) = (mul ∘ (P₃³ × P₁³))(x, y, pow(x, y))
+
 mul(x, 0)    = Z(x)
 mul(x, S(y)) = (add ∘ (P₃³ × P₁³))(x, y, mul(x, y))
+
 add(x, 0)    = P₁¹(x)
 add(x, S(y)) = (S ∘ P₃³)(x, y, add(x, y))
 
 pow(2, 3) = 8
 100 function calls
 ```
+
+On a color terminal, each role has a hue of its own: the names that a
+recursion defines are bold yellow, the functions that compute, `Z` and `S`, are
+cyan, the projections that route arguments are magenta, and the operators
+recede. The recursive term, such as `pow(x, y)` on the right of its own
+equation, therefore stands out, and so do the uses of `mul` and `add` that
+link the three definitions. The trace tree and the call counts use the same
+colors.
 
 The slides call f(X, 0) = g(X) the limit equation and f(X, S(y)) =
 h(X, y, f(X, y)) the recursion equation. In the recursion equation, h takes
