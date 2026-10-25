@@ -88,7 +88,9 @@ int Main(int argc, char** argv) {
   try {
     app.parse(argc, argv);
   } catch (const CLI::ParseError& error) {
-    return app.exit(error);
+    // CLI11 assigns different statuses to usage errors, but the program uses
+    // 1 for every error so scripts need to check only one error status.
+    return app.exit(error) == 0 ? 0 : 1;
   }
   return exit_code;
 }

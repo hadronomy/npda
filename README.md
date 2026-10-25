@@ -278,9 +278,10 @@ The program collects inputs from the command line and from `-in`. If neither
 source gives an input, it reads the keyboard until the end of the file
 (Ctrl-D).
 
-The program exits with status 0 if it accepts or rejects each input, or with
-status 1 if the definition has errors, a file cannot be read, or an input stays
-undecided.
+A successful command exits with status 0, which for `npda` and `turing` means
+that the program accepts or rejects every input. Errors in the command line or
+a definition, or files that the program cannot read, instead give status 1.
+The program also uses status 1 when an input stays undecided.
 
 ### Results
 
