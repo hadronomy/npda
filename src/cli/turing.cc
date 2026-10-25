@@ -53,7 +53,10 @@ std::string Detail(
   if (!result) {
     return style.Paint(
         Tone::kMuted,
-        std::format("still running after {} steps", result.error().steps)
+        std::format(
+            "still running after {} steps",
+            style.Number(result.error().steps)
+        )
     );
   }
   return std::format(
@@ -63,7 +66,7 @@ std::string Detail(
           Tone::kMuted,
           std::format(
               "{} {}",
-              result->steps,
+              style.Number(result->steps),
               result->steps == 1 ? "step" : "steps"
           )
       )

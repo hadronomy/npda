@@ -42,7 +42,10 @@ std::string Detail(
   if (!result) {
     return style.Paint(
         Tone::kMuted,
-        std::format("stopped after {} expansions", result.error().expansions)
+        std::format(
+            "stopped after {} expansions",
+            style.Number(result.error().expansions)
+        )
     );
   }
   if (!result->Accepted()) return {};

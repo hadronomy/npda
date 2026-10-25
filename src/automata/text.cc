@@ -120,7 +120,7 @@ void WriteHiddenNotice(
       "{} The trace does not show {} more {}{}. Increase -trace-limit to "
       "show them.",
       style.glyphs().ellipsis,
-      hidden,
+      style.Number(hidden),
       what,
       hidden == 1 ? "" : "s"
   );

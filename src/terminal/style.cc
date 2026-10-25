@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <format>
 #include <string>
 #include <string_view>
@@ -20,6 +21,7 @@ constexpr Glyphs kUnicode{
     .cursor = "▸",
     .head = "▲",
     .separator = "·",
+    .digit_group = "\u202F",
     .ellipsis = "…",
     .tree_branch = "├─ ",
     .tree_last = "└─ ",
@@ -42,6 +44,7 @@ constexpr Glyphs kAscii{
     .cursor = "|",
     .head = "^",
     .separator = "|",
+    .digit_group = " ",
     .ellipsis = "...",
     .tree_branch = "|- ",
     .tree_last = "`- ",
@@ -118,6 +121,19 @@ Styled Style::Span(Tone tone, std::string_view text) const {
 
 std::string Style::Separator() const {
   return Paint(Tone::kMuted, std::format(" {} ", glyphs_->separator));
+}
+
+std::string Style::Number(std::uint64_t value) const {
+  const auto digits = std::to_string(value);
+  if (digits.size() <= 4) return digits;
+  std::string text;
+  for (std::size_t index = 0; index < digits.size(); ++index) {
+    if (index != 0 && (digits.size() - index) % 3 == 0) {
+      text += glyphs_->digit_group;
+    }
+    text += digits[index];
+  }
+  return text;
 }
 
 std::size_t DisplayWidth(std::string_view text) {

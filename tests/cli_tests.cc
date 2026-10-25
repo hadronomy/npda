@@ -243,7 +243,7 @@ TEST_CASE(
   REQUIRE(result.has_value());
   CHECK(result->exit_code == 1);
   CHECK(result->standard_output.contains(
-      "unknown a  stopped after 100000 expansions"
+      "unknown a  stopped after 100\u202F000 expansions"
   ));
   CHECK(result->standard_output.contains("1 undecided"));
 }

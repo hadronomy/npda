@@ -57,7 +57,7 @@ by final state (APf), and without one it accepts by empty stack (APv). Either
 way, it must read all of the input.
 
 The simulator searches breadth-first, so it finds a shortest accepting path
-whenever one exists. After 100000 expansions, the search stops and leaves the
+whenever one exists. After 100 000 expansions, the search stops and leaves the
 input undecided, which keeps an ε-loop that pushes symbols from running the
 program forever.
 
@@ -111,7 +111,7 @@ does not stop the machine while a transition still applies. When the run ends,
 its result is on the first tape.
 
 An input with a symbol outside Σ is rejected without a run. For inputs over Σ,
-the run stops after 100000 steps if the machine has not halted, leaving the
+the run stops after 100 000 steps if the machine has not halted, leaving the
 input undecided.
 
 ### Turing Machine File Format

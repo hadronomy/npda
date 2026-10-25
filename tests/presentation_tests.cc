@@ -385,6 +385,20 @@ TEST_CASE(
   CHECK(terminal::TruncateMiddle("abc", 5, "…") == "abc");
 }
 
+TEST_CASE(
+    "Large numbers group their digits in threes",
+    "[presentation][style]"
+) {
+  CHECK(kPlain.Number(0) == "0");
+  CHECK(kPlain.Number(9999) == "9999");
+  CHECK(kPlain.Number(10000) == "10\u202F000");
+  CHECK(kPlain.Number(805306852) == "805\u202F306\u202F852");
+  CHECK(
+      kPlain.Number(18446744073709551615U) ==
+      "18\u202F446\u202F744\u202F073\u202F709\u202F551\u202F615"
+  );
+}
+
 turing::Definition EmptyTuring(std::string_view start) {
   return {
       .config = {},

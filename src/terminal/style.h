@@ -2,6 +2,7 @@
 #define NPDA_SRC_TERMINAL_STYLE_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <string_view>
 
@@ -45,6 +46,7 @@ struct Glyphs {
   /// Points up to the cell below a head.
   std::string_view head;
   std::string_view separator;
+  std::string_view digit_group;
   std::string_view ellipsis;
   std::string_view tree_branch;
   std::string_view tree_last;
@@ -90,6 +92,14 @@ class Style {
 
   /// Returns the muted ` · ` that divides items on one line.
   [[nodiscard]] std::string Separator() const;
+
+  /// Returns `value` with its digits in groups of three, `805 306 852`.
+  ///
+  /// The groups use a narrow space, as SI and the RAE recommend, because a
+  /// comma would blur with the commas between arguments in `pow(10 000, 2)`.
+  /// Without Unicode, they use an ordinary space, and numbers of four digits or
+  /// fewer stay whole in either form: `1000`.
+  [[nodiscard]] std::string Number(std::uint64_t value) const;
 
   // NOLINTNEXTLINE(readability-identifier-naming): Google style accessor.
   [[nodiscard]] const Glyphs& glyphs() const { return *glyphs_; }

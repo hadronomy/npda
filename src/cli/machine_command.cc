@@ -196,18 +196,21 @@ std::string Tally::Summary(const Style& style) const {
   const auto total = accepted_ + rejected_ + unknown_;
   std::string text = std::format(
       "{} {}{}{} accepted{}{} rejected",
-      total,
+      style.Number(total),
       total == 1 ? "input" : "inputs",
       separator,
-      accepted_,
+      style.Number(accepted_),
       separator,
-      rejected_
+      style.Number(rejected_)
   );
   if (unknown_ > 0) {
     text += std::format(
         "{}{}",
         separator,
-        style.Paint(Tone::kWarn, std::format("{} undecided", unknown_))
+        style.Paint(
+            Tone::kWarn,
+            std::format("{} undecided", style.Number(unknown_))
+        )
     );
   }
   return text;
