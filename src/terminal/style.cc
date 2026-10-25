@@ -1,6 +1,5 @@
 #include "terminal/style.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <format>
@@ -14,49 +13,19 @@ namespace terminal {
 namespace {
 
 constexpr Glyphs kUnicode{
-    .epsilon = "ε",
-    .delta = "δ",
-    .arrow = "→",
-    .leads_to = "⇒",
-    .cursor = "▸",
-    .head = "▲",
-    .separator = "·",
     .digit_group = "\u202F",
     .ellipsis = "…",
     .tree_branch = "├─ ",
     .tree_last = "└─ ",
     .tree_pipe = "│  ",
-    .box_horizontal = "─",
-    .box_vertical = "│",
-    .box_top_left = "┌",
-    .box_top_join = "┬",
-    .box_top_right = "┐",
-    .box_bottom_left = "└",
-    .box_bottom_join = "┴",
-    .box_bottom_right = "┘",
 };
 
 constexpr Glyphs kAscii{
-    .epsilon = ".",
-    .delta = "t",
-    .arrow = "->",
-    .leads_to = "=>",
-    .cursor = "|",
-    .head = "^",
-    .separator = "|",
     .digit_group = " ",
     .ellipsis = "...",
     .tree_branch = "|- ",
     .tree_last = "`- ",
     .tree_pipe = "|  ",
-    .box_horizontal = "-",
-    .box_vertical = "|",
-    .box_top_left = "+",
-    .box_top_join = "+",
-    .box_top_right = "+",
-    .box_bottom_left = "+",
-    .box_bottom_join = "+",
-    .box_bottom_right = "+",
 };
 
 std::string_view Code(Tone tone) {
@@ -77,28 +46,14 @@ std::string_view Code(Tone tone) {
       return "1;33";
     case Tone::kBrand:
       return "1;35";
-    case Tone::kGood:
-      return "32";
     case Tone::kBad:
       return "31";
-    case Tone::kWarn:
-      return "33";
   }
   return "";
 }
 
 bool IsContinuation(char byte) {
   return (static_cast<unsigned char>(byte) & 0xC0) == 0x80;
-}
-
-/// Returns the number of bytes of the first `columns` code points.
-std::size_t PrefixBytes(std::string_view text, std::size_t columns) {
-  std::size_t end = 0;
-  for (std::size_t seen = 0; end < text.size(); ++end) {
-    if (IsContinuation(text[end])) continue;
-    if (seen++ == columns) break;
-  }
-  return end;
 }
 
 }  // namespace
@@ -123,10 +78,6 @@ std::string Style::Paint(Tone tone, std::string_view text) const {
 
 Styled Style::Span(Tone tone, std::string_view text) const {
   return {.text = Paint(tone, text), .width = DisplayWidth(text)};
-}
-
-std::string Style::Separator() const {
-  return Paint(Tone::kMuted, std::format(" {} ", glyphs_->separator));
 }
 
 std::string Style::Number(std::uint64_t value) const {
@@ -177,31 +128,6 @@ std::string PadLeft(std::string_view text, std::size_t width) {
   std::string padded(used < width ? width - used : 0, ' ');
   padded += text;
   return padded;
-}
-
-std::string Truncate(
-    std::string_view text,
-    std::size_t width,
-    std::string_view ellipsis
-) {
-  if (DisplayWidth(text) <= width) return std::string(text);
-  const auto keep = width - std::min(width, DisplayWidth(ellipsis));
-  return std::string(text.substr(0, PrefixBytes(text, keep))) +
-         std::string(ellipsis);
-}
-
-std::string TruncateMiddle(
-    std::string_view text,
-    std::size_t width,
-    std::string_view ellipsis
-) {
-  const auto total = DisplayWidth(text);
-  if (total <= width) return std::string(text);
-  const auto keep = width - std::min(width, DisplayWidth(ellipsis));
-  const auto head = (keep + 1) / 2;
-  const auto tail_start = PrefixBytes(text, total - (keep - head));
-  return std::string(text.substr(0, PrefixBytes(text, head))) +
-         std::string(ellipsis) + std::string(text.substr(tail_start));
 }
 
 }  // namespace terminal

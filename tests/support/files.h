@@ -3,29 +3,12 @@
 
 #include <filesystem>
 #include <string>
-#include <string_view>
 
 namespace test_support {
 
 /// Returns the repository root that `xmake test` gives.
 std::filesystem::path SourceRoot();
 std::string ReadFile(const std::filesystem::path& path);
-void WriteFile(const std::filesystem::path& path, std::string_view text);
-
-/// Owns a new directory and removes it and its contents at destruction.
-class TemporaryDirectory {
- public:
-  TemporaryDirectory();
-  ~TemporaryDirectory();
-
-  TemporaryDirectory(const TemporaryDirectory&) = delete;
-  TemporaryDirectory& operator=(const TemporaryDirectory&) = delete;
-
-  const std::filesystem::path& Path() const { return path_; }
-
- private:
-  std::filesystem::path path_;
-};
 
 }  // namespace test_support
 

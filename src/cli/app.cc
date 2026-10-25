@@ -1,6 +1,8 @@
 #include <format>
 #include <iostream>
+#include <print>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -45,6 +47,16 @@ std::string FailureMessage(const CLI::App* app, const CLI::Error& error) {
 
 }  // namespace
 
+void ReportError(std::string_view message) {
+  const auto style = terminal::Style::For(terminal::OutputStream::kStderr);
+  std::println(
+      std::cerr,
+      "{}: {}",
+      style.Paint(terminal::Tone::kBad, "error"),
+      message
+  );
+}
+
 CLI::App& AddCommand(
     CLI::App& app,
     std::string name,
@@ -59,27 +71,18 @@ CLI::App& AddCommand(
 }
 
 int Main(int argc, char** argv) {
-  CLI::App app(
-      "Simulate pushdown automata, Turing machines, and primitive recursive "
-      "functions.",
-      "cc"
-  );
+  CLI::App app("Compute primitive recursive functions.", "cc");
   app.allow_non_standard_option_names();
   app.set_help_flag();
   app.formatter(MakeHelpFormatter());
   app.failure_message(FailureMessage);
   app.require_subcommand(1);
   int exit_code = 0;
-  RegisterNpda(app, exit_code);
-  RegisterTuring(app, exit_code);
   RegisterPrf(app, exit_code);
-  RegisterExplain(app, exit_code);
   app.set_help_flag("-help,--help", "Show this help");
   app.footer(Join({
-      "cc npda -config examples/APf/APf-1.txt aabb aab",
-      "cc turing -config examples/turing/anbm.turing -trace-view compact aabb",
+      "cc prf -x 2 -y 3",
       "cc prf -x 2 -y 3 -trace tree",
-      "cc explain E0007",
   }));
   if (argc == 1) {
     std::cout << app.help();

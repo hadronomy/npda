@@ -1,19 +1,16 @@
 #include "support/cli.h"
 
 #include <chrono>
-#include <cstdint>
 #include <cstdlib>
 #include <expected>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <system_error>
 #include <utility>
 #include <vector>
 
 #include <reproc++/drain.hpp>
 #include <reproc++/env.hpp>
-#include <reproc++/input.hpp>
 #include <reproc++/reproc.hpp>
 #include <reproc++/run.hpp>
 
@@ -22,8 +19,7 @@
 namespace test_support {
 
 std::expected<ProcessOutput, std::error_code> RunCli(
-    std::vector<std::string> arguments,
-    std::string_view input
+    std::vector<std::string> arguments
 ) {
   const char* binary = std::getenv("NPDA_CLI_BINARY");
   if (binary == nullptr)
@@ -45,14 +41,7 @@ std::expected<ProcessOutput, std::error_code> RunCli(
       {reproc::stop::terminate, std::chrono::seconds(1)},
       {reproc::stop::kill, reproc::infinite}
   };
-  if (input.empty()) {
-    options.redirect.in.type = reproc::redirect::discard;
-  } else {
-    options.input = reproc::input(
-        reinterpret_cast<const std::uint8_t*>(input.data()),
-        input.size()
-    );
-  }
+  options.redirect.in.type = reproc::redirect::discard;
 
   ProcessOutput output{};
   const auto [exit_code, error] = reproc::run(

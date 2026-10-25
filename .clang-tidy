@@ -1,5 +1,5 @@
 Checks: '-*,readability-identifier-naming,misc-include-cleaner'
-HeaderFilterRegex: '(^|/)(include/(automata|npda|turing|prf|diagnostics)|src|tests)/'
+HeaderFilterRegex: '(^|/)(include/prf|src|tests)/'
 CheckOptions:
   readability-identifier-naming.ClassCase: CamelCase
   readability-identifier-naming.StructCase: CamelCase

@@ -11,7 +11,6 @@
 #include <CLI/CLI.hpp>
 
 #include "cli/commands.h"
-#include "cli/machine_command.h"
 #include "prf/function.h"
 #include "prf/program.h"
 #include "prf/trace.h"

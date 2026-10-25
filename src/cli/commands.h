@@ -3,6 +3,7 @@
 
 #include <format>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -12,7 +13,7 @@
 namespace cli {
 
 /// Adds a subcommand whose long options start with one dash, as in the course
-/// statement: `-config`, `-trace`.
+/// statement: `-trace`, `-definition`.
 ///
 /// The help page shows `examples` below EXAMPLES, one on each line. Add the
 /// options of the command after this call.
@@ -54,11 +55,11 @@ template <typename T>
   );
 }
 
-/// Each command stores its exit status in `exit_code` when it runs.
-void RegisterNpda(CLI::App& app, int& exit_code);
-void RegisterTuring(CLI::App& app, int& exit_code);
+/// Writes `error: <message>` to standard error.
+void ReportError(std::string_view message);
+
+/// Stores the exit status of the command in `exit_code` when it runs.
 void RegisterPrf(CLI::App& app, int& exit_code);
-void RegisterExplain(CLI::App& app, int& exit_code);
 
 [[nodiscard]] int Main(int argc, char** argv);
 

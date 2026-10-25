@@ -1,4 +1,4 @@
-project_name := "PR3-PRF-2526"
+project_name := "PR3-PRF-2627"
 dir_path := `realpath .`
 dir_name := `basename $(realpath .)`
 bin_name := "cc"
@@ -13,11 +13,6 @@ build *ARGS:
 # Build the project and run the tests, passing the arguments to xmake test.
 test *ARGS: build
     xmake test {{ARGS}}
-
-# Draw the graphs of the two Turing assignment machines with Graphviz.
-graphs:
-    just run turing -config examples/turing/anbm.turing -graph examples/turing/anbm.png
-    just run turing -config examples/turing/count_replace.turing -graph examples/turing/count_replace.png
 
 # Remove the build files.
 clean:

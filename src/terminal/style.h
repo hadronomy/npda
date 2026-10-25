@@ -22,7 +22,7 @@ enum class Tone {
   kMuted,
   kHeading,
   /// Names that the reader types or follows: commands, options, and
-  /// transitions.
+  /// functions.
   kAccent,
   /// Names of a second kind beside `kAccent`, in a hue of their own, such as
   /// the projections beside the other basic functions.
@@ -32,38 +32,16 @@ enum class Tone {
   kDefined,
   /// The name of the program.
   kBrand,
-  kGood,
   kBad,
-  kWarn,
 };
 
 /// Symbols, each with an ASCII form for terminals that cannot show Unicode.
-///
-/// The ASCII form of ε is `.`, as in machine files.
 struct Glyphs {
-  std::string_view epsilon;
-  std::string_view delta;
-  std::string_view arrow;
-  /// Points from a move to the configuration that the move gives.
-  std::string_view leads_to;
-  /// Divides the input that the machine read from the input that remains.
-  std::string_view cursor;
-  /// Points up to the cell below a head.
-  std::string_view head;
-  std::string_view separator;
   std::string_view digit_group;
   std::string_view ellipsis;
   std::string_view tree_branch;
   std::string_view tree_last;
   std::string_view tree_pipe;
-  std::string_view box_horizontal;
-  std::string_view box_vertical;
-  std::string_view box_top_left;
-  std::string_view box_top_join;
-  std::string_view box_top_right;
-  std::string_view box_bottom_left;
-  std::string_view box_bottom_join;
-  std::string_view box_bottom_right;
 };
 
 /// Painted text and the number of columns that it uses on the screen.
@@ -92,9 +70,6 @@ class Style {
 
   /// Paints `text` as `Paint` does, and keeps its width for alignment.
   [[nodiscard]] Styled Span(Tone tone, std::string_view text) const;
-
-  /// Returns the muted ` · ` that divides items on one line.
-  [[nodiscard]] std::string Separator() const;
 
   /// Returns `value` with its digits in groups of three, `805 306 852`.
   ///
@@ -134,22 +109,6 @@ class Style {
 [[nodiscard]] std::string PadLeft(std::string_view text, std::size_t width);
 
 [[nodiscard]] std::string PadRight(const Styled& text, std::size_t width);
-
-/// Cuts `text` to `width` columns, ending it with `ellipsis` only if it was
-/// cut.
-[[nodiscard]] std::string Truncate(
-    std::string_view text,
-    std::size_t width,
-    std::string_view ellipsis
-);
-
-/// Like `Truncate`, cuts `text` to `width` columns, but keeps both ends and
-/// puts the ellipsis in the middle.
-[[nodiscard]] std::string TruncateMiddle(
-    std::string_view text,
-    std::size_t width,
-    std::string_view ellipsis
-);
 
 }  // namespace terminal
 

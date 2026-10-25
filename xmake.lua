@@ -20,51 +20,42 @@ if has_config("sanitize") then
     add_ldflags("-fsanitize=address,undefined", {force = true})
 end
 
-target("automata")
+target("prf")
     set_kind("static")
-    add_files("src/automata/symbol.cc", "src/parsing/*.cc",
-              "src/npda/machine.cc", "src/npda/parser.cc",
-              "src/turing/machine.cc", "src/turing/parser.cc", "src/turing/config_parser.cc",
-              "src/turing/transition_text.cc", "src/prf/function.cc", "src/prf/program.cc", "src/prf/trace.cc",
-              "src/diagnostics/*.cc")
+    add_files("src/prf/function.cc", "src/prf/program.cc", "src/prf/trace.cc")
 
 target("presentation")
     set_kind("static")
-    add_deps("automata")
-    add_files("src/automata/text.cc", "src/npda/trace.cc", "src/turing/trace.cc",
-              "src/turing/graphviz.cc", "src/prf/trace_render.cc", "src/terminal/*.cc")
+    add_deps("prf")
+    add_files("src/prf/trace_render.cc", "src/terminal/*.cc")
 
 target("cc")
     set_kind("binary")
-    add_deps("presentation", "automata")
+    add_deps("presentation", "prf")
     add_packages("cli11")
     add_files("src/main.cc", "src/cli/*.cc")
 
 target("domain_tests")
     set_kind("binary")
-    add_deps("automata")
+    add_deps("prf")
     add_packages("catch2", {components = {"main", "lib"}})
-    add_files("tests/npda_tests.cc", "tests/turing_tests.cc",
-              "tests/parser_tests.cc", "tests/prf_tests.cc",
-              "tests/prf_program_tests.cc")
+    add_files("tests/prf_tests.cc", "tests/prf_program_tests.cc")
     add_tests("domain")
 
 target("presentation_tests")
     set_kind("binary")
-    add_deps("presentation", "automata")
+    add_deps("presentation", "prf")
     add_packages("catch2", {components = {"main", "lib"}})
-    add_includedirs("tests")
-    add_files("tests/presentation_tests.cc", "tests/support/files.cc")
+    add_files("tests/presentation_tests.cc")
     add_tests("presentation")
 
 target("verification_tests")
     set_kind("binary")
-    add_deps("cc", "presentation", "automata")
+    add_deps("cc")
     add_packages("catch2", {components = {"main", "lib"}})
     add_packages("reproc")
     add_includedirs("tests")
-    add_files("tests/cli_tests.cc", "tests/source_layout_tests.cc",
-              "tests/turing_designs_tests.cc", "tests/support/*.cc")
+    add_files("tests/cli_tests.cc", "tests/source_layout_tests.cc", "tests/support/*.cc")
     after_load(function (target)
         target:add("runenvs", "NPDA_SOURCE_ROOT", os.projectdir())
         target:add("runenvs", "NPDA_CLI_BINARY", path.absolute(target:dep("cc"):targetfile()))

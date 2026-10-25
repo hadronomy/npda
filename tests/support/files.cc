@@ -1,11 +1,5 @@
 #include "support/files.h"
 
-#if defined(__APPLE__)
-#include <unistd.h>
-#else
-#include <stdlib.h>
-#endif
-
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -13,8 +7,6 @@
 #include <iterator>
 #include <stdexcept>
 #include <string>
-#include <string_view>
-#include <system_error>
 
 namespace test_support {
 
@@ -32,27 +24,6 @@ std::string ReadFile(const std::filesystem::path& path) {
       std::istreambuf_iterator<char>(input),
       std::istreambuf_iterator<char>()
   };
-}
-
-void WriteFile(const std::filesystem::path& path, std::string_view text) {
-  std::ofstream output(path, std::ios::binary);
-  output << text;
-  if (!output) throw std::runtime_error("Cannot write " + path.string());
-}
-
-TemporaryDirectory::TemporaryDirectory() {
-  std::string pattern =
-      (std::filesystem::temp_directory_path() / "npda-tests-XXXXXX").string();
-  const char* directory = mkdtemp(pattern.data());
-  if (directory == nullptr) {
-    throw std::runtime_error("Cannot create a temporary test directory");
-  }
-  path_ = directory;
-}
-
-TemporaryDirectory::~TemporaryDirectory() {
-  std::error_code ignored;
-  std::filesystem::remove_all(path_, ignored);
 }
 
 }  // namespace test_support

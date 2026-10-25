@@ -3,7 +3,6 @@
 
 #include <expected>
 #include <string>
-#include <string_view>
 #include <system_error>
 #include <vector>
 
@@ -15,12 +14,10 @@ struct ProcessOutput {
   std::string error_output;
 };
 
-/// Runs the CLI with plain output and a deadline of 30 seconds, closing
-/// standard input immediately if `input` is empty. Process failures are
-/// separate from the CLI's exit code.
+/// Runs the CLI with plain output, no standard input, and a deadline of 30
+/// seconds. Process failures are separate from the CLI's exit code.
 std::expected<ProcessOutput, std::error_code> RunCli(
-    std::vector<std::string> arguments,
-    std::string_view input = {}
+    std::vector<std::string> arguments
 );
 
 }  // namespace test_support

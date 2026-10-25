@@ -12,7 +12,6 @@
 #include <utility>
 #include <vector>
 
-#include "automata/text.h"
 #include "prf/function.h"
 #include "prf/trace.h"
 #include "terminal/style.h"
@@ -129,8 +128,14 @@ void WriteTree(std::ostream& out, const Trace& trace, const Style& style) {
   // children.
   for (const auto& root : trace.roots()) WriteChildren(out, *root, "", style);
   if (const auto hidden = trace.HiddenCalls(); hidden > 0) {
-    std::println(out);
-    automata::WriteHiddenNotice(out, hidden, "call", style);
+    const auto notice = std::format(
+        "{} The trace does not show {} more call{}. Increase -trace-limit to "
+        "show them.",
+        style.glyphs().ellipsis,
+        style.Number(hidden),
+        hidden == 1 ? "" : "s"
+    );
+    std::println(out, "\n  {}", style.Paint(Tone::kMuted, notice));
   }
 }
 
