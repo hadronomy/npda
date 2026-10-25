@@ -12,14 +12,14 @@ namespace automata {
 
 /// An interned token: a state, an alphabet symbol, or an input character.
 ///
-/// Only `Intern` makes symbols. Thus, each symbol names real text. A copy of a
-/// symbol is one integer. Equality and hashing do not read the text.
+/// Because only `Intern` makes symbols, each symbol refers to interned text.
+/// Copies, equality, and hashing use one integer without reading that text.
 class Symbol {
  public:
   [[nodiscard]] constexpr bool operator==(const Symbol&) const noexcept =
       default;
 
-  /// Returns the text. The text stays valid until the process ends.
+  /// Returns a view of the text that stays valid until the process ends.
   // NOLINTNEXTLINE(readability-identifier-naming): Google style accessor.
   [[nodiscard]] std::string_view name() const;
 
@@ -37,7 +37,7 @@ class Symbol {
 
 /// Divides an input string into symbols, one for each UTF-8 code point.
 ///
-/// Alphabets in machine files keep whole tokens. Thus, `Z0` in a file is one
+/// Machine file alphabets instead keep whole tokens, so `Z0` in a file is one
 /// symbol.
 [[nodiscard]] std::vector<Symbol> InputSymbols(std::string_view text);
 

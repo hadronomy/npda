@@ -89,11 +89,10 @@ class Reader {
 
   /// Reads the optional F line.
   ///
-  /// A line is the F line only if each token is a state and the line is not a
-  /// rule. Thus, an error in the first rule gives a rule error, not an F error.
-  /// A line can be neither an F line nor a rule. If this line also does not
-  /// have the shape of a rule, the reader reports its unknown tokens and skips
-  /// it.
+  /// A line is F only if every token is a state and the line is not a rule.
+  /// Lines with the shape of a rule stay unread so the caller can report rule
+  /// errors. For other lines, the reader reports unknown states and skips the
+  /// line.
   template <typename IsRule, typename HasRuleShape>
   std::optional<std::vector<Symbol>> ReadAcceptingStates(
       const SymbolSet& states,

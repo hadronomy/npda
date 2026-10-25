@@ -16,8 +16,8 @@ namespace {
 
 /// The table of texts for `Symbol`. It lives until the process ends.
 ///
-/// A deque does not move its elements, and the table never removes a text.
-/// Thus, views into the table stay valid.
+/// Views into the table stay valid because a deque does not move its elements
+/// and the table never removes text.
 class Interner {
  public:
   [[nodiscard]] std::uint32_t Intern(std::string_view text) {
@@ -47,9 +47,9 @@ Interner& Table() {
   return table;
 }
 
-/// Returns the length of the UTF-8 sequence that starts with `lead`. A
-/// continuation byte without a lead byte counts as one byte. Thus, bad input
-/// does not stop the loop.
+/// Returns the length of the UTF-8 sequence that starts with `lead`, treating
+/// a continuation byte without a lead byte as one byte so bad input cannot
+/// stop the loop.
 std::size_t SequenceLength(unsigned char lead) {
   if (lead >= 0xF0) return 4;
   if (lead >= 0xE0) return 3;

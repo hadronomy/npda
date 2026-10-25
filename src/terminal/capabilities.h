@@ -5,17 +5,15 @@ namespace terminal {
 
 enum class OutputStream { kStdout, kStderr };
 
-/// What the destination of a stream can show.
 struct Capabilities {
   bool tty;
   bool utf8;
   bool color;
 };
 
-/// Returns what `stream` can show.
-///
-/// The function examines each stream one time only. It reads the locale and
-/// finds if the stream is a terminal. It also obeys `NO_COLOR` and `TERM=dumb`.
+/// Returns what `stream` can show. Each stream is examined once, from its
+/// locale and whether it is a terminal, and `NO_COLOR` or `TERM=dumb` turns its
+/// color off.
 [[nodiscard]] const Capabilities& CapabilitiesFor(OutputStream stream);
 
 }  // namespace terminal

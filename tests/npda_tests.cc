@@ -39,15 +39,15 @@ npda::Definition FinalState(std::vector<Symbol> states = {Intern("f")}) {
 }
 
 TEST_CASE("NPDA acceptance follows the selected mode", "[npda][acceptance]") {
-  SECTION("Final state accepts in F after the whole input") {
+  SECTION("Final-state acceptance requires F and the whole input") {
     const npda::Machine machine(FinalState());
     CHECK(machine.Run(automata::InputSymbols("a"))->Accepted());
   }
-  SECTION("Final state ignores an empty stack outside F") {
+  SECTION("Final-state acceptance rejects an empty stack outside F") {
     const npda::Machine machine(FinalState({}));
     CHECK_FALSE(machine.Run(automata::InputSymbols("a"))->Accepted());
   }
-  SECTION("Empty stack accepts in any state") {
+  SECTION("Empty-stack acceptance permits any state") {
     const npda::Machine machine(SingleMove(npda::AcceptByEmptyStack{}));
     CHECK(machine.Run(automata::InputSymbols("a"))->Accepted());
   }
@@ -74,7 +74,7 @@ TEST_CASE("NPDA counts expansions against the limit", "[npda][limits]") {
 }
 
 TEST_CASE(
-    "NPDA accepts a start configuration with no budget",
+    "NPDA accepts a start configuration with an expansion limit of zero",
     "[npda][limits]"
 ) {
   const npda::Machine machine(FinalState({Intern("q")}));
@@ -164,7 +164,7 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "NPDA ε-cycles that revisit configurations terminate",
+    "NPDA search terminates despite ε-cycles that revisit configurations",
     "[npda][search]"
 ) {
   auto definition = FinalState({});

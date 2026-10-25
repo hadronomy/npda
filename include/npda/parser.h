@@ -33,9 +33,8 @@ struct ParseResult {
 /// q2 . S q3 S
 /// ```
 ///
-/// If the file has no F line, the automaton accepts by empty stack (APv). If
-/// the file has an F line, the automaton accepts by final state (APf). A `.` is
-/// ε.
+/// An F line selects acceptance by final state (APf), while its absence selects
+/// acceptance by empty stack (APv). In either format, `.` represents ε.
 [[nodiscard]] ParseResult Parse(const diag::SourceFile& source);
 
 }  // namespace npda

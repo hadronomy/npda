@@ -14,10 +14,8 @@
 
 namespace npda {
 
-/// A nondeterministic pushdown automaton.
-///
-/// A run does a breadth-first search of the configurations. Thus, if an
-/// accepting path exists, the run finds a shortest one.
+/// A nondeterministic pushdown automaton whose runs search configurations
+/// breadth-first, so each accepting path they find is a shortest one.
 class Machine {
  public:
   explicit Machine(Definition definition);
@@ -27,7 +25,7 @@ class Machine {
 
   /// Searches for an accepting path for `input`.
   ///
-  /// Runs do not share data. Thus, many runs can use one machine at the same
+  /// Because runs do not share data, many runs can use one machine at the same
   /// time.
   ///
   /// # Errors

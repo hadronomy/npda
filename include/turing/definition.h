@@ -10,7 +10,6 @@
 
 namespace turing {
 
-/// A Turing machine as defined in its file.
 struct Definition {
   Config config;
   std::size_t num_tapes = 1;

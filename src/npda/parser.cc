@@ -39,9 +39,8 @@ struct Piece {
 
 /// Divides a push token such as `AAS` into Γ symbols.
 ///
-/// A Γ symbol can have more than one character. Thus, the function searches for
-/// a division that covers all of the token. If the token is the name of a
-/// symbol, the function does not divide it.
+/// Because Γ symbols can have more than one character, the division must cover
+/// the whole token. A token that already names a symbol stays whole.
 std::optional<std::vector<Symbol>> SplitPush(
     Symbol token,
     const SymbolSet& alphabet
@@ -84,7 +83,7 @@ class TransitionParser {
         stack_alphabet_(stack_alphabet),
         diagnostics_(diagnostics) {}
 
-  /// Returns true if the line is a correct transition. Reports nothing.
+  /// Checks whether the line is a valid transition without reporting errors.
   [[nodiscard]] bool Matches(const Line& line) const {
     const auto& tokens = line.tokens;
     return tokens.size() >= 4 && states_.contains(tokens[0].symbol) &&

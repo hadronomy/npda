@@ -35,8 +35,8 @@ template <typename T>
   return words;
 }
 
-/// Accepts one of the words in `choices` and stores the value of that word. For
-/// other words, the error message gives the list of words.
+/// Converts a word in `choices` to its value, or returns an error that lists
+/// the accepted words.
 template <typename T>
 [[nodiscard]] CLI::Validator OneOf(
     std::vector<std::pair<std::string, T>> choices
@@ -60,7 +60,6 @@ void RegisterTuring(CLI::App& app, int& exit_code);
 void RegisterPrf(CLI::App& app, int& exit_code);
 void RegisterExplain(CLI::App& app, int& exit_code);
 
-/// Parses the command line, runs the command, and returns its exit status.
 [[nodiscard]] int Main(int argc, char** argv);
 
 }  // namespace cli

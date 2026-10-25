@@ -1,7 +1,6 @@
 <div align="center">
   <img src="/.github/images/github-header-image.webp" alt="GitHub Header Image" />
 
-  <!-- Badges -->
   <p></p>
   <a href="https://ull.es">
     <img
@@ -16,7 +15,6 @@
     />
   </a>
   <p></p>
-  <!-- TOC -->
   <a href="#docs">Docs</a> •
   <a href="#requirements">Requirements</a> •
   <a href="#build">Build</a> •
@@ -33,7 +31,7 @@ the [NPDA statement](/docs/CC_2627_Practica1.pdf), the
 [Turing machine statement](/docs/CC_2627_Practica2.pdf), and the
 [primitive recursive function statement](/docs/CC_2627_Practica3.pdf).
 
-### NPDA File Format
+### NPDA file format
 
 ```
 q1 q2 q3      # Q: states
@@ -46,22 +44,22 @@ q1 a S q1 AS  # (q1, AS) ∈ δ(q1, a, S)
 ```
 
 Each transition line has the form `from input top to push`, where `.` stands
-for ε: as the input it gives a move that reads no symbol, and as the push
-string it pops the top.
+for ε. As `input`, it selects a move that reads no symbol, while as `push`,
+it pops the top without replacing it.
 
 Because each move replaces the stack top, the top is always a symbol from Γ.
 The push string starts with the new top, so `AS` puts `A` on top of `S`.
 
-The F line also sets the acceptance mode. With an F line, the automaton accepts
-by final state (APf), and without one it accepts by empty stack (APv). Either
-way, it must read all of the input.
+The F line also sets the acceptance mode: its presence selects acceptance by
+final state (APf), while its absence selects acceptance by empty stack (APv).
+Both modes require the automaton to read all of the input.
 
 The simulator searches breadth-first, so it finds a shortest accepting path
 whenever one exists. After 100 000 expansions, the search stops and leaves the
 input undecided, which keeps an ε-loop that pushes symbols from running the
 program forever.
 
-### Turing Machine Assignment
+### Turing machine assignment
 
 The statement asks for two machines, each with a definition file for the
 simulator and an image of its graph:
@@ -80,11 +78,11 @@ To draw the two graphs again, install Graphviz and run `just graphs`.
 
 #### Variants
 
-The statement groups the variants into three pairs, and the simulator supports
-both options in each pair. A file selects its variant through the config block,
-with any omitted option taking the default shown below:
+The simulator supports both variants in each of the statement's three pairs.
+Each file selects its variants through a configuration block, with omitted
+options taking the defaults shown below:
 
-| Row of the statement | Default | Other option | Config key |
+| Row of the statement | Default | Other option | Configuration key |
 | --- | --- | --- | --- |
 | Write and move | Simultaneous | Independent | `operation_mode` |
 | Head moves | L, R, and S | L and R | `allow_stay` |
@@ -96,25 +94,25 @@ The two machines of the assignment use the default variant.
 - **Independent.** Each transition either writes a symbol while the head stays
   on its cell or moves the head while the symbol stays unchanged. With more
   tapes, each tape gets its own action.
-- **L and R.** A transition with an `S` move is an error. In the independent
-  mode, a write remains legal because it keeps the head on its cell without a
-  move action.
+- **L and R.** A transition with an `S` move is an error, while an independent
+  write remains legal because it keeps the head on its cell without a move
+  action.
 - **Infinite to the right.** The tape has a left end at the first cell of the
   input, where a move to the left keeps the head on that cell.
 
 #### Runs
 
 At the start, the input is on the first tape with the head on its first symbol,
-while the other tapes are blank. The machine runs until no transition applies
-and accepts the input if it stops in a state of F, so entering a state of F
-does not stop the machine while a transition still applies. When the run ends,
-its result is on the first tape.
+while the other tapes are blank. The machine runs until no transition applies,
+then accepts the input if its state belongs to F. Entering F therefore does
+not stop a run while a transition still applies. When the run ends, its result
+is on the first tape.
 
 An input with a symbol outside Σ is rejected without a run. For inputs over Σ,
 the run stops after 100 000 steps if the machine has not halted, leaving the
 input undecided.
 
-### Turing Machine File Format
+### Turing machine file format
 
 Machine files use the format from the statement, with spaces between items and
 `#` to start a comment that continues to the end of the line. The lines come in
@@ -150,9 +148,9 @@ machine:
 Each error points to its position in the file and includes a code that you can
 look up with `cc explain <code>` to learn what it means and how to correct it.
 
-#### The config block
+#### The configuration block
 
-The config block selects the variant and can appear anywhere in the file:
+The configuration block selects the variant and can appear anywhere in the file:
 
 ```
 # /// config
@@ -207,7 +205,7 @@ q0 _ q1 1
 | [`example_1.turing`](/examples/turing/example_1.turing) | Recognizes an odd number of 0, as in the course example |
 | [`anbm_bad.turing`](/examples/turing/anbm_bad.turing) | Shows diagnostics for a definition with errors |
 
-### Primitive Recursive Function Assignment
+### Primitive recursive function assignment
 
 The statement asks for a program that computes the power function xʸ as a
 primitive recursive function. To meet this requirement, the program builds xʸ
@@ -391,8 +389,8 @@ error: pow(2, 30) needs more than 100 000 calls. Increase -max-calls to let it
 ## Requirements
 
 The project uses C++23 features such as `std::expected`, ranges, `std::format`,
-and `std::print`, and builds with LLVM Clang 23 and libc++. Its code uses
-conventional headers and source files without named C++ modules.
+and `std::print`, and it builds with LLVM Clang 23 and libc++. The code uses
+conventional headers and source files, without named C++ modules.
 
 Install LLVM and xmake with the system package manager. On macOS:
 
@@ -455,9 +453,8 @@ statement and add options for traces, diagnostics, and graphs:
 | `-verbose` | Show every diagnostic with the same code instead of a summary. |
 | `-graph <file>` | Write the graph of a Turing machine. See [Graphs](#graphs). |
 
-The program collects inputs from the command line and from `-in`. If neither
-source gives an input, it reads the keyboard until the end of the file
-(Ctrl-D).
+The program collects inputs from the command line and from `-in`, or reads the
+keyboard until end-of-file (Ctrl-D) if neither source gives an input.
 
 A successful command exits with status 0, which for `npda` and `turing` means
 that the program accepts or rejects every input. Errors in the command line or
@@ -512,15 +509,15 @@ accept  bb         [1]1_0  14 steps
 ### Traces
 
 A trace starts with the transitions numbered `δ1`, `δ2`, and so on in file
-order, then shows each configuration that the run visits. An NPDA run is a
-breadth-first search, so the trace numbers each configuration `#n` in the order
-of its visit. Each step includes the full transition that produced it, so you
-can read the trace from top to bottom.
+order, then shows each configuration that the run visits. For an NPDA's
+breadth-first search, the trace numbers each configuration `#n` in visit order.
+Alongside each step, it shows the full transition that produced it, so you can
+read the trace from top to bottom.
 
-In the detailed view, each configuration occupies a block that shows the
-state, the input and the stack as rows of cells, and each move out of the
-configuration together with the configuration that it produces. The `▲` mark
-sits below the next input symbol, and the top of the stack is on the left.
+In the detailed view, each configuration occupies a block with its state and
+rows of cells for its input and stack. Within those rows, `▲` marks the next
+input symbol, while the stack starts with its top on the left. The block also
+shows each applicable move and the configuration that it produces.
 
 ```console
 $ cc npda -config examples/APv/APv-2.txt 0110
@@ -611,10 +608,10 @@ to find formatting errors without changing the files.
 
 Along with formatting and layout checks, `just verify` builds the project,
 compiles each header alone, and runs the Catch2 domain and presentation tests.
-It also compares the full CLI output with the fixtures and runs all the
-examples. To run the same steps in a debug build with AddressSanitizer and
-UndefinedBehaviorSanitizer, use `just sanitize`, which leaves the debug build
-active afterward.
+Its CLI tests compare full output with fixtures and run all the examples.
+
+To repeat these checks with AddressSanitizer and UndefinedBehaviorSanitizer,
+run `just sanitize`. This command leaves the debug build active afterward.
 
 To go back to a release build:
 

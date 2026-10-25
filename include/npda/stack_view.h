@@ -13,10 +13,9 @@ using automata::Symbol;
 
 /// The stack of a configuration, from the top down.
 ///
-/// A run keeps all of its stacks in one shared table. Each cell of the table
-/// holds a symbol and the index of the stack below it. Equal stacks use the
-/// same cell. A push adds cells only above cells that exist. Thus, a run never
-/// copies a stack. A view refers to this table.
+/// A view refers to the run's shared table, where each cell holds a symbol and
+/// the index of the stack below it. Because equal stacks share a cell and a
+/// push adds cells above existing ones, the run never copies a stack.
 class StackView {
  public:
   struct Cell {
@@ -24,7 +23,6 @@ class StackView {
     std::size_t below;
   };
 
-  /// The index of the empty stack.
   static constexpr std::size_t kEmpty = static_cast<std::size_t>(-1);
 
   class Iterator {

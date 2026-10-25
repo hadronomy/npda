@@ -28,8 +28,8 @@ using terminal::Tone;
 
 using NpdaOptions = MachineOptions<npda::TraceView>;
 
-/// This limit is much larger than the course examples need. It is also small
-/// enough that a machine with an ε-loop stops in less than one second.
+/// Leaves room for the course examples while stopping a machine with an
+/// ε-loop in less than one second.
 constexpr std::size_t kMaxExpansions = 100'000;
 
 /// If an accepting path is longer than this, the line ends with a count.

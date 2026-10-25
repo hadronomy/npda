@@ -12,8 +12,8 @@
 
 namespace npda {
 
-/// An instantaneous description `(q, w, γ)`: the state, the quantity of input
-/// that the automaton read, and the stack.
+/// An instantaneous description `(q, w, γ)`: the state, the input `w` that
+/// remains, and the stack.
 struct Configuration {
   Symbol state;
   /// The number of input symbols that the automaton read. The input that
@@ -35,24 +35,24 @@ struct Move {
   std::size_t transition;
   /// The visit id of the configuration that the move gives.
   std::size_t target;
-  /// True if the search found `target` before. The search does not explore a
-  /// configuration two times.
+  /// True if the search found `target` before, so it does not explore that
+  /// configuration again.
   bool repeated;
 };
 
 /// One step of the search: a configuration and the moves that apply to it.
 ///
-/// Ids count the visits from zero. The search visits a parent before its
-/// children. The search stops at the first accepting configuration. Thus, a
-/// move can point to a target that the search does not visit. The stack and
-/// `moves` are valid only during the observer call.
+/// Visit ids start at zero, with each parent visited before its children.
+/// Because the search stops at the first accepting configuration, a move can
+/// point to a target that the search never visits. Both the stack and `moves`
+/// remain valid only during the observer call.
 struct Visit {
   std::size_t id;
   Configuration configuration;
   /// Empty for the start configuration.
   std::optional<Origin> origin;
-  /// First the ε-moves, then the moves that read the next symbol. Each group is
-  /// in file order. Empty for an accepting configuration.
+  /// Lists ε-moves before moves that read the next symbol, with each group in
+  /// file order, or no moves for an accepting configuration.
   std::span<const Move> moves;
   bool accepting;
 };
@@ -60,9 +60,9 @@ struct Visit {
 using Observer = std::function<void(const Visit&)>;
 
 struct RunOptions {
-  /// The maximum number of moves that the search can apply. This number
-  /// includes the moves to configurations that the search found before. Without
-  /// this limit, an ε-cycle that pushes symbols does not stop.
+  /// Limits the moves that the search can apply, including moves to previously
+  /// found configurations, because without it an ε-cycle that pushes symbols
+  /// would never stop.
   std::size_t max_expansions = 1'000'000;
   Observer observer = {};
 };

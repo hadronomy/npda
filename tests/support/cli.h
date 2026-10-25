@@ -15,9 +15,9 @@ struct ProcessOutput {
   std::string error_output;
 };
 
-/// Runs the CLI with plain output and a deadline of 30 seconds. If `input` is
-/// empty, standard input is at its end immediately. A failure to run the
-/// process is different from the exit code of the CLI.
+/// Runs the CLI with plain output and a deadline of 30 seconds, closing
+/// standard input immediately if `input` is empty. Process failures are
+/// separate from the CLI's exit code.
 std::expected<ProcessOutput, std::error_code> RunCli(
     std::vector<std::string> arguments,
     std::string_view input = {}

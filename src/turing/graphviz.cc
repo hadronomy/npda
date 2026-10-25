@@ -86,9 +86,8 @@ std::string EscapeHtml(std::string_view text) {
   return escaped;
 }
 
-/// An HTML label with one transition per row, padded to keep the text clear of
-/// the edge line. Graphviz places plain labels on that line, where it can hide
-/// a blank written as `_`.
+/// Pads an HTML label with one transition per row to keep text clear of the
+/// edge line, because Graphviz can hide a plain label's `_` on that line.
 std::string EdgeLabel(const std::vector<std::string>& rules) {
   std::string rows;
   for (const auto& rule : rules) {
@@ -263,7 +262,7 @@ std::expected<void, Error> RenderGraph(
   std::vector<char*> argv;
   for (auto& argument : arguments) argv.push_back(argument.data());
   argv.push_back(nullptr);
-  // NOLINTNEXTLINE(misc-include-cleaner): Darwin keeps pid_t in a private header.
+  // NOLINTNEXTLINE(misc-include-cleaner): Darwin's pid_t header is private.
   pid_t process = 0;
   if (const int spawn_error = posix_spawnp(
           &process,

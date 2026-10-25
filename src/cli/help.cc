@@ -28,7 +28,6 @@ using terminal::Tone;
 constexpr std::string_view kVersion = "0.2.0";
 constexpr std::string_view kRepository = "https://github.com/hadronomy/npda";
 
-/// One item of an OPTIONS, ARGUMENTS, or COMMANDS list.
 struct Entry {
   Styled name;
   std::string description;

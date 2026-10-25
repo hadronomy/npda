@@ -16,7 +16,6 @@ struct Tape {
   std::size_t head = 0;
 };
 
-/// Returns the symbol under the head.
 [[nodiscard]] inline Symbol ReadHead(const Tape& tape, Symbol blank) {
   return tape.head < tape.cells.size() ? tape.cells[tape.head] : blank;
 }

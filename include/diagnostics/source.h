@@ -27,18 +27,17 @@ struct SourceFile {
 
   [[nodiscard]] std::size_t LineCount() const;
 
-  /// Returns the line and the column of a byte offset. Both start at one. An
-  /// offset after the end of the text gives the last position.
+  /// Returns the line and column of a byte offset, both starting at one.
+  /// Offsets after the end of the text give the last position.
   [[nodiscard]] std::pair<std::size_t, std::size_t> LineColumn(
       std::size_t offset
   ) const;
 
-  /// Returns the line `number`, without its line terminator. Lines start at
-  /// one. Returns an empty view if the line does not exist. The view points
-  /// into `text`.
+  /// Returns a view into `text` for the one-based line `number`, without its
+  /// line terminator, or an empty view if the line does not exist.
   [[nodiscard]] std::string_view Line(std::size_t number) const;
 
-  /// Returns the span of `part`. `part` must be a view into `text`.
+  /// Requires `part` to be a view into `text` and returns its span.
   [[nodiscard]] SourceSpan SpanOf(std::string_view part) const;
 };
 

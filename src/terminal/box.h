@@ -26,11 +26,11 @@ struct BoxedRow {
   std::string top;
   std::string middle;
   std::string bottom;
-  /// The column at the center of each cell. Columns start at the left border.
+  /// The column at each cell's center, measured from the left border.
   std::vector<std::size_t> centers;
 };
 
-/// Draws `cells` in one row. Each cell has the width of its text.
+/// Draws `cells` in one row, with each cell as wide as its text.
 [[nodiscard]] BoxedRow DrawBoxedRow(
     std::span<const BoxCell> cells,
     const Style& style

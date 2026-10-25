@@ -24,8 +24,7 @@ template <std::ranges::input_range Symbols>
   return text;
 }
 
-/// Returns the symbols with a space between them. Thus, `Z0 A` stays two
-/// symbols.
+/// Separates symbols with spaces so `Z0 A` stays two symbols.
 template <std::ranges::input_range Symbols>
 [[nodiscard]] std::string Spaced(Symbols&& symbols) {
   std::string text;
@@ -45,7 +44,6 @@ template <std::ranges::input_range Symbols>
     const terminal::Style& style
 );
 
-/// Returns the number of decimal digits in `value`.
 [[nodiscard]] std::size_t Digits(std::size_t value);
 
 /// A rule in two parts, divided at its arrow: `(q1, a, S)` and `(q1, AS)`.
@@ -77,8 +75,8 @@ struct RuleLayout {
 
 /// Writes a `transitions` section, with one numbered rule on each line.
 ///
-/// If `notes` is not empty, it holds one note for each rule. The note follows
-/// the rule.
+/// If `notes` is not empty, it must hold one note per rule, which follows that
+/// rule in the output.
 void WriteTransitionList(
     std::ostream& out,
     std::span<const RuleText> rules,

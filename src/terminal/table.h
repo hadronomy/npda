@@ -11,8 +11,8 @@ namespace terminal {
 
 /// Rows of cells with aligned columns, and free lines between the rows.
 ///
-/// Each column has the width of its widest cell. A row ends at its last cell
-/// that is not empty. Thus, no line ends with spaces.
+/// Each column takes the width of its widest cell, while each row ends at its
+/// last nonempty cell so no line ends with spaces.
 class Table {
  public:
   void AddRow(std::vector<Styled> cells);
@@ -20,7 +20,7 @@ class Table {
   /// Adds a line that is not a part of the columns.
   void AddLine(Styled line);
 
-  /// Writes all of the lines. Each line starts with two spaces.
+  /// Writes all lines with two spaces at the start of each.
   void Write(std::ostream& out) const;
 
  private:

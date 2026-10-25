@@ -11,7 +11,6 @@ enum class TapeDirection {
   kRightOnly,
 };
 
-/// What one transition can do to each tape.
 enum class OperationMode {
   /// The transition writes a symbol and then moves the head: `X R`.
   kSimultaneous,

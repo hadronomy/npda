@@ -17,21 +17,19 @@
 namespace npda {
 
 enum class TraceView {
-  /// One block for each configuration. The block shows the state, and the input
-  /// and the stack as cells. It also shows each move out of the configuration
-  /// and the configuration that the move gives.
+  /// One block per configuration, with its state, input and stack as cells,
+  /// and each applicable move alongside the configuration that it produces.
   kDetailed,
   /// One line for each configuration, with the moves out of it below the line.
   kCompact,
-  /// The search as a tree. Each configuration is below the configuration that
-  /// gave it.
+  /// Places each configuration below its parent to show the search as a tree.
   kTree,
 };
 
 struct TraceOptions {
   TraceView view = TraceView::kDetailed;
-  /// The maximum number of configurations that the trace shows. The search
-  /// continues after this limit.
+  /// Limits the configurations shown in the trace while the search continues
+  /// past this limit.
   std::size_t limit = 200;
   /// If true, the detailed view adds a note in words below each move.
   bool explain = false;
@@ -71,10 +69,9 @@ void WriteTransitions(
 
 /// Runs `machine` on `input` and writes the search to `out`.
 ///
-/// The trace shows each configuration that the search visits, in the order of
-/// the visits. It also shows the moves out of each configuration. If the search
-/// explored other branches before it accepted, the trace ends with the
-/// accepting path.
+/// Shows configurations in visit order, each with its applicable moves.
+/// If the search explored other branches before acceptance, the trace ends
+/// with the accepting path.
 ///
 /// # Errors
 ///

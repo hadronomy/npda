@@ -185,7 +185,7 @@ TEST_CASE(
   const auto trace = directory.Path() / "trace.txt";
   test_support::WriteFile(inputs, "aabb\n\naab\n.\n");
 
-  SECTION("-in reads one input per line; '.' is the empty string") {
+  SECTION("-in reads one input per line and treats '.' as the empty string") {
     const auto result = test_support::RunCli(
         {"npda", "-config", "examples/APf/APf-1.txt", "-in", inputs.string()}
     );
@@ -217,7 +217,7 @@ TEST_CASE(
     CHECK(written.contains("accept  aabb"));
     CHECK_FALSE(written.contains('\x1b'));
   }
-  SECTION("the trace shows by default") {
+  SECTION("the trace is shown by default") {
     const auto result = test_support::RunCli(
         {"npda", "-config", "examples/APf/APf-1.txt", "aabb"}
     );

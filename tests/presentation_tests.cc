@@ -35,7 +35,6 @@ using test_support::TemporaryDirectory;
 
 const terminal::Style kPlain = terminal::Style::Plain();
 
-/// Returns the lines of `text` that contain `needle`.
 std::vector<std::string> LinesWith(
     const std::string& text,
     std::string_view needle
@@ -48,8 +47,8 @@ std::vector<std::string> LinesWith(
   return lines;
 }
 
-/// State q has two moves that read 'a' and one ε-move to a dead end. Only the
-/// first move goes to the final state f.
+/// State q has two moves that read 'a', of which only the first reaches final
+/// state f, while its ε-move leads to a dead end.
 npda::Definition Branching() {
   const auto q = Intern("q");
   const auto a = Intern("a");
@@ -109,8 +108,6 @@ std::string TraceNpda(
   return out.str();
 }
 
-/// Returns the position of `needle` in `text`. Tests use it to compare the
-/// order of lines.
 std::size_t Find(const std::string& text, std::string_view needle) {
   const auto position = text.find(needle);
   REQUIRE(position != std::string::npos);
@@ -260,7 +257,7 @@ turing::Definition Sweep() {
 }
 
 TEST_CASE(
-    "Turing tapes print as the course writes them",
+    "Turing tapes use the notation of the course",
     "[presentation][turing]"
 ) {
   const auto a = Intern("a");
@@ -482,15 +479,15 @@ TEST_CASE(
         turing::RenderGraph(definition, path, "/missing/graphviz").has_value()
     );
   }
-  SECTION("The executable returns failure") {
+  SECTION("The executable returns an error status") {
     CHECK_FALSE(
         turing::RenderGraph(definition, path, "/usr/bin/false").has_value()
     );
   }
 }
 
-/// A replacement for the `dot` program of Graphviz. It examines its arguments
-/// and copies the DOT input to the output path.
+/// Replaces Graphviz's `dot` program by examining its arguments and copying
+/// the DOT input to the output path.
 constexpr std::string_view kFakeDot = R"(#!/bin/sh
 [ "$#" -eq 6 ] || exit 2
 [ "$1" = "-Tpng" ] || exit 3

@@ -11,9 +11,8 @@ namespace turing {
 
 struct ParseResult {
   /// All diagnostics in source order, with spans that point into the source.
-  /// Warnings can accompany a machine, but errors prevent its creation.
   diag::DiagnosticSet diagnostics;
-  /// The machine, present only if `diagnostics` has no errors.
+  /// Present only if `diagnostics` has no errors; warnings do not prevent it.
   std::optional<Machine> machine;
 };
 

@@ -70,7 +70,7 @@ target("verification_tests")
     end)
     add_tests("verification")
 
--- Each generated translation unit contains one project header and no other includes.
+-- Each generated translation unit includes one project header in isolation.
 target("header_checks")
     set_kind("object")
     add_packages("cli11")

@@ -131,10 +131,9 @@ void ReportDiagnostics(
 
 /// Returns the inputs from the arguments, then from the `in` file.
 ///
-/// Files and the keyboard use the same rules: blank lines are skipped, and a
-/// line with only `.` is the empty string, as in machine files. If neither
-/// source gives an input and `read_keyboard` is true, inputs come from the
-/// keyboard.
+/// Files and the keyboard both skip blank lines and treat `.` alone as the
+/// empty string, as in machine files. If neither the arguments nor the file
+/// gives an input and `read_keyboard` is true, the function reads the keyboard.
 ///
 /// # Errors
 ///
@@ -191,7 +190,6 @@ enum class Verdict { kAccept, kReject, kUnknown };
 /// `inputs`.
 [[nodiscard]] std::size_t InputColumnWidth(std::span<const std::string> inputs);
 
-/// Counts the verdicts for the summary.
 class Tally {
  public:
   void Add(Verdict verdict);

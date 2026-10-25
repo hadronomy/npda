@@ -12,8 +12,7 @@ std::filesystem::path SourceRoot();
 std::string ReadFile(const std::filesystem::path& path);
 void WriteFile(const std::filesystem::path& path, std::string_view text);
 
-/// A new directory. The destructor removes the directory and all of its
-/// contents.
+/// Owns a new directory and removes it and its contents at destruction.
 class TemporaryDirectory {
  public:
   TemporaryDirectory();

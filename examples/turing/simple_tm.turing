@@ -2,8 +2,8 @@
 # tape_direction = right-only
 # allow_stay = false
 # ///
-# Accepts each string over {a, b}: the head goes right to the first blank.
-# The machine never moves left, so a tape with a left end is enough.
+# Accepts each string over {a, b} by moving right to the first blank.
+# Because the head never moves left, a tape with a left end is enough.
 q0 q1
 a b
 a b _

@@ -29,8 +29,8 @@ std::size_t Combine(std::size_t seed, std::size_t value) {
 
 /// All the stacks of a run, one cell for each different stack.
 ///
-/// Interning gives equal stacks equal indices. Thus, a comparison or a hash of
-/// a stack uses one integer, and a push shares all of the cells below it.
+/// Interning gives equal stacks equal indices, so comparisons and hashing use
+/// one integer while each push shares all the cells below it.
 class StackTable {
  public:
   [[nodiscard]] StackView View(std::size_t stack) const {

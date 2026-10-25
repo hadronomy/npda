@@ -32,8 +32,8 @@ using parsing::Token;
 
 constexpr std::string_view kTapesSection = "number of tapes";
 
-/// True if `text` is one character. Inputs split into characters, so a longer
-/// tape symbol could never come from an input.
+/// Checks for one character because inputs split into characters, so a longer
+/// tape symbol can never come from an input.
 bool IsOneCharacter(std::string_view text) {
   return automata::InputSymbols(text).size() == 1;
 }
@@ -139,9 +139,9 @@ void CheckTapeAlphabet(
   }
 }
 
-/// Reads transitions for a machine with N tapes. Each transition starts with
-/// `from read1 .. readN to`, followed by one action per tape. In the
-/// simultaneous mode, each action combines a write and a move:
+/// Reads transitions for N tapes, each starting with `from read1 .. readN to`
+/// and ending with one action per tape. In simultaneous mode, each action
+/// combines a write and a move:
 ///
 /// ```text
 /// from  read1 .. readN  to  write1 move1 .. writeN moveN
@@ -249,8 +249,8 @@ class RuleParser {
     };
   }
 
-  /// An action writes a symbol from Γ or moves the head. Because Γ excludes
-  /// move letters in this mode, the two tests can run in either order.
+  /// Because Γ excludes move letters in this mode, the tests for a write and
+  /// a head move can run in either order.
   TapeAction ParseAction(Symbol read, const Token& action) {
     if (tape_alphabet_.contains(action.symbol)) {
       return {.read = read, .write = action.symbol, .move = HeadMove::kStay};

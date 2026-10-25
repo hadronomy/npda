@@ -60,8 +60,8 @@ struct TraceOptions {
 ///
 /// The text spans the first through the last nonblank cell, extending to the
 /// head if it lies outside that span, and brackets the cell under the head.
-/// With a `radius`, only the cells near the head remain, with an ellipsis at
-/// each cut.
+/// With a `radius`, it keeps only cells near the head and marks each cut with
+/// an ellipsis.
 [[nodiscard]] std::string FormatTape(
     const Tape& tape,
     Symbol blank,

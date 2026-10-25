@@ -23,8 +23,9 @@ struct RenderOptions {
   bool verbose = false;
 };
 
-/// Writes `diagnostics` with lines of `source`, in the order that the parser
-/// found them:
+/// Writes `diagnostics` with lines of `source`, grouped by severity and code.
+/// The groups follow the order in which the parser found their first
+/// diagnostic:
 ///
 /// ```text
 /// █ error[E0007]: start state not in Q

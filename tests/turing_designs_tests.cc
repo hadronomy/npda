@@ -98,7 +98,7 @@ TEST_CASE(
         Unary(static_cast<std::size_t>(std::ranges::count(word, 'a')));
     const auto outcome = Run(machine, word);
     CHECK(outcome.accepted);
-    // The head stops on the first symbol of the result.
+    // The statement asks for the head on the first symbol of the result.
     CHECK(outcome.tape == "[" + result.substr(0, 1) + "]" + result.substr(1));
   }
 }

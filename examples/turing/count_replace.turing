@@ -1,6 +1,6 @@
 # Machine 2: replaces a string of a and b with the number of b, a blank, and
-# the number of a. Each count n is written as 1ⁿ, with 0 for zero, and the
-# head stops on the first symbol of the result:
+# the number of a. It writes each count n as 1ⁿ, with 0 for zero, then stops
+# with the head on the first symbol of the result:
 #
 #   abbabaabb  →  11111_1111
 #   aa         →  0_11

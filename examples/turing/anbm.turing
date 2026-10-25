@@ -1,8 +1,8 @@
 # Machine 1: L = { aⁿbᵐ | m ≥ n, n > 0 }
 #
 # Each round pairs the first free a with the first free b by marking them as
-# X and Y. Once all the a are marked, the remaining suffix must contain only
-# Y and b.
+# X and Y. Once no free a remains, the machine checks that the suffix contains
+# only Y and b.
 #
 # q0  marks the next a, or enters the final check when it reaches Y because
 #     all the a are marked. An initial b or blank stops the machine because

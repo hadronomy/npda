@@ -30,9 +30,9 @@ namespace turing {
 
 /// Draws the machine with Graphviz.
 ///
-/// The extension of `output` sets the image format, so `machine.svg` runs
-/// `executable -Tsvg`. The program finds the executable in `PATH` and runs it
-/// without a shell.
+/// Finds `executable` in `PATH` and runs it without a shell, using the
+/// extension of `output` to select the image format: `machine.svg` runs
+/// `executable -Tsvg`.
 ///
 /// # Errors
 ///

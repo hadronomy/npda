@@ -94,8 +94,8 @@ TEST_CASE(
     "[turing][execution]"
 ) {
   auto definition = SingleRule();
-  // f is accepting, but it has a transition. Only the absence of a transition
-  // halts the machine, so the run ends in g, which is not accepting.
+  // Although f is accepting, its transition keeps the machine running until
+  // it halts in g, which is not accepting.
   definition.transitions.push_back(
       {.from = Intern("f"),
        .tapes =
@@ -152,7 +152,7 @@ TEST_CASE(
   SECTION("Read patterns must be deterministic") {
     definition.transitions.push_back(definition.transitions.front());
   }
-  SECTION("Stay movement requires allow_stay") {
+  SECTION("A stay move requires allow_stay") {
     definition.config.allow_stay = false;
     definition.transitions.front().tapes.front().move = turing::HeadMove::kStay;
   }

@@ -23,7 +23,6 @@ namespace {
 constexpr std::string_view kOpening = "# /// config";
 constexpr std::string_view kClosing = "# ///";
 
-/// A config key and the information needed to read its value.
 struct Key {
   std::string_view name;
   /// Stores `value` in `config` if it is valid, or returns false otherwise.
@@ -147,7 +146,6 @@ bool IsKeyCharacter(char character) {
   return std::isalnum(byte) != 0 || character == '_' || character == '-';
 }
 
-/// Reads one `key = value` line of the block into `result`.
 void ReadEntry(
     const diag::SourceFile& source,
     std::string_view content,

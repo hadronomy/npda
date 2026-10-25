@@ -12,8 +12,8 @@ using automata::Symbol;
 
 /// One move of the transition function: `(to, push) ∈ δ(from, input, top)`.
 ///
-/// The move pops `top`. Thus, the move applies only if `top` is on top of the
-/// stack. A move without `input` is an ε-move. It reads no symbol.
+/// Because the move pops `top`, it applies only when `top` is on top of the
+/// stack. Without `input`, it is an ε-move, which reads no symbol.
 struct Transition {
   Symbol from;
   std::optional<Symbol> input;

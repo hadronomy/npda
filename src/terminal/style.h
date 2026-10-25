@@ -12,15 +12,14 @@ namespace terminal {
 
 /// The meaning of a piece of text.
 ///
-/// Each tone uses one of the sixteen colors of the terminal. Thus, the output
-/// agrees with the theme of the user on all backgrounds.
+/// Each tone uses one of the terminal's sixteen colors, so the output follows
+/// the user's theme on all backgrounds.
 enum class Tone {
   kPlain,
   /// The values that the reader looks for first.
   kStrong,
   /// Labels, separators, and less important details.
   kMuted,
-  /// Section headings.
   kHeading,
   /// Names that the reader types or follows: commands, options, and
   /// transitions.
@@ -63,8 +62,8 @@ struct Glyphs {
 
 /// Painted text and the number of columns that it uses on the screen.
 ///
-/// Escape sequences use no columns. Thus, a `Styled` measures its text before
-/// the paint. Concatenation keeps the correct width.
+/// Because escape sequences use no columns, `Styled` measures text before
+/// applying color and preserves that width through concatenation.
 struct Styled {
   std::string text;
   std::size_t width = 0;
@@ -74,12 +73,10 @@ struct Styled {
 
 [[nodiscard]] Styled operator+(Styled left, const Styled& right);
 
-/// How to draw text for one destination.
 class Style {
  public:
-  /// Returns the style for `stream`. The style uses color only on a terminal
-  /// without `NO_COLOR` or `TERM=dumb`. It uses Unicode only with a UTF-8
-  /// locale.
+  /// Uses color only if `stream` is a terminal without `NO_COLOR` or
+  /// `TERM=dumb`, and Unicode only if its locale is UTF-8.
   [[nodiscard]] static Style For(OutputStream stream);
 
   /// Returns a style for files: UTF-8 text without escape sequences.
@@ -119,12 +116,12 @@ class Style {
 
 /// Returns the number of columns of `text`, one for each code point.
 ///
-/// This count includes escape sequences. Thus, measure text before you paint
-/// it.
+/// Because the count includes escape sequences, measure text before applying
+/// color.
 [[nodiscard]] std::size_t DisplayWidth(std::string_view text);
 
-/// Adds spaces after `text` until it has `width` columns. Wider text does not
-/// change.
+/// Adds spaces after `text` to reach `width` columns, leaving wider text
+/// intact.
 [[nodiscard]] std::string PadRight(std::string_view text, std::size_t width);
 
 /// Adds spaces before `text` until it has `width` columns. Use it for numbers.
@@ -132,16 +129,16 @@ class Style {
 
 [[nodiscard]] std::string PadRight(const Styled& text, std::size_t width);
 
-/// Cuts `text` to `width` columns. If the function cuts the text, the text ends
-/// with `ellipsis`.
+/// Cuts `text` to `width` columns, ending it with `ellipsis` only if it was
+/// cut.
 [[nodiscard]] std::string Truncate(
     std::string_view text,
     std::size_t width,
     std::string_view ellipsis
 );
 
-/// Cuts `text` to `width` columns, as `Truncate` does. This function keeps the
-/// two ends and puts the ellipsis in the middle.
+/// Like `Truncate`, cuts `text` to `width` columns, but keeps both ends and
+/// puts the ellipsis in the middle.
 [[nodiscard]] std::string TruncateMiddle(
     std::string_view text,
     std::size_t width,

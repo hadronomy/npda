@@ -13,17 +13,14 @@ namespace diag {
 
 enum class Severity { kError, kWarning };
 
-/// A message about one part of the source text.
 struct Label {
   SourceSpan span;
   std::string message;
 };
 
-/// One problem in a source file.
 struct Diagnostic {
   Severity severity = Severity::kError;
-  /// A code that does not change, for example `E0007`. `cc explain` gives the
-  /// meaning of each code.
+  /// A stable code, such as `E0007`, whose meaning `cc explain` gives.
   std::string code;
   std::string message;
   std::vector<Label> labels;
@@ -91,8 +88,8 @@ struct CodeInfo {
   std::string_view hint;
 };
 
-/// Returns the entries for `code`, one for each type of machine that uses the
-/// code. Empty for an unknown code.
+/// Returns one entry for each type of machine that uses `code`, or an empty
+/// vector if the code is unknown.
 [[nodiscard]] std::vector<CodeInfo> Explain(std::string_view code);
 
 }  // namespace diag

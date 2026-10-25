@@ -148,7 +148,6 @@ struct Record {
   std::optional<std::size_t> transition;
 };
 
-/// Draws the recorded steps of one run in the view of the options.
 class TraceWriter {
  public:
   TraceWriter(

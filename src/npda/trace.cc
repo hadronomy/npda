@@ -54,7 +54,6 @@ struct Snapshot {
   std::vector<Symbol> stack;
 };
 
-/// A copy of a visit from a run.
 struct Record {
   Snapshot configuration;
   std::optional<Origin> origin;
@@ -119,7 +118,6 @@ std::vector<RuleText> SplitAll(
   return rules;
 }
 
-/// Draws the recorded visits of one run in the view of the options.
 class TraceWriter {
  public:
   TraceWriter(
@@ -157,8 +155,6 @@ class TraceWriter {
         WriteCompact();
         break;
       case TraceView::kTree:
-        /// The ids on the accepting path, if the trace recorded the end of the
-        /// path.
         WriteTree(AcceptingIds(result));
         break;
     }

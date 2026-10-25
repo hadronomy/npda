@@ -9,19 +9,16 @@
 
 namespace npda {
 
-/// The automaton accepts if it reads all of the input and stops in one of
-/// `states`. This is an APf.
+/// An APf accepts after it reads all of the input and stops in one of `states`.
 struct AcceptByFinalState {
   std::vector<Symbol> states;
 };
 
-/// The automaton accepts if it reads all of the input and its stack is empty.
-/// This is an APv.
+/// An APv accepts after it reads all of the input and its stack is empty.
 struct AcceptByEmptyStack {};
 
 using Acceptance = std::variant<AcceptByFinalState, AcceptByEmptyStack>;
 
-/// A pushdown automaton, as its file gives it.
 struct Definition {
   Symbol start_state;
   Symbol initial_stack_symbol;

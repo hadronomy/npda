@@ -75,13 +75,11 @@ constexpr Glyphs kAscii{
     .ellipsis = "...",
 };
 
-/// What the output can use at its destination.
 struct Features {
   bool color;
   const Glyphs* glyphs;
   /// OSC 8 hyperlinks from each location to its file.
   bool links;
-  /// A curly underline below the labeled text in the source line.
   bool curly_underline;
 };
 
@@ -147,7 +145,6 @@ struct Mark {
   const Label* label;
 };
 
-/// Writes the diagnostics of one source file.
 class Renderer {
  public:
   Renderer(std::ostream& out, const SourceFile& source, Features features)
@@ -211,7 +208,7 @@ class Renderer {
     return std::format("{}{}{}", code, text, kReset);
   }
 
-  /// `file:line:column`. If the terminal can, the text is a link to the file.
+  /// Formats `file:line:column` as a file link when the terminal supports it.
   [[nodiscard]] std::string Location(std::size_t offset) const {
     const auto [line, column] = source_->LineColumn(offset);
     const auto& filename = source_->filename;
@@ -395,8 +392,7 @@ class Renderer {
   Features features_;
 };
 
-/// Removes repeats. Diagnostics with the same code, spans, and messages are one
-/// problem.
+/// Treats diagnostics with the same code, spans, and messages as one problem.
 std::vector<const Diagnostic*> Distinct(const DiagnosticSet& diagnostics) {
   std::vector<const Diagnostic*> distinct;
   std::set<

@@ -52,7 +52,10 @@ TEST_CASE(
   CHECK(parsed.machine->Run({})->Accepted());
 }
 
-TEST_CASE("NPDA parser picks acceptance from the F line", "[parser][npda]") {
+TEST_CASE(
+    "NPDA parser selects the acceptance mode from the F line",
+    "[parser][npda]"
+) {
   SECTION("An F line selects final-state acceptance") {
     const auto parsed = ParseNpda("q f\na\nZ\nq\nZ\nf\nq a Z f Z\n");
     REQUIRE(parsed.machine.has_value());
@@ -168,10 +171,9 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "Turing parser reports each broken rule of the definition",
+    "Turing parser reports each invalid rule of the definition",
     "[parser][turing]"
 ) {
-  // The expected code, and a file with one problem.
   using Case = std::pair<std::string, std::string>;
   const auto [code, text] = GENERATE(
       Case{"E0022", "q f\na\na _\nq\n_\nf\nq a f a S\n"},
@@ -207,7 +209,7 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "Turing parser rejects invalid and duplicate configuration",
+    "Turing parser rejects invalid and duplicate configuration entries",
     "[parser][turing][configuration]"
 ) {
   const std::string configuration = GENERATE(
@@ -225,7 +227,7 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "Turing parser reports unknown configuration as a warning",
+    "Turing parser warns about unknown configuration keys",
     "[parser][turing][configuration]"
 ) {
   const auto parsed =
