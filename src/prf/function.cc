@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <expected>
 #include <format>
@@ -16,6 +17,7 @@
 #include <utility>
 #include <vector>
 
+#include "prf/code.h"
 #include "prf/trace.h"
 
 namespace prf {
@@ -92,6 +94,15 @@ class ZeroFunction final : public Function {
   Expression Name(Notation) const override { return {{Role::kBasic, "Z"}}; }
 
  private:
+  std::uint32_t Lower(detail::Assembler& assembler) const override {
+    return assembler.Emit(
+        {.function = this,
+         .operation = detail::Operation::kZero,
+         .arity = 1,
+         .outputs = 1}
+    );
+  }
+
   std::expected<void, Error> DoApply(
       std::span<const Natural>,
       std::span<Natural> results,
@@ -109,15 +120,22 @@ class SuccessorFunction final : public Function {
   Expression Name(Notation) const override { return {{Role::kBasic, "S"}}; }
 
  private:
+  std::uint32_t Lower(detail::Assembler& assembler) const override {
+    return assembler.Emit(
+        {.function = this,
+         .operation = detail::Operation::kSuccessor,
+         .arity = 1,
+         .outputs = 1}
+    );
+  }
+
   std::expected<void, Error> DoApply(
       std::span<const Natural> arguments,
       std::span<Natural> results,
       Trace&
   ) const override {
     if (arguments[0] == std::numeric_limits<Natural>::max()) {
-      return std::unexpected(
-          Error{std::format("S({}) does not fit in 64 bits", arguments[0])}
-      );
+      return std::unexpected(detail::SuccessorOverflow(arguments[0]));
     }
     results[0] = arguments[0] + 1;
     return {};
@@ -144,6 +162,16 @@ class ProjectionFunction final : public Function {
   ) const override {
     results[0] = arguments[index_ - 1];
     return {};
+  }
+
+  std::uint32_t Lower(detail::Assembler& assembler) const override {
+    return assembler.Emit(
+        {.function = this,
+         .operation = detail::Operation::kProjection,
+         .arity = static_cast<std::uint32_t>(Arity()),
+         .outputs = 1,
+         .first = static_cast<std::uint32_t>(index_ - 1)}
+    );
   }
 
   std::size_t index_;
@@ -180,6 +208,19 @@ class CombinationFunction final : public Function {
     return Apply(*second_, arguments, results.subspan(split), trace);
   }
 
+  std::uint32_t Lower(detail::Assembler& assembler) const override {
+    const auto first = assembler.Add(*first_);
+    const auto second = assembler.Add(*second_);
+    return assembler.Emit(
+        {.function = this,
+         .operation = detail::Operation::kCombination,
+         .arity = static_cast<std::uint32_t>(Arity()),
+         .outputs = static_cast<std::uint32_t>(Outputs()),
+         .first = first,
+         .second = second}
+    );
+  }
+
   detail::FunctionPtr first_;
   detail::FunctionPtr second_;
 };
@@ -207,20 +248,25 @@ class CompositionFunction final : public Function {
       std::span<Natural> results,
       Trace& trace
   ) const override {
-    // Most compositions pass one or two values, which fit on the stack.
-    // Keeping them there avoids a heap buffer for each call, which doubles
-    // the time of an evaluation.
-    std::array<Natural, 4> stack_values{};
-    Tuple heap_values;
-    std::span<Natural> values(stack_values.data(), inner_->Outputs());
-    if (inner_->Outputs() > stack_values.size()) {
-      heap_values.resize(inner_->Outputs());
-      values = heap_values;
-    }
-    if (auto inner = Apply(*inner_, arguments, values, trace); !inner) {
+    const detail::Scratch values(inner_->Outputs());
+    if (auto inner = Apply(*inner_, arguments, values.values(), trace);
+        !inner) {
       return inner;
     }
-    return Apply(*outer_, values, results, trace);
+    return Apply(*outer_, values.values(), results, trace);
+  }
+
+  std::uint32_t Lower(detail::Assembler& assembler) const override {
+    const auto outer = assembler.Add(*outer_);
+    const auto inner = assembler.Add(*inner_);
+    return assembler.Emit(
+        {.function = this,
+         .operation = detail::Operation::kComposition,
+         .arity = static_cast<std::uint32_t>(Arity()),
+         .outputs = static_cast<std::uint32_t>(Outputs()),
+         .first = outer,
+         .second = inner}
+    );
   }
 
   detail::FunctionPtr outer_;
@@ -285,7 +331,8 @@ class RecursionFunction final : public Function {
       Trace& trace
   ) const override {
     const auto fixed = arguments.first(arguments.size() - 1);
-    Tuple step_arguments(arguments.size() + 1);
+    const detail::Scratch scratch(arguments.size() + 1);
+    const auto step_arguments = scratch.values();
     std::ranges::copy(fixed, step_arguments.begin());
     auto& counter = step_arguments[fixed.size()];
     auto& value = step_arguments.back();
@@ -303,6 +350,19 @@ class RecursionFunction final : public Function {
     }
     results[0] = value;
     return {};
+  }
+
+  std::uint32_t Lower(detail::Assembler& assembler) const override {
+    const auto base = assembler.Add(*base_);
+    const auto step = assembler.Add(*step_);
+    return assembler.Emit(
+        {.function = this,
+         .operation = detail::Operation::kRecursion,
+         .arity = static_cast<std::uint32_t>(Arity()),
+         .outputs = 1,
+         .first = base,
+         .second = step}
+    );
   }
 
   detail::FunctionPtr base_;
@@ -356,6 +416,24 @@ std::expected<void, Error> Function::Apply(
 }
 
 namespace detail {
+
+std::uint32_t Assembler::Add(const Function& function) {
+  if (const auto found = index_.find(&function); found != index_.end()) {
+    return found->second;
+  }
+  const auto index = function.Lower(*this);
+  index_.emplace(&function, index);
+  return index;
+}
+
+std::uint32_t Assembler::Emit(Node node) {
+  nodes_.push_back(node);
+  return static_cast<std::uint32_t>(nodes_.size() - 1);
+}
+
+Code Assembler::Finish(std::uint32_t root) && {
+  return {.nodes = std::move(nodes_), .root = root};
+}
 
 FunctionPtr NewZero() { return std::make_shared<ZeroFunction>(); }
 

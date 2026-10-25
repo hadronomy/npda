@@ -329,6 +329,15 @@ During evaluation, each call receives a `prf::Trace`, which counts calls and
 stops evaluation at its call limit. The trace can also record the call count
 for each function or the tree of calls, depending on its mode.
 
+The command evaluates `pow` through a `prf::Program`, which compiles the
+function objects into a flat array with one node for each object. The program
+preserves the object evaluator's calls, call order, and trace, but each call
+that the trace does not keep in a tree costs one switch instead of a virtual
+call and a trace scope. With the program, `pow(2, 27)` takes about 1.6 seconds
+instead of about 4 seconds. To check that the evaluators agree, tests compare
+their results, call counts, trees, and errors across the same inputs, limits,
+and tree sizes.
+
 #### Calls
 
 Each application counts as one call, whether it applies a basic function or
@@ -390,7 +399,7 @@ calls, because the functions count in steps of one and the number of calls
 grows with xʸ. For example, 2⁶³ needs about 10¹⁹ calls.
 
 To limit evaluation time, the program stops with an error after
-1 000 000 000 calls, which takes 5 to 7 seconds. This limit allows powers up to
+1 000 000 000 calls, which takes about 2 seconds. This limit allows powers up to
 2²⁷, 3¹⁷, and 10⁸. To change it, use `-max-calls`:
 
 ```console

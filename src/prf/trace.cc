@@ -46,14 +46,7 @@ std::expected<Trace::Scope, Error> Trace::Enter(
     const Function& function,
     std::span<const Natural> arguments
 ) {
-  if (calls_ == options_.max_calls) {
-    return std::unexpected(
-        Error{std::format(
-            "the evaluation needs more than {} calls",
-            options_.max_calls
-        )}
-    );
-  }
+  if (calls_ == options_.max_calls) return std::unexpected(LimitError());
   ++calls_;
   switch (options_.mode) {
     case TraceMode::kOff:
@@ -76,6 +69,12 @@ std::expected<Trace::Scope, Error> Trace::Enter(
   siblings.push_back(std::move(node));
   open_.push_back(kept);
   return Scope(*this, kept);
+}
+
+Error Trace::LimitError() const {
+  return Error{
+      std::format("the evaluation needs more than {} calls", options_.max_calls)
+  };
 }
 
 std::uint64_t Trace::HiddenCalls() const {

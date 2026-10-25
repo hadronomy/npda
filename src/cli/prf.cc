@@ -13,6 +13,7 @@
 #include "cli/commands.h"
 #include "cli/machine_command.h"
 #include "prf/function.h"
+#include "prf/program.h"
 #include "prf/trace.h"
 #include "prf/trace_render.h"
 #include "terminal/capabilities.h"
@@ -28,7 +29,7 @@ struct PrfOptions {
   prf::TraceMode trace = prf::TraceMode::kCounts;
   bool definition = false;
   std::size_t trace_limit = 200;
-  /// A call takes 5 to 7 ns, so a run stops after 5 to 7 s at this limit.
+  /// A call takes about 2 ns, so a run stops after about 2 s at this limit.
   /// Without a limit, powers such as 2⁶³ take centuries because they need
   /// about 10¹⁹ calls, even though their results fit in 64 bits.
   std::uint64_t max_calls = 1'000'000'000;
@@ -57,7 +58,7 @@ int RunPrf(const PrfOptions& options) {
     ReportError(std::format("{} does not fit in 64 bits", call));
     return 1;
   }
-  const auto power = prf::Power();
+  const prf::Program power(prf::Power());
   const std::array arguments{options.base, options.exponent};
   // Because the result line shows the top-level call, the tree must keep one
   // more call than it shows.

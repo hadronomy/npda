@@ -25,7 +25,7 @@ target("automata")
     add_files("src/automata/symbol.cc", "src/parsing/*.cc",
               "src/npda/machine.cc", "src/npda/parser.cc",
               "src/turing/machine.cc", "src/turing/parser.cc", "src/turing/config_parser.cc",
-              "src/turing/transition_text.cc", "src/prf/function.cc", "src/prf/trace.cc",
+              "src/turing/transition_text.cc", "src/prf/function.cc", "src/prf/program.cc", "src/prf/trace.cc",
               "src/diagnostics/*.cc")
 
 target("presentation")
@@ -45,7 +45,8 @@ target("domain_tests")
     add_deps("automata")
     add_packages("catch2", {components = {"main", "lib"}})
     add_files("tests/npda_tests.cc", "tests/turing_tests.cc",
-              "tests/parser_tests.cc", "tests/prf_tests.cc")
+              "tests/parser_tests.cc", "tests/prf_tests.cc",
+              "tests/prf_program_tests.cc")
     add_tests("domain")
 
 target("presentation_tests")

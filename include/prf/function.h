@@ -34,6 +34,12 @@ namespace prf {
 
 class Trace;
 
+namespace detail {
+
+class Assembler;
+
+}  // namespace detail
+
 /// A natural number stored in 64 bits, so the successor of the largest value
 /// is an error.
 using Natural = std::uint64_t;
@@ -143,6 +149,7 @@ class Function {
  private:
   template <std::size_t N, std::size_t M>
   friend class Fn;
+  friend class detail::Assembler;
 
   /// Whether the name is an expression of ∘ or ×, which needs parentheses as
   /// an operand.
@@ -165,6 +172,10 @@ class Function {
       std::span<Natural> results,
       Trace& trace
   ) const = 0;
+
+  /// Adds this function's node after the nodes of its parts and returns its
+  /// index in `assembler`.
+  virtual std::uint32_t Lower(detail::Assembler& assembler) const = 0;
 
   std::size_t arity_;
   std::size_t outputs_;

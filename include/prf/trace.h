@@ -23,6 +23,13 @@ enum class TraceMode {
   kTree,
 };
 
+namespace detail {
+
+template <TraceMode kMode>
+class Runner;
+
+}  // namespace detail
+
 struct TraceOptions {
   TraceMode mode = TraceMode::kCounts;
   /// The maximum number of calls in an evaluation, after which a call fails.
@@ -67,8 +74,12 @@ class Trace {
   // NOLINTEND(readability-identifier-naming)
 
  private:
-  // Only `Function::Apply` opens calls, one for each application.
   friend class Function;
+  template <TraceMode kMode>
+  friend class detail::Runner;
+
+  /// Returns the error for a call after `max_calls`, shared by both evaluators.
+  [[nodiscard]] Error LimitError() const;
 
   /// Owns an open call and closes it when the scope ends, whether evaluation
   /// succeeds or returns an error.
